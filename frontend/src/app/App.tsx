@@ -19,7 +19,7 @@ import { RecommendationsPage } from "./admin/RecommendationsPage";
 
 function Landing() {
   return (
-    <div className="font-sans text-stone-900 bg-stone-50 min-h-screen selection:bg-emerald-900 selection:text-white scroll-smooth">
+    <div className="font-sans text-stone-900 bg-stone-50 min-h-screen selection:bg-emerald-600 selection:text-white scroll-smooth">
       <Navbar />
       <main>
         <Hero />

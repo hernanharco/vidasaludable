@@ -19,7 +19,7 @@ function parseRefs(raw: string): string[] {
 }
 
 /**
- * "Guías de la doctora": doctor-authored knowledge injected into the agent
+ * "Guías de salud": expert-authored knowledge injected into the agent
  * context. CRUD + enable/disable toggle, with catalog products selectable by
  * reference/name. Editable knowledge — deletion is allowed (unlike the
  * append-only recommendations log).
@@ -150,9 +150,9 @@ export function GuidancePage() {
     <div>
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="font-serif text-2xl">Guías de la doctora</h1>
+          <h1 className="font-serif text-2xl">Guías de Salud</h1>
           <p className="mt-1 text-sm text-stone-500">
-            Conocimiento clínico escrito por la médico, inyectado en el contexto del
+            Conocimiento clínico experto, inyectado en el contexto del
             agente para enriquecer las recomendaciones preventivas.
           </p>
         </div>

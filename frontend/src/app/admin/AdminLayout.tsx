@@ -105,7 +105,7 @@ export function AdminLayout() {
           <Leaf className="w-6 h-6 shrink-0" />
           {!collapsed && (
             <span className="font-serif text-lg tracking-wide whitespace-nowrap">
-              Dra. Andrea · Admin
+              Salud Preventiva · Admin
             </span>
           )}
         </div>
