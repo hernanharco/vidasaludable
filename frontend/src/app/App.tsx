@@ -6,6 +6,7 @@ import { About } from "./components/About";
 import { Services } from "./components/Services";
 import { Booking } from "./components/Booking";
 import { ChatWidget } from "./components/ChatWidget";
+import { AssessmentWidget } from "./components/AssessmentWidget";
 import { Footer } from "./components/Footer";
 import { AdminLayout } from "./admin/AdminLayout";
 import { Dashboard } from "./admin/Dashboard";
@@ -29,6 +30,7 @@ function Landing() {
       </main>
       <Footer />
       <ChatWidget />
+          <AssessmentWidget />
     </div>
   );
 }

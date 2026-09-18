@@ -9,20 +9,9 @@ import { migrate } from "./db/migrate.js";
 import { createAssistantRouter } from "./routes/assistant.js";
 import { createRegisterRouter } from "./routes/register.js";
 import { createAdminRouter } from "./routes/admin.js";
+import { createAssessmentRouter } from "./routes/assessment.js";
 
-/**
- * Hono bootstrap.
- *
- * - CORS: allows localhost origins only (the Vite dev proxy avoids CORS; this
- *   is a belt-and-suspenders guard for direct browser calls).
- * - x-api-key: header check for the server-to-server bridge (NOT real auth —
- *   see design: "x-api-key (bridge)"). The shared key comes from env.
- * - Env guard: refuses to boot in production without required vars, and the
- *   /admin CRM denies everything outside NODE_ENV=development.
- * - SQLite dev file; migrated idempotently at boot (design: no migration tool).
- */
-
-const PORT = Number(process.env.PORT ?? 3000);
+const PORT = Number(process.env.PORT ?? 3001);
 const DB_PATH = process.env.SQLITE_PATH ?? "./data/dev.sqlite";
 const API_KEY = process.env.API_KEY;
 
@@ -33,7 +22,7 @@ export function buildApp(db: Db): Hono {
     "*",
     cors({
       origin: (origin) => {
-        if (!origin) return "*"; // curl/server-to-server
+        if (!origin) return "*";
         try {
           const host = new URL(origin).hostname;
           return host === "localhost" || host === "127.0.0.1" ? origin : null;
@@ -46,7 +35,6 @@ export function buildApp(db: Db): Hono {
     }),
   );
 
-  // x-api-key bridge guard (only enforced when API_KEY is configured).
   app.use("*", async (c, next) => {
     if (API_KEY) {
       const key = c.req.header("x-api-key");
@@ -59,23 +47,14 @@ export function buildApp(db: Db): Hono {
 
   app.get("/health", (c) => c.json({ ok: true, env: process.env.NODE_ENV ?? "development" }));
 
-  // Mount routers: /assistant/* (register + consent + ask + history).
   app.route("/assistant", createRegisterRouter(db));
   app.route("/assistant", createAssistantRouter(db));
-  // Dev-only CRM (403 outside NODE_ENV=development; recommendations GET-only).
   app.route("/admin", createAdminRouter(db));
+  app.route("/assessment", createAssessmentRouter(db));
 
   return app;
 }
 
-/**
- * Starts the HTTP server. Migrates the dev DB at boot.
- *
- * The chat API is intentionally public (served through the Vercel rewrite);
- * the /admin CRM is the protected surface — basic auth in production
- * (ADMIN_USER/ADMIN_PASS, fail-closed), open in development.
- * API_KEY is optional: when configured, the x-api-key header is enforced.
- */
 export async function startServer(): Promise<{ server: ServerType; db: Db }> {
   const db = createDatabase(DB_PATH);
   await migrate(db);
@@ -84,7 +63,6 @@ export async function startServer(): Promise<{ server: ServerType; db: Db }> {
   return { server, db };
 }
 
-// Direct execution: `tsx src/index.ts`.
 if (import.meta.url === `file://${process.argv[1]}`) {
   startServer()
     .then(() => {
