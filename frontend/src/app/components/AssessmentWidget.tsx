@@ -15,6 +15,8 @@ import {
   User,
   Calendar,
   Users,
+  Pill,
+  ShoppingCart,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -22,6 +24,14 @@ import { Label } from "../components/ui/label";
 import { Checkbox } from "../components/ui/checkbox";
 import { Progress } from "../components/ui/progress";
 import { Badge } from "../components/ui/badge";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "../components/ui/card";
 import { RadioGroup, RadioGroupItem } from "../components/ui/radio-group";
 import { ScrollArea } from "../components/ui/scroll-area";
 
@@ -64,9 +74,27 @@ interface QuestionnaireData {
   nutrients: Nutrient[];
 }
 
+interface AddressedNutrient {
+  nutrientId: string;
+  nutrientName: string;
+  status: "deficient" | "urgent";
+}
+
+interface ProductRecommendation {
+  reference: string;
+  name: string;
+  category: string;
+  size: string;
+  price: number;
+  benefits: string;
+  dosage: string;
+  addressesNutrients: AddressedNutrient[];
+}
+
 interface CalculateResponse {
   results: ScoringResult[];
   recommendations: ScoringResult[];
+  productRecommendations: ProductRecommendation[];
 }
 
 interface AssessmentSaved {
@@ -471,6 +499,77 @@ export function AssessmentWidget() {
                               </div>
                             );
                           })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Product Recommendations */}
+                    {results.productRecommendations.length > 0 && (
+                      <div>
+                        <h4 className="font-medium text-stone-800 mb-3">
+                          Productos Recomendados
+                        </h4>
+                        <div className="space-y-3">
+                          {results.productRecommendations.map((product) => (
+                            <Card
+                              key={product.reference}
+                              className="overflow-hidden"
+                            >
+                              <CardHeader className="pb-2">
+                                <div className="flex items-start justify-between">
+                                  <div className="flex-1">
+                                    <CardTitle className="text-sm">
+                                      {product.name}
+                                    </CardTitle>
+                                    <CardDescription className="text-xs mt-1">
+                                      {product.category}
+                                    </CardDescription>
+                                  </div>
+                                  <div className="text-right">
+                                    <div className="text-lg font-bold text-emerald-700">
+                                      €{product.price.toFixed(2)}
+                                    </div>
+                                    <div className="text-xs text-stone-400">
+                                      {product.size}
+                                    </div>
+                                  </div>
+                                </div>
+                              </CardHeader>
+                              <CardContent className="pt-0">
+                                <p className="text-xs text-stone-600 mb-2">
+                                  {product.benefits}
+                                </p>
+                                <div className="flex items-center gap-1 text-xs text-stone-500 mb-3">
+                                  <Pill size={12} />
+                                  <span>{product.dosage}</span>
+                                </div>
+                                <div className="flex flex-wrap gap-1">
+                                  {product.addressesNutrients.map((n) => {
+                                    const config = STATUS_CONFIG[n.status];
+                                    return (
+                                      <Badge
+                                        key={n.nutrientId}
+                                        className={`${config.color} text-xs`}
+                                      >
+                                        {n.nutrientName}
+                                      </Badge>
+                                    );
+                                  })}
+                                </div>
+                              </CardContent>
+                              <CardFooter className="pt-0 pb-4">
+                                <a
+                                  href={`https://www.amway.es/search?q=${encodeURIComponent(product.name)}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-2 w-full justify-center bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium py-2 px-4 rounded-lg transition-colors"
+                                >
+                                  <ShoppingCart size={14} />
+                                  Consultar precio
+                                </a>
+                              </CardFooter>
+                            </Card>
+                          ))}
                         </div>
                       </div>
                     )}

@@ -15,12 +15,15 @@ import type { NewProduct } from "../db/schema.js";
 export interface CuratedProduct extends Partial<NewProduct> {
   reference: string;
   complete: boolean;
+  /** Nutrient IDs this product helps supplement (maps to assessment_nutrients.id). */
+  nutrientIds: string[];
 }
 
 export const CURATED_PRODUCTS: CuratedProduct[] = [
   {
     reference: "100305",
     complete: true,
+    nutrientIds: ["biotina", "vitamina_c"],
     name: "Nutrilite™ Biotina C Plus",
     category: "Complementos alimenticios — Cabello y piel",
     size: "90 comprimidos",
@@ -36,6 +39,11 @@ export const CURATED_PRODUCTS: CuratedProduct[] = [
   {
     reference: "100930",
     complete: true,
+    nutrientIds: [
+      "vitamina_a", "vitamina_b1", "vitamina_b2", "vitamina_b3",
+      "vitamina_b6", "vitamina_b12", "vitamina_d", "vitamina_e",
+      "acido_folico",
+    ],
     name: "Nutrilite™ Multivitaminas / Minerales Masticable",
     category: "Complementos alimenticios — Multivitamínicos",
     size: "120 comprimidos",
@@ -55,6 +63,12 @@ export const CURATED_PRODUCTS: CuratedProduct[] = [
     // review — so this entry is FLAGGED incomplete and NOT inserted.
     reference: "121576",
     complete: false,
+    nutrientIds: [
+      "vitamina_a", "vitamina_b1", "vitamina_b2", "vitamina_b3",
+      "vitamina_b6", "vitamina_b12", "vitamina_c", "vitamina_d",
+      "vitamina_e", "acido_folico", "biotina",
+      "calcio", "magnesio", "zinc", "selenio", "cromo", "manganesio", "ferro",
+    ],
     name: "Nutrilite™ Double X™ Multivitaminas / Multiminerales / Fitonutrientes",
     category: "Complementos alimenticios — Multivitamínicos",
     size: "186 comprimidos",

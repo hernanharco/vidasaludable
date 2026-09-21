@@ -12,8 +12,10 @@ import {
   calculateNutrientStatus,
   calculateAllNutrients,
   getRecommendations,
+  getProductRecommendations,
   type NutrientMapping,
   type ScoringResult,
+  type ProductRecommendation,
 } from "./scoring.js";
 import { randomUUID } from "node:crypto";
 
@@ -40,6 +42,7 @@ export interface CalculateRequest {
 export interface CalculateResponse {
   results: ScoringResult[];
   recommendations: ScoringResult[];
+  productRecommendations: ProductRecommendation[];
 }
 
 export interface SaveRequest {
@@ -122,7 +125,8 @@ export function createAssessmentService(db: Db) {
     const mappings = loadNutrientMappings();
     const results = calculateAllNutrients(responseMap, mappings);
     const recommendations = getRecommendations(results);
-    return { results, recommendations };
+    const productRecommendations = getProductRecommendations(results);
+    return { results, recommendations, productRecommendations };
   }
 
   /**

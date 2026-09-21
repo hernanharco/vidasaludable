@@ -1,5 +1,6 @@
 import PDFDocument from "pdfkit";
-import type { ScoringResult } from "./scoring.js";
+import type { ScoringResult, ProductRecommendation } from "./scoring.js";
+import { getProductRecommendations } from "./scoring.js";
 
 /**
  * PDF generation for assessment results.
@@ -16,6 +17,7 @@ interface PdfOptions {
   patientSex: string;
   patientAge: number;
   results: ScoringResult[];
+  productRecommendations?: ProductRecommendation[];
   createdAt: string;
 }
 
@@ -117,6 +119,66 @@ export function generateAssessmentPdf(options: PdfOptions): Promise<Buffer> {
       }
 
       doc.moveDown(1.5);
+    }
+
+    // ─── Product Recommendations ───────────────────────────
+    const productRecs = options.productRecommendations ?? getProductRecommendations(options.results);
+
+    if (productRecs.length > 0) {
+      doc
+        .fontSize(14)
+        .fillColor("#1f2937")
+        .text("Productos Recomendados");
+
+      doc.moveDown(0.5);
+
+      for (const product of productRecs) {
+        if (doc.y > 680) {
+          doc.addPage();
+        }
+
+        // Product name and price
+        doc
+          .fontSize(11)
+          .fillColor("#065f46")
+          .text(product.name, { continued: true });
+        doc
+          .fillColor("#059669")
+          .text(`  €${product.price.toFixed(2)}`);
+
+        // Category and size
+        doc
+          .fontSize(9)
+          .fillColor("#6b7280")
+          .text(`${product.category} · ${product.size}`);
+
+        doc.moveDown(0.3);
+
+        // Benefits
+        doc
+          .fontSize(10)
+          .fillColor("#374151")
+          .text(`Por qué tomarlo: ${product.benefits}`);
+
+        // Dosage
+        doc
+          .fontSize(10)
+          .fillColor("#374151")
+          .text(`Cómo tomarlo: ${product.dosage}`);
+
+        // Addressed nutrients
+        const nutrientLabels = product.addressesNutrients
+          .map((n) => `${n.nutrientName} (${n.status === "urgent" ? "Urgente" : "En Falta"})`)
+          .join(", ");
+        doc
+          .fontSize(9)
+          .fillColor("#9ca3af")
+          .text(`Cubre: ${nutrientLabels}`);
+
+        doc.moveDown(0.8);
+      }
+
+      doc.moveDown(0.5);
     }
 
     // ─── All Nutrients ──────────────────────────────────────
