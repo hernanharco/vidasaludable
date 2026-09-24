@@ -1,5 +1,5 @@
 {
-  "name": "@doctoraandrea/backend",
+  "name": "@vidasaludable/backend",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -19,10 +19,13 @@
   },
   "dependencies": {
     "@hono/node-server": "^2.1.1",
-    "better-sqlite3": "^11.8.1",
+    "@types/nodemailer": "^8.0.2",
+    "better-sqlite3": "^13.0.3",
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.38.3",
-    "hono": "^4.6.14"
+    "hono": "^4.6.14",
+    "nodemailer": "^10.0.10",
+    "pdfkit": "^0.20.2"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.12",

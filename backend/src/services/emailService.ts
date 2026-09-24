@@ -58,7 +58,7 @@ async function getTransporter(): Promise<nodemailer.Transporter> {
  */
 export async function sendEmail(options: EmailOptions): Promise<EmailResult> {
   const transport = await getTransporter();
-  const from = process.env.SMTP_FROM || "noreply@doctoraandrea.com";
+  const from = process.env.SMTP_FROM || "noreply@vidasaludable.rincom.es";
 
   const info = await transport.sendMail({
     from,

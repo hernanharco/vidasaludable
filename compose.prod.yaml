@@ -1,7 +1,7 @@
 # ============================================================
-# compose.prod.yaml — doctoraandrea (producción en Hetzner)
+# compose.prod.yaml — vidasaludable (producción en Hetzner)
 # ============================================================
-# Uso (en el servidor, dentro de /opt/doctoraandrea):
+# Uso (en el servidor, dentro de /opt/vidasaludable):
 #   docker compose -f compose.prod.yaml up -d --build
 # El backend expone 8091 y Vercel lo alcanza server-to-server vía rewrites
 # (/api/* → http://100.111.99.61:8091). La BD SQLite persiste en ./data.

@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://api.draandrea.rincom.es/:path*"
+      "destination": "https://api.vidasaludable.rincom.es/:path*"
     },
     {
       "source": "/(.*)",

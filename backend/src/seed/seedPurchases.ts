@@ -16,13 +16,13 @@ export async function seedPurchases(db: ReturnType<typeof createDatabase>): Prom
 
   const demo = [
     {
-      email: "demo@doctoraandrea.test",
+      email: "demo@vidasaludable.test",
       productReference: "100305", // Nutrilite Biotina C Plus
       qty: 2,
       purchasedAt: "2026-07-10T10:00:00Z",
     },
     {
-      email: "demo@doctoraandrea.test",
+      email: "demo@vidasaludable.test",
       productReference: "100930", // Multivitaminas Masticable
       qty: 1,
       purchasedAt: "2026-07-20T10:00:00Z",

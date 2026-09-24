@@ -1,0 +1,62 @@
+name: Deploy Backend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - "compose.prod.yaml"
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/backend
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image_tag: ${{ steps.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,prefix=
+            type=raw,value=latest
+
+      - uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile.prod
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to Hetzner
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.HETZNER_HOST }}
+          username: ${{ secrets.HETZNER_USER }}
+          key: ${{ secrets.HETZNER_SSH_KEY }}
+          script: |
+            cd /opt/vidasaludable
+            docker compose -f compose.prod.yaml pull api
+            docker compose -f compose.prod.yaml up -d --no-deps api
+            docker compose -f compose.prod.yaml exec -T api node -e "fetch('http://127.0.0.1:8091/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
