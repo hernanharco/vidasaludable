@@ -11,9 +11,6 @@ importers:
       '@hono/node-server':
         specifier: ^2.1.1
         version: 2.1.1(hono@4.13.5)
-      '@types/nodemailer':
-        specifier: ^8.0.2
-        version: 8.0.2
       better-sqlite3:
         specifier: ^13.0.3
         version: 13.0.3
@@ -39,6 +36,9 @@ importers:
       '@types/node':
         specifier: ^22.10.5
         version: 22.20.1
+      '@types/nodemailer':
+        specifier: ^8.0.2
+        version: 8.0.2
       '@types/pdfkit':
         specifier: ^0.17.6
         version: 0.17.6

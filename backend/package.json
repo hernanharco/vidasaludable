@@ -19,7 +19,6 @@
   },
   "dependencies": {
     "@hono/node-server": "^2.1.1",
-    "@types/nodemailer": "^8.0.2",
     "better-sqlite3": "^13.0.3",
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.38.3",
@@ -30,6 +29,7 @@
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.10.5",
+    "@types/nodemailer": "^8.0.2",
     "@types/pdfkit": "^0.17.6",
     "tsx": "^4.19.2",
     "typescript": "^5.7.3",
