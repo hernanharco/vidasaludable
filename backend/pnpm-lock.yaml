@@ -39,6 +39,9 @@ importers:
       '@types/node':
         specifier: ^22.10.5
         version: 22.20.1
+      '@types/pdfkit':
+        specifier: ^0.17.6
+        version: 0.17.6
       tsx:
         specifier: ^4.19.2
         version: 4.23.12
@@ -507,6 +510,9 @@ packages:
 
   '@types/nodemailer@8.0.2':
     resolution: {integrity: sha512-c7M5ox8p0nEOfbJ2E9Qcmt8/QCu/VzsiAhzBiZbvky2PhKZDHpKB3sQHBM5MEZNkCfBOaS6S9//AGPRTNB7IaA==}
+
+  '@types/pdfkit@0.17.6':
+    resolution: {integrity: sha512-tIwzxk2uWKp0Cq9JIluQXJid77lYhF52EsIOwhsMF4iWLA6YneoBR1xVKYYdAysHuepUB0OX4tdwMiUDdGKmig==}
 
   '@vitest/expect@2.1.9':
     resolution: {integrity: sha512-UJCIkTBenHeKT1TTlKMJWy1laZewsRIzYighyYiJKZreqtdxSos/S1t+ktRMQWu2CKqaarrkeszJx1cgC5tGZw==}
@@ -1151,6 +1157,10 @@ snapshots:
       undici-types: 6.21.0
 
   '@types/nodemailer@8.0.2':
+    dependencies:
+      '@types/node': 22.20.1
+
+  '@types/pdfkit@0.17.6':
     dependencies:
       '@types/node': 22.20.1
 
