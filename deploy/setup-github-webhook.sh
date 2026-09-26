@@ -1,6 +1,6 @@
 #!/bin/bash
 REPO="hernanharco/vidasaludable"
-WEBHOOK_URL="http://178.104.93.84:9000/webhook"
+WEBHOOK_URL="https://webhook.rincom.es/webhook"
 SECRET="a1a76e76ccb493205b4ef2922a8597c30b13ec48dca34914b61a780111b9cc36"
 
 if [ -z "$GITHUB_TOKEN" ]; then
