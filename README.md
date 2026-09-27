@@ -18,16 +18,35 @@ cd backend && pnpm install && pnpm dev
 - **Frontend**: Vercel (automático al push a main)
 - **Backend**: Hetzner vía Docker (automático al push a main)
 
-### Secrets de GitHub
+### Secrets de GitHub (configurados ✅)
 
-| Secret | Descripción |
-|--------|-------------|
-| VERCEL_TOKEN | Token de Vercel |
-| VERCEL_ORG_ID | Organización de Vercel |
-| VERCEL_PROJECT_ID | Proyecto de Vercel |
-| HETZNER_HOST | IP del servidor Hetzner |
-| HETZNER_USER | Usuario SSH del servidor |
-| HETZNER_SSH_KEY | Clave SSH privada |
+| Secret | Estado |
+|--------|--------|
+| VERCEL_TOKEN | ✅ Configurado |
+| VERCEL_ORG_ID | ✅ `team_0iXBDap6vHdalM0fEFusXlzy` |
+| VERCEL_PROJECT_ID | ✅ `prj_4vAW3At3CGFwq6MzA56ZV6A50Xi3` |
+| HETZNER_HOST | ✅ `178.104.93.84` |
+| HETZNER_USER | ✅ `root` |
+| HETZNER_SSH_KEY | ✅ Configurado |
+
+### Cómo se deploya
+
+1. `git push origin main` con cambios en `frontend/` → deploy automático a Vercel
+2. `git push origin main` con cambios en `backend/` → build Docker + deploy a Hetzner
+3. `gh workflow run "Deploy Frontend"` → deploy manual del frontend
+
+### Verificar deploy
+
+```bash
+# Ver workflows recientes
+gh run list --limit 3
+
+# Ver deploy de Vercel
+vercel ls | head -5
+
+# Ver containers en Hetzner
+ssh hetzner-ts "docker ps --filter name=vidasaludable"
+```
 
 ## Documentación
 
