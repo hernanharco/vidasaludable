@@ -20,14 +20,16 @@ cd backend && pnpm install && pnpm dev
 
 ### Secrets de GitHub (configurados ✅)
 
-| Secret | Estado |
-|--------|--------|
-| VERCEL_TOKEN | ✅ Configurado |
-| VERCEL_ORG_ID | ✅ `team_0iXBDap6vHdalM0fEFusXlzy` |
-| VERCEL_PROJECT_ID | ✅ `prj_4vAW3At3CGFwq6MzA56ZV6A50Xi3` |
-| HETZNER_HOST | ✅ `178.104.93.84` |
-| HETZNER_USER | ✅ `root` |
-| HETZNER_SSH_KEY | ✅ Configurado |
+| Secret | Estado | Notas |
+|--------|--------|-------|
+| VERCEL_TOKEN | ✅ Configurado | Token sin expiración (dashboard) |
+| VERCEL_ORG_ID | ✅ `team_0iXBDap6vHdalM0fEFusXlzy` | |
+| VERCEL_PROJECT_ID | ✅ `prj_4vAW3At3CGFwq6MzA56ZV6A50Xi3` | |
+| HETZNER_HOST | ✅ `100.111.99.61` | Tailscale IP |
+| HETZNER_USER | ✅ `root` | |
+| HETZNER_SSH_KEY | ✅ Configurado | |
+
+**⚠️ Nota:** El token VERCEL_TOKEN debe ser creado desde https://vercel.com/account/tokens con **No expiration**. No usar el token del CLI.
 
 ### Cómo se deploya
 
