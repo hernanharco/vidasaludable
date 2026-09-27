@@ -5,8 +5,8 @@
   "type": "module",
   "packageManager": "pnpm@10.28.0",
   "scripts": {
-    "build": "vite build",
-    "dev": "vite"
+    "build": "pnpm exec vite build",
+    "dev": "pnpm exec vite"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",
