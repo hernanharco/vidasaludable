@@ -1,6 +1,8 @@
 {
+  "framework": null,
   "installCommand": "pnpm install --frozen-lockfile",
-  "buildCommand": "pnpm build",
+  "buildCommand": "pnpm install --frozen-lockfile && pnpm exec vite build",
+  "outputDirectory": "dist",
   "rewrites": [
     {
       "source": "/api/:path*",
