@@ -4,7 +4,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://api.vidasaludable.rincom.es/:path*"
+      "destination": "http://api.vidasaludable.rincom.es/:path*"
     },
     {
       "source": "/(.*)",
