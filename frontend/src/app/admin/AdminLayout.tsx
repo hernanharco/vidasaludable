@@ -12,6 +12,8 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Lock,
+  Key,
+  Stethoscope,
 } from "lucide-react";
 import { api, AdminError, setAdminAuth, clearAdminAuth } from "./api";
 
@@ -22,6 +24,8 @@ const sections = [
   { to: "/admin/conversations", label: "Conversaciones", icon: MessagesSquare, end: false },
   { to: "/admin/guidance", label: "Guías", icon: BookOpen, end: false },
   { to: "/admin/recommendations", label: "Recomendaciones", icon: ClipboardList, end: false },
+  { to: "/admin/referrers", label: "Referentes", icon: Key, end: false },
+  { to: "/admin/assessment", label: "Evaluación", icon: Stethoscope, end: false },
 ];
 
 const STORAGE_KEY = "vr_admin_sidebar_collapsed";

@@ -17,6 +17,8 @@ import { ConversationsPage } from "./admin/ConversationsPage";
 import { ConversationDetailPage } from "./admin/ConversationDetailPage";
 import { GuidancePage } from "./admin/GuidancePage";
 import { RecommendationsPage } from "./admin/RecommendationsPage";
+import { ReferrersPage } from "./admin/ReferrersPage";
+import { AssessmentAdminPage } from "./admin/AssessmentAdminPage";
 
 function Landing() {
   return (
@@ -48,6 +50,8 @@ export default function App() {
         <Route path="conversations/:id" element={<ConversationDetailPage />} />
         <Route path="guidance" element={<GuidancePage />} />
         <Route path="recommendations" element={<RecommendationsPage />} />
+        <Route path="referrers" element={<ReferrersPage />} />
+        <Route path="assessment" element={<AssessmentAdminPage />} />
       </Route>
     </Routes>
   );

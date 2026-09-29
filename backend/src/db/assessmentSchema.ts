@@ -1,4 +1,5 @@
 import { sqliteTable, text, integer, real, index } from "drizzle-orm/sqlite-core";
+import { referrers } from "./schema.js";
 import { sql } from "drizzle-orm";
 
 /**
@@ -66,6 +67,7 @@ export const assessments = sqliteTable(
     patientName: text("patient_name").notNull(),
     patientSex: text("patient_sex").notNull(), // "M" | "F"
     patientAge: integer("patient_age").notNull(),
+    referrerId: integer("referrer_id").references(() => referrers.id),
     status: text("status").notNull().default("in_progress"), // "in_progress" | "completed"
     createdAt: text("created_at")
       .notNull()

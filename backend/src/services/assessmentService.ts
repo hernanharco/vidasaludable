@@ -50,6 +50,7 @@ export interface SaveRequest {
   patientSex: string;
   patientAge: number;
   responses: CalculateRequest[];
+  referrerId?: number | null;
 }
 
 export interface SavedAssessment {
@@ -147,6 +148,7 @@ export function createAssessmentService(db: Db) {
         patientName: req.patientName,
         patientSex: req.patientSex,
         patientAge: req.patientAge,
+        referrerId: req.referrerId ?? null,
         status: "completed",
         completedAt: new Date().toISOString(),
       })

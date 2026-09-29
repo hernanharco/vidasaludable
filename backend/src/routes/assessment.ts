@@ -68,11 +68,14 @@ export function createAssessmentRouter(db: Db): Hono {
       return c.json({ error: "responses must be an array" }, 400);
     }
 
+    const referrerId = body.referrer_id ? Number(body.referrer_id) : null;
+
     const saved = assessmentService.save({
       patientName,
       patientSex,
       patientAge,
       responses,
+      referrerId,
     });
 
     return c.json(saved, 201);

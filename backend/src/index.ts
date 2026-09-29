@@ -10,6 +10,9 @@ import { createAssistantRouter } from "./routes/assistant.js";
 import { createRegisterRouter } from "./routes/register.js";
 import { createAdminRouter } from "./routes/admin.js";
 import { createAssessmentRouter } from "./routes/assessment.js";
+import { createReferrerRouter } from "./routes/referrer.js";
+import { createAdminReferrerRouter } from "./routes/adminReferrer.js";
+import { createAdminAssessmentRouter } from "./routes/adminAssessment.js";
 
 const PORT = Number(process.env.PORT ?? 3001);
 const DB_PATH = process.env.SQLITE_PATH ?? "./data/dev.sqlite";
@@ -31,7 +34,7 @@ export function buildApp(db: Db): Hono {
         }
       },
       allowHeaders: ["Content-Type", "x-api-key"],
-      allowMethods: ["GET", "POST"],
+      allowMethods: ["GET", "POST", "PUT", "DELETE"],
     }),
   );
 
@@ -51,6 +54,9 @@ export function buildApp(db: Db): Hono {
   app.route("/assistant", createAssistantRouter(db));
   app.route("/admin", createAdminRouter(db));
   app.route("/assessment", createAssessmentRouter(db));
+  app.route("/referrer", createReferrerRouter(db));
+  app.route("/admin/referrers", createAdminReferrerRouter(db));
+  app.route("/admin/assessment", createAdminAssessmentRouter(db));
 
   return app;
 }

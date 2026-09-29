@@ -24,6 +24,8 @@ export interface Customer {
   email: string;
   phone: string;
   referrerPhone: string | null;
+  referrerId: number | null;
+  referrerName?: string | null;
   consentVersion: number;
   consentTimestamp: string;
   registeredAt: string;
@@ -80,6 +82,20 @@ export interface Guidance {
   updatedAt: string;
 }
 
+export interface Referrer {
+  id: number;
+  code: string;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  active: number; // 0 | 1
+  createdAt: string;
+}
+
+export interface ReferrerWithStats extends Referrer {
+  customerCount: number;
+}
+
 export interface GuidanceInput {
   title: string;
   content: string;
@@ -87,6 +103,37 @@ export interface GuidanceInput {
 }
 
 export type GuidancePatch = Partial<GuidanceInput> & { enabled?: number };
+
+// ─── Assessment types ──────────────────────────────────────────────
+
+export interface AssessmentSymptom {
+  id: number;
+  nameEs: string;
+}
+
+export interface AssessmentNutrient {
+  id: string;
+  name: string;
+  type: string;
+}
+
+export interface AssessmentMapping {
+  symptomId: number;
+  nutrientId: string;
+  weight: number;
+  symptomName: string;
+  nutrientName: string;
+}
+
+export interface AssessmentResult {
+  id: string;
+  patientName: string;
+  patientSex: string;
+  patientAge: number;
+  status: string;
+  createdAt: string;
+  completedAt: string | null;
+}
 
 export class AdminError extends Error {
   status: number;
@@ -159,6 +206,7 @@ export const api = {
       body: JSON.stringify(patch),
     }),
   listCustomers: () => request<{ customers: Customer[] }>("/customers"),
+  deleteCustomer: (id: number) => request<null>(`/customers/${id}`, { method: "DELETE" }),
   listConversations: () =>
     request<{ conversations: Conversation[] }>("/conversations"),
   listMessages: (id: number) =>
@@ -189,4 +237,71 @@ export const api = {
     }),
   deleteGuidance: (id: number) =>
     request<null>(`/guidance/${id}`, { method: "DELETE" }),
+
+  // ─── Assessment CRUD ──────────────────────────────────────────
+  listAssessmentSymptoms: () =>
+    request<{ symptoms: AssessmentSymptom[] }>("/assessment/symptoms"),
+  createAssessmentSymptom: (input: { id: number; nameEs: string }) =>
+    request<{ symptom: AssessmentSymptom }>("/assessment/symptoms", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  updateAssessmentSymptom: (id: number, patch: { nameEs: string }) =>
+    request<{ symptom: AssessmentSymptom }>(`/assessment/symptoms/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(patch),
+    }),
+  deleteAssessmentSymptom: (id: number) =>
+    request<null>(`/assessment/symptoms/${id}`, { method: "DELETE" }),
+
+  listAssessmentNutrients: () =>
+    request<{ nutrients: AssessmentNutrient[] }>("/assessment/nutrients"),
+  createAssessmentNutrient: (input: { id: string; name: string; type: string }) =>
+    request<{ nutrient: AssessmentNutrient }>("/assessment/nutrients", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  updateAssessmentNutrient: (id: string, patch: { name?: string; type?: string }) =>
+    request<{ nutrient: AssessmentNutrient }>(`/assessment/nutrients/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(patch),
+    }),
+  deleteAssessmentNutrient: (id: string) =>
+    request<null>(`/assessment/nutrients/${id}`, { method: "DELETE" }),
+
+  listAssessmentMappings: () =>
+    request<{ mappings: AssessmentMapping[] }>("/assessment/mappings"),
+  createAssessmentMapping: (input: { symptomId: number; nutrientId: string; weight: number }) =>
+    request<{ mapping: AssessmentMapping }>("/assessment/mappings", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  updateAssessmentMapping: (input: { symptomId: number; nutrientId: string; weight: number }) =>
+    request<{ mapping: AssessmentMapping }>("/assessment/mappings", {
+      method: "PUT",
+      body: JSON.stringify(input),
+    }),
+  deleteAssessmentMapping: (input: { symptomId: number; nutrientId: string }) =>
+    request<null>("/assessment/mappings", {
+      method: "DELETE",
+      body: JSON.stringify(input),
+    }),
+
+  listAssessmentResults: () =>
+    request<{ assessments: AssessmentResult[] }>("/assessment/results"),
+
+  // Referrers
+  listReferrers: () => request<{ referrers: ReferrerWithStats[] }>("/referrers"),
+  createReferrer: (input: { code: string; name: string; phone?: string; email?: string }) =>
+    request<{ referrer: Referrer }>("/referrers", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  updateReferrer: (id: number, patch: Partial<{ code: string; name: string; phone: string | null; email: string | null; active: number }>) =>
+    request<{ referrer: Referrer }>(`/referrers/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(patch),
+    }),
+  deleteReferrer: (id: number) =>
+    request<null>(`/referrers/${id}`, { method: "DELETE" }),
 };

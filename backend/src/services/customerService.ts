@@ -24,6 +24,7 @@ export interface RegisterInput {
   email: string;
   phone: string;
   referrerPhone?: string | null;
+  referrerId?: number | null;
   consentVersion: number;
 }
 
@@ -39,6 +40,8 @@ export interface CustomerService {
   hasCurrentConsent(customerId: number): boolean;
   /** Re-consents a customer to the current version, preserving records. */
   reConsent(customerId: number): Customer | undefined;
+  /** Soft-delete: removes the customer record. */
+  delete(customerId: number): boolean;
 }
 
 function normalize(s: string): string {
@@ -82,6 +85,7 @@ export function createCustomerService(db: Db): CustomerService {
           email,
           phone,
           referrerPhone: input.referrerPhone?.trim() || null,
+          referrerId: input.referrerId ?? null,
           consentVersion: input.consentVersion,
           consentTimestamp: now,
           registeredAt: now,
@@ -113,6 +117,11 @@ export function createCustomerService(db: Db): CustomerService {
         .where(eq(customers.id, customerId))
         .returning()
         .get();
+    },
+
+    delete(customerId: number): boolean {
+      const deleted = db.delete(customers).where(eq(customers.id, customerId)).returning().get();
+      return !!deleted;
     },
   };
 }

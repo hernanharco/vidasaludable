@@ -8,4 +8,4 @@ export interface ChatMessage {
   text: string;
 }
 
-export type Phase = "boot" | "gate" | "chat";
+export type Phase = "boot" | "access_code" | "gate" | "chat";

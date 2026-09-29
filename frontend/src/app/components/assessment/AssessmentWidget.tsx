@@ -9,12 +9,14 @@ import { CheckCircle2 } from "lucide-react";
 import { AssessmentWelcome } from "./AssessmentWelcome";
 import { AssessmentSymptoms } from "./AssessmentSymptoms";
 import { AssessmentResults } from "./AssessmentResults";
+import { AccessCodeGate } from "../AccessCodeGate";
 import { QuestionnaireData, CalculateResponse, AssessmentSaved, SYMPTOMS_PER_STEP } from "./types";
 
 /**
  * Prevention Assessment Widget — floating button + wizard modal.
  *
  * Flow:
+ * 0. Access code gate (referrer tracking)
  * 1. Welcome: patient data (name, sex, age)
  * 2. Symptoms: grouped ~12 per step, checkbox SI/NO
  * 3. Results: nutrient scores + recommendations + PDF/email
@@ -22,8 +24,12 @@ import { QuestionnaireData, CalculateResponse, AssessmentSaved, SYMPTOMS_PER_STE
 
 export function AssessmentWidget() {
   const [isOpen, setIsOpen] = useState(false);
-  const [phase, setPhase] = useState<"loading" | "welcome" | "symptoms" | "calculating" | "results">("loading");
+  const [phase, setPhase] = useState<"access_code" | "loading" | "welcome" | "symptoms" | "calculating" | "results">("access_code");
   const [questionnaire, setQuestionnaire] = useState<QuestionnaireData | null>(null);
+
+  // Access code state
+  const [referrerId, setReferrerId] = useState<number | null>(null);
+  const [referrerName, setReferrerName] = useState<string | null>(null);
 
   // Patient data
   const [patientName, setPatientName] = useState("");
@@ -42,8 +48,9 @@ export function AssessmentWidget() {
   const [emailSending, setEmailSending] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
 
-  // Load questionnaire on mount
-  useEffect(() => {
+  // Load questionnaire after access code validation
+  const loadQuestionnaire = useCallback(() => {
+    setPhase("loading");
     fetch("/api/assessment/questionnaire")
       .then((r) => r.json())
       .then((data: QuestionnaireData) => {
@@ -54,6 +61,13 @@ export function AssessmentWidget() {
         setTimeout(() => window.location.reload(), 2000);
       });
   }, []);
+
+  // Access code validated → load questionnaire
+  const handleAccessCodeValidated = (id: number, name: string) => {
+    setReferrerId(id);
+    setReferrerName(name);
+    loadQuestionnaire();
+  };
 
   // Calculate steps
   const symptomSteps = questionnaire
@@ -98,6 +112,7 @@ export function AssessmentWidget() {
           patientSex,
           patientAge: Number(patientAge),
           responses: responseArray,
+          referrer_id: referrerId,
         }),
       });
       const saveData: AssessmentSaved = await saveRes.json();
@@ -107,7 +122,7 @@ export function AssessmentWidget() {
     } catch {
       setPhase("welcome");
     }
-  }, [responses, patientName, patientSex, patientAge]);
+  }, [responses, patientName, patientSex, patientAge, referrerId]);
 
   // Can proceed from welcome?
   const canStart = patientName.trim().length > 0 && patientSex !== "" && patientAge !== "";
@@ -134,7 +149,7 @@ export function AssessmentWidget() {
     return (
       <button
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-6 right-6 z-50 flex items-center gap-2 bg-emerald-600 text-white px-4 py-3 rounded-full shadow-lg hover:bg-emerald-700 transition-colors"
+        className="fixed bottom-20 right-6 z-50 flex items-center gap-2 bg-emerald-600 text-white px-4 py-3 rounded-full shadow-lg hover:bg-emerald-700 transition-colors"
       >
         <ClipboardCheck size={20} />
         <span className="font-medium hidden sm:inline">Prevenición</span>
@@ -192,6 +207,10 @@ export function AssessmentWidget() {
 
             {/* Content */}
             <div className="flex-1 min-h-0 overflow-y-auto">
+              {phase === "access_code" && (
+                <AccessCodeGate onValidated={handleAccessCodeValidated} />
+              )}
+
               {phase === "loading" && (
                 <div className="flex items-center justify-center h-64">
                   <Loader2 className="animate-spin text-emerald-600" size={32} />
@@ -317,7 +336,9 @@ export function AssessmentWidget() {
                     <Button
                       variant="outline"
                       onClick={() => {
-                        setPhase("welcome");
+                        setPhase("access_code");
+                        setReferrerId(null);
+                        setReferrerName(null);
                         setCurrentStep(0);
                         setResponses(new Map());
                         setResults(null);

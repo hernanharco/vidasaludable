@@ -121,10 +121,17 @@ export function createAdminRouter(db: Db): Hono {
     return c.json({ product });
   });
 
-  // --- Customers: list (records come from the registration gate). ---
+  // --- Customers: list + delete. ---
   app.get("/customers", (c) =>
     c.json({ customers: db.select().from(customers).all() }),
   );
+  app.delete("/customers/:id", (c) => {
+    const id = Number(c.req.param("id"));
+    if (!Number.isInteger(id)) return c.json({ error: "invalid id" }, 400);
+    const deleted = db.delete(customers).where(eq(customers.id, id)).returning().get();
+    if (!deleted) return c.json({ error: "customer not found" }, 404);
+    return c.body(null, 204);
+  });
 
   // --- Conversations: list + view messages. ---
   app.get("/conversations", (c) =>

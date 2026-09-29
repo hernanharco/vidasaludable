@@ -34,6 +34,7 @@ export function createRegisterRouter(db: Db): Hono {
       email: String(body.email ?? ""),
       phone: String(body.phone ?? ""),
       referrerPhone: body.referrer_phone ? String(body.referrer_phone) : null,
+      referrerId: body.referrer_id ? Number(body.referrer_id) : null,
       consentVersion: Number.isFinite(consentVersion) ? consentVersion : -1,
     });
 

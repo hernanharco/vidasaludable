@@ -19,6 +19,7 @@ export const customers = sqliteTable(
     email: text("email").notNull(),
     phone: text("phone").notNull(),
     referrerPhone: text("referrer_phone"),
+    referrerId: integer("referrer_id").references(() => referrers.id),
     consentVersion: integer("consent_version").notNull(),
     consentTimestamp: text("consent_timestamp").notNull(),
     registeredAt: text("registered_at").notNull(),
@@ -163,3 +164,26 @@ export type Recommendation = typeof recommendations.$inferSelect;
 export type NewRecommendation = typeof recommendations.$inferInsert;
 export type Guidance = typeof guidance.$inferSelect;
 export type NewGuidance = typeof guidance.$inferInsert;
+
+/** Referrer codes for tracking who invited each customer. */
+export const referrers = sqliteTable(
+  "referrers",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    code: text("code").notNull(),
+    name: text("name").notNull(),
+    phone: text("phone"),
+    email: text("email"),
+    active: integer("active").notNull().default(1),
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  (t) => [
+    uniqueIndex("referrers_code_unique").on(t.code),
+    index("referrers_active_idx").on(t.active),
+  ],
+);
+
+export type Referrer = typeof referrers.$inferSelect;
+export type NewReferrer = typeof referrers.$inferInsert;

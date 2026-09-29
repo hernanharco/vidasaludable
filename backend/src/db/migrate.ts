@@ -1,12 +1,25 @@
 import { createDatabase } from "./client.js";
 
 const DDL = `
+CREATE TABLE IF NOT EXISTS referrers (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  code TEXT NOT NULL,
+  name TEXT NOT NULL,
+  phone TEXT,
+  email TEXT,
+  active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS referrers_code_unique ON referrers (code);
+CREATE INDEX IF NOT EXISTS referrers_active_idx ON referrers (active);
+
 CREATE TABLE IF NOT EXISTS customers (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
   email TEXT NOT NULL,
   phone TEXT NOT NULL,
   referrer_phone TEXT,
+  referrer_id INTEGER REFERENCES referrers(id),
   consent_version INTEGER NOT NULL,
   consent_timestamp TEXT NOT NULL,
   registered_at TEXT NOT NULL,
@@ -78,6 +91,55 @@ CREATE TABLE IF NOT EXISTS guidance (
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS guidance_enabled_idx ON guidance (enabled);
+
+CREATE TABLE IF NOT EXISTS assessment_symptoms (
+  id INTEGER PRIMARY KEY,
+  name_es TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS assessment_symptoms_name_idx ON assessment_symptoms (name_es);
+
+CREATE TABLE IF NOT EXISTS assessment_nutrients (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  type TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS assessment_nutrients_type_idx ON assessment_nutrients (type);
+
+CREATE TABLE IF NOT EXISTS assessment_symptom_nutrients (
+  symptom_id INTEGER NOT NULL REFERENCES assessment_symptoms(id),
+  nutrient_id TEXT NOT NULL REFERENCES assessment_nutrients(id),
+  weight INTEGER NOT NULL DEFAULT 1
+);
+CREATE INDEX IF NOT EXISTS assessment_sn_symptom_idx ON assessment_symptom_nutrients (symptom_id);
+CREATE INDEX IF NOT EXISTS assessment_sn_nutrient_idx ON assessment_symptom_nutrients (nutrient_id);
+
+CREATE TABLE IF NOT EXISTS assessments (
+  id TEXT PRIMARY KEY,
+  patient_name TEXT NOT NULL,
+  patient_sex TEXT NOT NULL,
+  patient_age INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'in_progress',
+  referrer_id INTEGER REFERENCES referrers(id),
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  completed_at TEXT
+);
+CREATE INDEX IF NOT EXISTS assessments_status_idx ON assessments (status);
+CREATE INDEX IF NOT EXISTS assessments_created_at_idx ON assessments (created_at);
+
+CREATE TABLE IF NOT EXISTS assessment_responses (
+  assessment_id TEXT NOT NULL REFERENCES assessments(id),
+  symptom_id INTEGER NOT NULL REFERENCES assessment_symptoms(id),
+  answered INTEGER NOT NULL,
+  PRIMARY KEY (assessment_id, symptom_id)
+);
+
+CREATE TABLE IF NOT EXISTS assessment_results (
+  assessment_id TEXT NOT NULL REFERENCES assessments(id),
+  nutrient_id TEXT NOT NULL REFERENCES assessment_nutrients(id),
+  score REAL NOT NULL,
+  status TEXT NOT NULL,
+  PRIMARY KEY (assessment_id, nutrient_id)
+);
 `;
 
 /**
@@ -86,7 +148,24 @@ CREATE INDEX IF NOT EXISTS guidance_enabled_idx ON guidance (enabled);
  * The DDL mirrors the portable Drizzle schema in src/db/schema.ts.
  */
 export async function migrate(db: ReturnType<typeof createDatabase>): Promise<void> {
-  db.$client.exec(DDL);
+  // Use execMany for multiple statements in better-sqlite3
+  const statements = DDL.split(';').filter(s => s.trim());
+  for (const stmt of statements) {
+    db.$client.exec(stmt + ';');
+  }
+
+  // ALTER TABLE for existing databases — add referrer_id columns if missing
+  const alterStatements = [
+    `ALTER TABLE customers ADD COLUMN referrer_id INTEGER REFERENCES referrers(id)`,
+    `ALTER TABLE assessments ADD COLUMN referrer_id INTEGER REFERENCES referrers(id)`,
+  ];
+  for (const stmt of alterStatements) {
+    try {
+      db.$client.exec(stmt);
+    } catch {
+      // Column already exists — ignore
+    }
+  }
 }
 
 /** Convenience: create the default dev database at ./data/dev.sqlite. */

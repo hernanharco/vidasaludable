@@ -7,17 +7,15 @@ import { ChatHeader } from "./ChatHeader";
 import { ChatMessages, ChatMessage } from "./ChatMessages";
 import { ChatInput } from "./ChatInput";
 import { RegistrationGate } from "./RegistrationGate";
+import { AccessCodeGate } from "../AccessCodeGate";
 import { ConsentInfo, Phase } from "./types";
 
 /**
  * Preventive vitamin recommender — real client.
  *
- * First use shows a registration + informed-consent gate (the exact legal text
- * is fetched from `GET /assistant/consent`, never hardcoded). Once registered,
- * chat goes through `POST /assistant/ask`; returning customers reload their
- * persisted conversation via `GET /assistant/history`. If the backend flags a
- * stale consent version (`401 CONSENT_REQUIRED`), the gate is shown again with
- * the current text.
+ * First use shows an access code gate, then registration + informed-consent gate.
+ * Once registered, chat goes through POST /assistant/ask; returning customers
+ * reload their persisted conversation via GET /assistant/history.
  */
 
 const STORAGE = {
@@ -46,6 +44,10 @@ export function ChatWidget() {
   const [consentLoading, setConsentLoading] = useState(false);
   const [consentError, setConsentError] = useState<string | null>(null);
   const [consentReentry, setConsentReentry] = useState(false);
+
+  // Access code state
+  const [referrerId, setReferrerId] = useState<number | null>(null);
+  const [referrerName, setReferrerName] = useState<string | null>(null);
 
   // Registration form state
   const [name, setName] = useState("");
@@ -94,20 +96,6 @@ export function ChatWidget() {
     setConsentLoading(false);
   }, [fetchConsent]);
 
-  // On first open: decide between consent gate or chat
-  useEffect(() => {
-    if (!isOpen || phase !== "boot") return;
-    if (customerId == null) {
-      setConsentReentry(false);
-      setPhase("gate");
-      void loadConsent();
-    } else {
-      setPhase("chat");
-      setMessages([{ sender: "agent", text: "¡Hola! ¿En qué te puedo ayudar hoy con tu bienestar?" }]);
-      if (conversationId != null) void loadHistory();
-    }
-  }, [isOpen, phase, customerId, conversationId, loadConsent]);
-
   const loadHistory = useCallback(async () => {
     if (customerId == null || conversationId == null) return;
     try {
@@ -124,6 +112,21 @@ export function ChatWidget() {
       // History is best-effort memory
     }
   }, [customerId, conversationId]);
+
+  // On first open: decide flow
+  useEffect(() => {
+    if (!isOpen || phase !== "boot") return;
+    if (customerId == null) {
+      // New user: show access code gate first
+      setConsentReentry(false);
+      setPhase("access_code");
+    } else {
+      // Returning user: go straight to chat
+      setPhase("chat");
+      setMessages([{ sender: "agent", text: "¡Hola! ¿En qué te puedo ayudar hoy con tu bienestar?" }]);
+      if (conversationId != null) void loadHistory();
+    }
+  }, [isOpen, phase, customerId, conversationId, loadHistory]);
 
   const scrollToBottom = useCallback(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -143,6 +146,14 @@ export function ChatWidget() {
       window.localStorage.removeItem(STORAGE.conversationId);
       setConversationId(null);
     }
+  };
+
+  // Access code validated → move to registration
+  const handleAccessCodeValidated = (id: number, name: string) => {
+    setReferrerId(id);
+    setReferrerName(name);
+    setPhase("gate");
+    void loadConsent();
   };
 
   const handleConsentSubmit = async (e: React.FormEvent) => {
@@ -169,6 +180,7 @@ export function ChatWidget() {
           email: email.trim(),
           phone: formatPhone(phoneCode, phone),
           referrer_phone: referrerPhone.trim() ? formatPhone(referrerCode, referrerPhone) : null,
+          referrer_id: referrerId,
           consent_version: consent.version,
         }),
       });
@@ -286,7 +298,11 @@ export function ChatWidget() {
           >
             <ChatHeader onClose={() => setIsOpen(false)} />
 
-            {phase === "gate" ? (
+            {phase === "access_code" && (
+              <AccessCodeGate onValidated={handleAccessCodeValidated} />
+            )}
+
+            {phase === "gate" && (
               <RegistrationGate
                 consent={consent}
                 consentLoading={consentLoading}
@@ -308,7 +324,9 @@ export function ChatWidget() {
                 onAgreedChange={setAgreed}
                 onSubmit={handleConsentSubmit}
               />
-            ) : (
+            )}
+
+            {phase === "chat" && (
               <>
                 <ChatMessages
                   messages={messages}
