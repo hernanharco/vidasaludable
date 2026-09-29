@@ -1,7 +1,6 @@
 {
-  "framework": null,
-  "installCommand": "corepack enable && pnpm install --frozen-lockfile",
-  "buildCommand": "./node_modules/.bin/vite build",
+  "installCommand": "npm i -g pnpm@10 && pnpm install --frozen-lockfile",
+  "buildCommand": "pnpm exec vite build",
   "outputDirectory": "dist",
   "rewrites": [
     {

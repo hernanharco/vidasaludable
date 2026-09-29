@@ -4,6 +4,9 @@
   "version": "0.0.1",
   "type": "module",
   "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "pnpm": ">=10"
+  },
   "scripts": {
     "build": "pnpm install --frozen-lockfile && ./node_modules/.bin/vite build",
     "dev": "pnpm exec vite"
