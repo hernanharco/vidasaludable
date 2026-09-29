@@ -1,6 +1,5 @@
 {
   "installCommand": "npm i -g pnpm@10 && pnpm install --frozen-lockfile",
-  "buildCommand": "pnpm exec vite build",
   "outputDirectory": "dist",
   "rewrites": [
     {
