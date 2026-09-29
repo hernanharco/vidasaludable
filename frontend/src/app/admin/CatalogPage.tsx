@@ -213,7 +213,7 @@ export function CatalogPage() {
               <th className="px-4 py-3 text-left">Nombre</th>
               <th className="px-4 py-3 text-left">Categoría</th>
               <th className="px-4 py-3 text-right">Precio</th>
-              <th className="px-4 py-3 text-right">Acción</th>
+              <th className="px-4 py-3 text-right">Acciones</th>
             </tr>
           </thead>
           <tbody>
@@ -223,7 +223,7 @@ export function CatalogPage() {
                 <td className="px-4 py-3">{p.name}</td>
                 <td className="px-4 py-3">{p.category}</td>
                 <td className="px-4 py-3 text-right">{p.price.toFixed(2)} €</td>
-                <td className="px-4 py-3 text-right">
+                <td className="px-4 py-3 text-right space-x-2">
                   <button
                     onClick={() => {
                       setEditing({ ...p });
@@ -232,6 +232,20 @@ export function CatalogPage() {
                     className="text-emerald-800 hover:underline"
                   >
                     Editar
+                  </button>
+                  <button
+                    onClick={async () => {
+                      if (!confirm(`¿Eliminar el producto ${p.reference}?`)) return;
+                      try {
+                        await api.deleteProduct(p.reference);
+                        await load();
+                      } catch (err) {
+                        setError(err instanceof Error ? err.message : "Error al eliminar");
+                      }
+                    }}
+                    className="text-red-500 hover:text-red-700"
+                  >
+                    Eliminar
                   </button>
                 </td>
               </tr>

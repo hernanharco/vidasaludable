@@ -94,6 +94,7 @@ export interface Referrer {
 
 export interface ReferrerWithStats extends Referrer {
   customerCount: number;
+  customers: Array<{ id: number; name: string; email: string; phone: string; registeredAt: string }>;
 }
 
 export interface GuidanceInput {
@@ -205,10 +206,14 @@ export const api = {
       method: "PUT",
       body: JSON.stringify(patch),
     }),
+  deleteProduct: (reference: string) =>
+    request<null>(`/catalog/${encodeURIComponent(reference)}`, { method: "DELETE" }),
   listCustomers: () => request<{ customers: Customer[] }>("/customers"),
   deleteCustomer: (id: number) => request<null>(`/customers/${id}`, { method: "DELETE" }),
   listConversations: () =>
     request<{ conversations: Conversation[] }>("/conversations"),
+  deleteConversation: (id: number) =>
+    request<null>(`/conversations/${id}`, { method: "DELETE" }),
   listMessages: (id: number) =>
     request<{ messages: Message[] }>(`/conversations/${id}/messages`),
   listPurchases: () => request<{ purchases: Purchase[] }>("/purchases"),

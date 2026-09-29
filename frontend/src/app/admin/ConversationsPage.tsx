@@ -8,15 +8,21 @@ export function ConversationsPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const load = async () => {
+    try {
+      const [co, cu] = await Promise.all([api.listConversations(), api.listCustomers()]);
+      setConversations(co.conversations);
+      setCustomers(cu.customers);
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Error de red");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    Promise.all([api.listConversations(), api.listCustomers()])
-      .then(([co, cu]) => {
-        setConversations(co.conversations);
-        setCustomers(cu.customers);
-        setError(null);
-      })
-      .catch((e) => setError(e instanceof Error ? e.message : "Error de red"))
-      .finally(() => setLoading(false));
+    load();
   }, []);
 
   const customerName = (id: number) =>
@@ -45,7 +51,7 @@ export function ConversationsPage() {
               <th className="px-4 py-3 text-left">ID</th>
               <th className="px-4 py-3 text-left">Cliente</th>
               <th className="px-4 py-3 text-right">Creada</th>
-              <th className="px-4 py-3 text-right">Acción</th>
+              <th className="px-4 py-3 text-right">Acciones</th>
             </tr>
           </thead>
           <tbody>
@@ -56,10 +62,24 @@ export function ConversationsPage() {
                 <td className="px-4 py-3 text-right text-xs text-stone-500">
                   {new Date(c.createdAt).toLocaleString()}
                 </td>
-                <td className="px-4 py-3 text-right">
+                <td className="px-4 py-3 text-right space-x-2">
                   <Link to={`/admin/conversations/${c.id}`} className="text-emerald-800 hover:underline">
                     Ver mensajes
                   </Link>
+                  <button
+                    onClick={async () => {
+                      if (!confirm(`¿Eliminar la conversación #${c.id}?`)) return;
+                      try {
+                        await api.deleteConversation(c.id);
+                        await load();
+                      } catch (err) {
+                        setError(err instanceof Error ? err.message : "Error al eliminar");
+                      }
+                    }}
+                    className="text-red-500 hover:text-red-700"
+                  >
+                    Eliminar
+                  </button>
                 </td>
               </tr>
             ))}

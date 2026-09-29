@@ -5,9 +5,9 @@ import { createCatalogService } from "../services/catalogService.js";
 import { createGuidanceService } from "../services/guidanceService.js";
 import { createRecommendationService } from "../services/recommendationService.js";
 import { createConversationService } from "../services/conversationService.js";
-import { customers, conversations, purchases } from "../db/schema.js";
+import { customers, conversations, messages, products, purchases } from "../db/schema.js";
 import type { NewGuidance } from "../db/schema.js";
-import { eq } from "drizzle-orm";
+import { eq, count } from "drizzle-orm";
 
 /**
  * CRM routes under /admin.
@@ -121,6 +121,21 @@ export function createAdminRouter(db: Db): Hono {
     return c.json({ product });
   });
 
+  app.delete("/catalog/:reference", (c) => {
+    const reference = c.req.param("reference");
+    const [row] = db
+      .select({ cnt: count() })
+      .from(purchases)
+      .where(eq(purchases.productReference, reference))
+      .all();
+    if (row && row.cnt > 0) {
+      return c.json({ error: "reference in use", count: row.cnt }, 409);
+    }
+    const deleted = db.delete(products).where(eq(products.reference, reference)).returning().get();
+    if (!deleted) return c.json({ error: "reference not found" }, 404);
+    return c.body(null, 204);
+  });
+
   // --- Customers: list + delete. ---
   app.get("/customers", (c) =>
     c.json({ customers: db.select().from(customers).all() }),
@@ -133,10 +148,19 @@ export function createAdminRouter(db: Db): Hono {
     return c.body(null, 204);
   });
 
-  // --- Conversations: list + view messages. ---
+  // --- Conversations: list + view messages + delete. ---
   app.get("/conversations", (c) =>
     c.json({ conversations: db.select().from(conversations).all() }),
   );
+  app.delete("/conversations/:id", (c) => {
+    const id = Number(c.req.param("id"));
+    if (!Number.isInteger(id)) return c.json({ error: "invalid id" }, 400);
+    const existing = db.select().from(conversations).where(eq(conversations.id, id)).get();
+    if (!existing) return c.json({ error: "conversation not found" }, 404);
+    db.delete(messages).where(eq(messages.conversationId, id)).all();
+    db.delete(conversations).where(eq(conversations.id, id)).all();
+    return c.body(null, 204);
+  });
   app.get("/conversations/:id/messages", (c) => {
     const id = Number(c.req.param("id"));
     if (!Number.isInteger(id)) return c.json({ error: "invalid id" }, 400);

@@ -14,7 +14,7 @@ import { eq, sql } from "drizzle-orm";
 export function createAdminReferrerRouter(db: Db): Hono {
   const app = new Hono();
 
-  // List all referrers with customer count
+  // List all referrers with customer count + related customers
   app.get("/", (c) => {
     const all = db
       .select({
@@ -29,7 +29,23 @@ export function createAdminReferrerRouter(db: Db): Hono {
       })
       .from(referrers)
       .all();
-    return c.json({ referrers: all });
+
+    const withCustomers = all.map((r) => {
+      const customerRows = db
+        .select({
+          id: customers.id,
+          name: customers.name,
+          email: customers.email,
+          phone: customers.phone,
+          registeredAt: customers.registeredAt,
+        })
+        .from(customers)
+        .where(eq(customers.referrerId, r.id))
+        .all();
+      return { ...r, customers: customerRows };
+    });
+
+    return c.json({ referrers: withCustomers });
   });
 
   // Create new referrer
