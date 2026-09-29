@@ -28,7 +28,6 @@ jobs:
           cache-dependency-path: frontend/pnpm-lock.yaml
 
       - run: pnpm install --frozen-lockfile
-      - run: pnpm build
 
       - name: Deploy to Vercel
         env:
@@ -38,4 +37,5 @@ jobs:
         run: |
           npm i -g vercel@latest
           vercel link --yes --token "$VERCEL_TOKEN" --scope "$VERCEL_ORG_ID" --project "$VERCEL_PROJECT_ID"
+          vercel build --yes --token "$VERCEL_TOKEN"
           vercel deploy --yes --prod --prebuilt --token "$VERCEL_TOKEN"
