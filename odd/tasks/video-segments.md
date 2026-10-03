@@ -56,7 +56,43 @@ URL resolution: `clipYoutubeId` present → `watch?v=<clip>`; otherwise
 - T6: agent [VIDEO] citations + injection — `880269eb`
 - T7: GET /assistant/videos + admin CRUD — `8fbd5c37`
 - T8: chat video link cards — `6ed65c88` (+ test rot repair `ee2af621`)
+- T9: admin VideosPage CRM + route/nav — `b9f0d901`
+- T10: full verification pass — evidence in Verification log below (doc-only task)
+- T11: pilot analyzed video `xpFX1KZ0uh8` → 19 segments in dev DB (runbook below)
 - _(append hashes as tasks close)_
+
+## T11 — Pilot runbook + results
+
+- **`https://www.youtube.com/watch?v=0RYeUT3Yl0Q`**: NOT analyzable — the video has
+  NO automatic captions in ANY language (verified with default + web clients,
+  `--list-subs`). Failure path of the CLI verified live: graceful Spanish error,
+  exit 1. Alternatives for this video: pick captioned videos, or a future
+  whisper-based transcription fallback (out of current scope).
+- **Pilot SUCCESS on `xpFX1KZ0uh8`** (“Alimentarse no es nutrirse — Conferencia
+  NUTRICIÓN 2.0 (Luis Collantes)”, speaker `econewlife`, 3634s): transcript via
+  yt-dlp auto-subs (es) → Gemini segmentation → **19 segments** persisted
+  (`videos.id=1`, status `analyzed`), every condition matched to a real
+  assessment symptom id (89 tensión arterial alta, 71 osteoporosis, 3 ansiedad…),
+  all `enabled=0`.
+- **Operator runbook**:
+  1. `cd backend && set -a && source .env && set +a`
+  2. `pnpm run video:analyze <youtube-url>` (idempotent: re-run replaces segments)
+  3. Review/approve segments in CRM `/admin/videos` (assign `condition` to nulls,
+     set `clipYoutubeId` only AFTER written permission).
+  4. Optional local cuts: `pnpm run video:cut <videoId>` → `backend/data/clips/…`
+     (delete the folder before re-cutting — ffmpeg has no `-y`).
+  5. **Do NOT upload clips before `docs/video-permissions.md` permission is granted.**
+  - Requires: `yt-dlp` + `ffmpeg` in PATH (present: yt-dlp 2026.07.04, ffmpeg 6.1.1),
+    `GEMINI_API_KEY` in `backend/.env`, 95 symptoms seeded in the target DB.
+
+## Native review (T9 candidate)
+
+- Lineage `review-e9d92c708fde6437`, medium, lens `review-reliability`:
+  **approved** first capture, authority burned. Target
+  `sha256:818f656f79f2cb9336737944e989dd736e26142fa34a91023e9e25c7f02b19f9`.
+- Advisory (3): `R3-EDIT-DELETE-COVERAGE` VideosPage.test.tsx:145-311 (WARNING) ·
+  `R3-SEGMENT-EDIT-PATCH-SEMANTICS` VideosPage.tsx:204-209 (WARNING) ·
+  `R3-STALE-SEGMENT-FILTER` VideosPage.tsx:135-136 (SUGGESTION).
 
 ## Native review (T8 candidate)
 
@@ -136,6 +172,14 @@ URL resolution: `clipYoutubeId` present → `watch?v=<clip>`; otherwise
   AssessmentWidget suite: 2/9 after entry-point repair, **7 FAIL pre-existing**
   (heading renamed at ccbfaf31, flow changed with access codes 5afb98f3) —
   follow-up OUTSIDE this feature.
+- T9: `vitest` frontend 24 passed / 7 failed (exactly the known pre-existing) ·
+  14 new tests RED first (AdminVideosApi 9 + VideosPage 5) · `build` PASS.
+- T10 FULL PASS: backend `vitest` 152 passed / 2 failed / 5 skipped — failures are
+  BOTH pre-existing assessment rot files (`assessment.integration` 2 tests +
+  `assessment-pdf-email` suite abort, one root cause: `assessment_responses` DDL
+  composite PK vs Drizzle autoincrement `id`; untouched by this feature) ·
+  backend `tsc` PASS · frontend 24/7-known · frontend `build` PASS.
+  Feature-owned modules: 100% green (backend 165+ feature tests, frontend 22).
 - `gentle-ai-verify` subagent unusable this session (2 internal assistant errors);
   verification rerun inline as declared fallback.
 
@@ -148,7 +192,13 @@ URL resolution: `clipYoutubeId` present → `watch?v=<clip>`; otherwise
 - T6 done: agent [VIDEO] integration — `880269eb` (reviewed + approved)
 - T7 done: video endpoints + admin CRUD — `8fbd5c37` (reviewed + approved)
 - T8 done: chat video cards — `6ed65c88` + `ee2af621` (reviewed + approved)
-- T9 next: admin CRM VideosPage + api client + nav (delegated next).
+- T9 done: admin VideosPage — `b9f0d901` (reviewed + approved; App.tsx route wired
+  by parent after worker correctly escalated the out-of-surface edit)
+- T10 done: full verification — see Verification log (feature green; only
+  pre-existing assessment rot remains, tracked as task 13)
+- T11 done: pilot SUCCESS on `xpFX1KZ0uh8` (19 segments, enabled=0) — see runbook;
+  `0RYeUT3Yl0Q` documented as not-analyzable (no captions at all)
+- T12 next: close (final review inspect + report + session memory).
 
 ## Follow-ups OUTSIDE this feature (pre-existing, need own authorization)
 - frontend: AssessmentWidget.test.tsx — 7 heading/flow failures ("Evaluación de
