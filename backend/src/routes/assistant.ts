@@ -13,12 +13,15 @@ import { getCurrentConsent } from "../config/consent.js";
 import type { Product } from "../db/schema.js";
 
 /**
- * Assistant routes: consent, ask (chat), history.
+ * Assistant routes: consent, ask (chat), history, public videos.
  *
  * - GET  /assistant/consent → {version, text} (rendered by the chat UI).
  * - POST /assistant/ask     → consent version-gated; server-side purchase
  *   injection; Gemini → deterministic guard → append-only audit log.
  * - GET  /assistant/history → prior messages for memory.
+ * - GET  /assistant/videos  → enabled segment cards with resolved URLs
+ *   (public, no auth — the widget fetches them at boot to render the
+ *   `[VIDEO:id]` markers the agent cites; same surface as /assistant/consent).
  *
  * Product not-found is internal, never a 404 to the client: only valid catalog
  * refs are injected, so the agent never invents details.
@@ -35,6 +38,22 @@ export function createAssistantRouter(db: Db): Hono {
 
   app.get("/consent", (c) => {
     return c.json(getCurrentConsent());
+  });
+
+  // Public segment map for the chat widget: ENABLED segments only, each with
+  // its resolved YouTube URL (clip wins, original deep-link fallback).
+  app.get("/videos", (c) => {
+    const cards = videos.listEnabledSegmentCards();
+    return c.json({
+      videos: cards.map((card) => ({
+        id: card.id, // SEGMENT id — the `[VIDEO:id]` marker the agent cites
+        title: card.title,
+        condition: card.condition,
+        summary: card.summary,
+        url: resolveSegmentUrl(card),
+        speaker: card.speaker,
+      })),
+    });
   });
 
   app.get("/history", (c) => {
@@ -168,6 +187,24 @@ export function createAssistantRouter(db: Db): Hono {
   });
 
   return app;
+}
+
+/**
+ * URL resolution (ODD contract, exact rule): a physical clip on the owner's
+ * channel wins — `watch?v=<clip>`; otherwise a deep link into the ORIGINAL
+ * video at the segment start: `watch?v=<original>&t=<startS>` with INTEGER
+ * seconds and no `s` suffix. The fallback is the pre-permission deep link
+ * (docs/video-permissions.md) — the chat never depends on a clip existing.
+ */
+function resolveSegmentUrl(card: {
+  clipYoutubeId: string | null;
+  youtubeId: string;
+  startS: number;
+}): string {
+  if (card.clipYoutubeId) {
+    return `https://www.youtube.com/watch?v=${card.clipYoutubeId}`;
+  }
+  return `https://www.youtube.com/watch?v=${card.youtubeId}&t=${card.startS}`;
 }
 
 /**

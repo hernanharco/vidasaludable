@@ -19,6 +19,24 @@ import type { Video, NewVideo, VideoSegment, NewVideoSegment } from "../db/schem
  * has segments. Delete the segments first (or the future admin routes should
  * expose that ordering deliberately).
  */
+/**
+ * Shape of an enabled segment joined with its video row — the consumer card
+ * for `GET /assistant/videos`. The widget resolves `[VIDEO:<id>]` markers
+ * against these cards; `id` is the SEGMENT id (the agent cites segments).
+ */
+export interface VideoSegmentCard {
+  id: number;
+  videoId: number;
+  title: string; // segment title (the card headline)
+  condition: string | null;
+  summary: string;
+  startS: number;
+  endS: number;
+  speaker: string; // from the joined videos row
+  youtubeId: string; // ORIGINAL video id (fallback deep-link target)
+  clipYoutubeId: string | null; // owner-channel clip, null until uploaded
+}
+
 export interface VideoService {
   /** All videos (admin CRM list). */
   listVideos(): Video[];
@@ -34,6 +52,8 @@ export interface VideoService {
   listSegments(): VideoSegment[];
   /** Only enabled segments — the ones the assistant may cite in chat. */
   listEnabledSegments(): VideoSegment[];
+  /** Enabled segments joined with their video row, shaped for `GET /assistant/videos`. */
+  listEnabledSegmentCards(): VideoSegmentCard[];
   /** Create a segment. `enabled` defaults to 0, `summary` to '' at the DB. */
   createSegment(input: NewVideoSegment): VideoSegment;
   /** Partial update by id; refreshes `updatedAt`. Returns null when absent. */
@@ -83,6 +103,26 @@ export function createVideoService(db: Db): VideoService {
 
     listEnabledSegments(): VideoSegment[] {
       return db.select().from(videoSegments).where(eq(videoSegments.enabled, 1)).all();
+    },
+
+    listEnabledSegmentCards(): VideoSegmentCard[] {
+      return db
+        .select({
+          id: videoSegments.id,
+          videoId: videoSegments.videoId,
+          title: videoSegments.title,
+          condition: videoSegments.condition,
+          summary: videoSegments.summary,
+          startS: videoSegments.startS,
+          endS: videoSegments.endS,
+          speaker: videos.speaker,
+          youtubeId: videos.youtubeId,
+          clipYoutubeId: videoSegments.clipYoutubeId,
+        })
+        .from(videoSegments)
+        .innerJoin(videos, eq(videoSegments.videoId, videos.id))
+        .where(eq(videoSegments.enabled, 1))
+        .all();
     },
 
     createSegment(input: NewVideoSegment): VideoSegment {
