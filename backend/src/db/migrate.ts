@@ -140,6 +140,37 @@ CREATE TABLE IF NOT EXISTS assessment_results (
   status TEXT NOT NULL,
   PRIMARY KEY (assessment_id, nutrient_id)
 );
+
+CREATE TABLE IF NOT EXISTS videos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  speaker TEXT NOT NULL,
+  youtube_id TEXT NOT NULL,
+  url TEXT NOT NULL,
+  title TEXT NOT NULL,
+  duration_s INTEGER,
+  status TEXT NOT NULL DEFAULT 'draft',
+  license_note TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS videos_youtube_id_unique ON videos (youtube_id);
+
+CREATE TABLE IF NOT EXISTS video_segments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  video_id INTEGER NOT NULL REFERENCES videos(id),
+  condition TEXT,
+  symptom_id INTEGER REFERENCES assessment_symptoms(id),
+  start_s INTEGER NOT NULL,
+  end_s INTEGER NOT NULL,
+  title TEXT NOT NULL,
+  summary TEXT NOT NULL DEFAULT '',
+  clip_youtube_id TEXT,
+  enabled INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS video_segments_enabled_idx ON video_segments (enabled);
+CREATE INDEX IF NOT EXISTS video_segments_condition_idx ON video_segments (condition);
 `;
 
 /**
