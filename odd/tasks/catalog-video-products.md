@@ -49,7 +49,15 @@ row regex `^\d{4,6} ` (refs are 4–6 digits, e.g. `5847`).
   12 with catalog refs (126132×7, 110606×4, 109741×4, 121576×3, 110178×3…).
   Note: first analyzer prompt linked 0 refs (colloquial “Calmac”/“doble X”)
   → prompt reworded to link by correspondence, strict ref validation kept.
-- _(append as tasks close)_
+- T6: ProductCard + GET /assistant/products — `c5b1abf6` · reviewed APPROVED
+  (lineage 9a8db9f1, 1 advisory: R3-DisclaimerNeverRendered — suggestion,
+  backlog). Unknown product refs stay literal (unlike videos); [VIDEO:id]
+  vs [d4-6] coexistence tested.
+- T7: FULL VERIFICATION — backend 195/195 + tsc clean · frontend 46/46 +
+  build clean · migrate idempotent · data: 16 products, 19 segments,
+  12 with catalog refs, 0 enabled (owner approval pending).
+  Final inspect `3931f32b…` = .atl only → documentation-only skip.
+  FEATURE COMPLETE.
 
 ## Decisions
 
@@ -65,6 +73,6 @@ row regex `^\d{4,6} ` (refs are 4–6 digits, e.g. `5847`).
   (r.jina.ai); the hidden "Detalles" tab lives in the embedded RSC payload —
   `x-respond-with: html` exposes dosage/ingredients/aviso. Flippingbook catalogs
   and Wayback have no extractable text; local fichas were cart screenshots.
-- T6 next: ProductCard frontend + GET /assistant/products (info card — no
-  purchase link: the app has no store; a products.url column is a noted
-  follow-up if deep links are wanted later).
+- T6 DONE (see Evidence). Advisory backlog across the feature: T1 15 · T2 3 ·
+  T4 2 · T5 2 · T6 1 = 23 findings inventoried above.
+- T7 DONE — FEATURE COMPLETE.
