@@ -29,6 +29,14 @@ row regex `^\d{4,6} ` (refs are 4–6 digits, e.g. `5847`).
 
 ## Evidence (commits per task)
 
+- T1: price-list extraction (78 rows, 75 flagged, anchors verified) — `202f5d91`
+  · reviewed HIGH 4-lens APPROVED (lineage df5d4170, 15 advisory)
+- T2: 14 complete products from official PDPs (13 new + Double X completed),
+  pdpParser test-first, price fix 121576→86.87 — `dc855c4e` + `17c2d1c6`
+  (scoring static catalog) · reviewed APPROVED (lineage 0a9ec2d1, 3 advisory:
+  R3-PDPFALLBACK, R3-PDPWIRING, R3-SCOREPRICE)
+- T3: seed + CRM verified live — 16 products served by /admin/catalog
+  (Cal Mag €29.71, Double X €86.87); idempotent seed; suite 171/171, tsc clean
 - _(append as tasks close)_
 
 ## Decisions
@@ -41,5 +49,8 @@ row regex `^\d{4,6} ` (refs are 4–6 digits, e.g. `5847`).
   ref (`product_references`).
 
 ## Progress
-
-- T1 next: price-list extraction.
+- T1–T3 DONE (see Evidence). Sources learned: amway.es PDPs via Jina keyless
+  (r.jina.ai); the hidden "Detalles" tab lives in the embedded RSC payload —
+  `x-respond-with: html` exposes dosage/ingredients/aviso. Flippingbook catalogs
+  and Wayback have no extractable text; local fichas were cart screenshots.
+- T4 next: Phase A mm:ss time format.
