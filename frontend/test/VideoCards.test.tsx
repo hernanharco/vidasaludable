@@ -18,6 +18,8 @@ const VIDEOS: VideoCardInfo[] = [
     summary: "Resumen del segmento sobre vitamina D.",
     url: "https://www.youtube.com/watch?v=abc123&t=90",
     speaker: "Luis Collantes",
+    startS: 90,
+    endS: 180,
   },
   {
     id: 12,
@@ -82,6 +84,8 @@ describe("ChatMessages video cards", () => {
     expect(card).toHaveTextContent("Vitamina D y huesos");
     expect(card).toHaveTextContent("Dolor óseo");
     expect(card).toHaveTextContent("Luis Collantes");
+    // T4 Phase A: segment range chip in mm:ss when startS/endS are present.
+    expect(card).toHaveTextContent("1:30 – 3:00");
     // Surrounding text intact, marker token gone
     expect(screen.getByText(/Mira este video/)).toBeInTheDocument();
     expect(screen.queryByText(/VIDEO:/)).not.toBeInTheDocument();
@@ -97,6 +101,10 @@ describe("ChatMessages video cards", () => {
     // Card without a condition renders title + speaker only (no crash)
     expect(links[1]).toHaveTextContent("Magnesio y sueño");
     expect(links[1]).toHaveTextContent("Luis Collantes");
+    // Absent startS/endS → no time chip, no crash (only card 1 carries times).
+    expect(links[1].textContent).not.toMatch(/\d+:\d+/);
+    expect(screen.queryByText("1:30 – 3:00")).toBeInTheDocument();
+    expect(screen.queryAllByText(/–/)).toHaveLength(1);
 
     const bubble = screen.getByText(/Antes/) as HTMLElement;
     const text = bubble.textContent ?? "";

@@ -26,7 +26,16 @@ export interface GuidanceContext {
 
 export interface VideoSegmentsContext {
   /** Enabled, admin-approved video segments the agent may cite in chat. */
-  items: Array<{ id: number; title: string; condition: string | null; summary: string }>;
+  items: Array<{
+    id: number;
+    title: string;
+    condition: string | null;
+    summary: string;
+    // T4 Phase A: raw integer seconds (YouTube &t= contract) — formatted
+    // to mm:ss only in the human-facing prompt line, never in storage.
+    startS: number;
+    endS: number;
+  }>;
 }
 
 export interface ChatMessage {
@@ -93,6 +102,27 @@ function guidanceBlock(ctx: GuidanceContext): string {
 }
 
 /**
+ * Local YouTube-style timestamp for the prompt's human-readable segment
+ * lines (T4 Phase A). Storage and API payloads keep integer seconds; only
+ * display layers format. Invalid input degrades to 0:00 (mirrors the
+ * frontend `formatTime` in frontend/src/app/lib/format.ts).
+ */
+function formatTime(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
+  const total = Math.floor(seconds);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+/** Segment time range in YouTube style: `0:05–1:49` (no spaces). */
+function formatTimeRange(startS: number, endS: number): string {
+  return `${formatTime(startS)}–${formatTime(endS)}`;
+}
+
+/**
  * Educational video segments block. Omitted entirely when no segment is
  * enabled — an empty knowledge base must never look like an empty context
  * (same convention as guidanceBlock: no stale header).
@@ -103,7 +133,7 @@ export function videoSegmentsBlock(ctx: VideoSegmentsContext): string {
   }
   const lines = ctx.items.map(
     (v) =>
-      `- [VIDEO:${v.id}] ${v.title} — tema: ${v.condition ?? "(sin tema asignado)"} — ${v.summary}`,
+      `- [VIDEO:${v.id}] ${v.title} — tema: ${v.condition ?? "(sin tema asignado)"} (${formatTimeRange(v.startS, v.endS)}) — ${v.summary}`,
   );
   return `VIDEOS EDUCATIVOS DISPONIBLES (cuando el tema del usuario coincida con un video, cita su marcador exacto):\n${lines.join("\n")}`;
 }

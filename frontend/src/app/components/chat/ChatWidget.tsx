@@ -100,6 +100,10 @@ export function ChatWidget() {
             summary: typeof v.summary === "string" ? v.summary : "",
             url: v.url,
             speaker: typeof v.speaker === "string" ? v.speaker : "",
+            // T4 Phase A: optional raw seconds (numbers only; the card
+            // formats them to mm:ss; absent times → no chip, no crash).
+            ...(typeof v.startS === "number" ? { startS: v.startS } : {}),
+            ...(typeof v.endS === "number" ? { endS: v.endS } : {}),
           });
         }
         if (!cancelled) setVideos(map);

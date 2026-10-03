@@ -164,9 +164,14 @@ describe("VideosPage admin CRM", () => {
     const row = screen.getByText("Magnesio antes de dormir").closest("tr");
     expect(row).not.toBeNull();
     expect(within(row as HTMLElement).getByText("sin condición")).toBeInTheDocument();
-    expect(within(row as HTMLElement).getByText("0–45 s")).toBeInTheDocument();
+    // T4 Phase A: bounds render as YouTube-style mm:ss (no trailing " s").
+    expect(within(row as HTMLElement).getByText("0:00 – 0:45")).toBeInTheDocument();
     expect(within(row as HTMLElement).getByText("—")).toBeInTheDocument();
     // Enabled chip + clip id on the approved segment
+    const approvedRow = screen
+      .getByText("Introducción a la vitamina D")
+      .closest("tr") as HTMLElement;
+    expect(within(approvedRow).getByText("1:30 – 3:00")).toBeInTheDocument();
     expect(screen.getByText("Activo")).toBeInTheDocument();
     expect(screen.getByText("Inactivo")).toBeInTheDocument();
     expect(screen.getByText("clipA1")).toBeInTheDocument();

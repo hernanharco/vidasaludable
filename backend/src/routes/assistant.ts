@@ -52,6 +52,9 @@ export function createAssistantRouter(db: Db): Hono {
         summary: card.summary,
         url: resolveSegmentUrl(card),
         speaker: card.speaker,
+        // T4 Phase A: raw integer seconds — the frontend formats to mm:ss.
+        startS: card.startS,
+        endS: card.endS,
       })),
     });
   });
@@ -141,6 +144,9 @@ export function createAssistantRouter(db: Db): Hono {
           title: s.title,
           condition: s.condition,
           summary: s.summary,
+          // Raw integer seconds — videoSegmentsBlock formats the mm:ss range.
+          startS: s.startS,
+          endS: s.endS,
         })),
       },
     );

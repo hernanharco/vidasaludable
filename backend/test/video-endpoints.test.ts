@@ -109,6 +109,8 @@ describe("video endpoints (T7)", () => {
           summary: string;
           url: string;
           speaker: string;
+          startS: number;
+          endS: number;
         }>;
       };
 
@@ -122,6 +124,10 @@ describe("video endpoints (T7)", () => {
         // Fallback URL rule: original id + integer seconds, no `s` suffix.
         url: "https://www.youtube.com/watch?v=yt-public-1&t=123",
         speaker: "Luis Collantes",
+        // T4 Phase A: RAW integer seconds (frontend formats to mm:ss;
+        // the &t= deep-link contract keeps seconds on the wire).
+        startS: 123,
+        endS: 180,
       });
       expect(data.videos.map((v) => v.id)).not.toContain(disabled.id);
     });

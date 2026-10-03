@@ -1,5 +1,6 @@
 import React from "react";
 import { Play } from "lucide-react";
+import { formatTime } from "../../lib/format";
 import type { VideoCardInfo } from "./types";
 
 /**
@@ -25,6 +26,11 @@ export function VideoCard({ video }: { video: VideoCardInfo }) {
           {video.condition ? (
             <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-800">
               {video.condition}
+            </span>
+          ) : null}
+          {typeof video.startS === "number" && typeof video.endS === "number" ? (
+            <span className="rounded-full bg-stone-200 px-1.5 py-0.5 text-[10px] font-medium text-stone-700">
+              {formatTime(video.startS)} – {formatTime(video.endS)}
             </span>
           ) : null}
           <span>{video.speaker}</span>

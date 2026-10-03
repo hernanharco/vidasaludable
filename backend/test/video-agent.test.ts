@@ -57,18 +57,19 @@ describe("videoSegmentsBlock", () => {
   it("renders the header plus one exact line per item", () => {
     const block = videoSegmentsBlock({
       items: [
-        { id: 12, title: "Ejercicios para la espalda", condition: "Dolor de espalda", summary: "Movilidad suave." },
-        { id: 3, title: "Sueño saludable", condition: null, summary: "Hábitos de descanso." },
+        { id: 12, title: "Ejercicios para la espalda", condition: "Dolor de espalda", summary: "Movilidad suave.", startS: 5, endS: 109 },
+        { id: 3, title: "Sueño saludable", condition: null, summary: "Hábitos de descanso.", startS: 0, endS: 300 },
       ],
     });
     expect(block).toContain(
       "VIDEOS EDUCATIVOS DISPONIBLES (cuando el tema del usuario coincida con un video, cita su marcador exacto):",
     );
+    // T4 Phase A: each line carries the YouTube-style time range after the topic.
     expect(block).toContain(
-      "- [VIDEO:12] Ejercicios para la espalda — tema: Dolor de espalda — Movilidad suave.",
+      "- [VIDEO:12] Ejercicios para la espalda — tema: Dolor de espalda (0:05–1:49) — Movilidad suave.",
     );
     expect(block).toContain(
-      "- [VIDEO:3] Sueño saludable — tema: (sin tema asignado) — Hábitos de descanso.",
+      "- [VIDEO:3] Sueño saludable — tema: (sin tema asignado) (0:00–5:00) — Hábitos de descanso.",
     );
     // Exactly one line per item (header + 2 lines).
     expect(block.split("\n")).toHaveLength(3);
@@ -90,14 +91,14 @@ describe("buildSystemPrompt (video context parameter)", () => {
   it("appends the video block after the guidance block", () => {
     const prompt = buildSystemPrompt(catalog, null, guidance, {
       items: [
-        { id: 8, title: "Estiramientos matutinos", condition: "Dolor muscular", summary: "Rutina breve." },
+        { id: 8, title: "Estiramientos matutinos", condition: "Dolor muscular", summary: "Rutina breve.", startS: 0, endS: 120 },
       ],
     });
     const guidanceIdx = prompt.indexOf("GUÍAS DE LA DOCTORA");
     const videoIdx = prompt.indexOf("VIDEOS EDUCATIVOS DISPONIBLES");
     expect(guidanceIdx).toBeGreaterThanOrEqual(0);
     expect(videoIdx).toBeGreaterThan(guidanceIdx);
-    expect(prompt).toContain("- [VIDEO:8] Estiramientos matutinos — tema: Dolor muscular — Rutina breve.");
+    expect(prompt).toContain("- [VIDEO:8] Estiramientos matutinos — tema: Dolor muscular (0:00–2:00) — Rutina breve.");
   });
 
   it("omits the video block entirely when the video context is empty", () => {
@@ -220,7 +221,11 @@ describe("ask route: video block injection + video_refs filtering", () => {
     const sent = capturedBodies[capturedBodies.length - 1];
     const sysPrompt = (sent.systemInstruction as { parts: { text: string }[] }).parts[0].text;
     expect(sysPrompt).toContain("VIDEOS EDUCATIVOS DISPONIBLES");
-    expect(sysPrompt).toContain(`[VIDEO:${enabledSegment.id}] Ejercicios para la espalda`);
+    // T4 Phase A: the injected line carries the segment's mm:ss time range
+    // (segment created with startS 10, endS 70 → 0:10–1:10).
+    expect(sysPrompt).toContain(
+      `[VIDEO:${enabledSegment.id}] Ejercicios para la espalda — tema: Dolor de espalda (0:10–1:10)`,
+    );
     expect(sysPrompt).toContain("tema: Dolor de espalda");
     expect(sysPrompt).not.toContain(disabledSegment.title);
     // Video block comes after the guidance block, per spec.

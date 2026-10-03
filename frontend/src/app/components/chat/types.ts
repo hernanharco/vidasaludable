@@ -22,4 +22,11 @@ export interface VideoCardInfo {
   summary: string;
   url: string;
   speaker: string;
+  /**
+   * T4 Phase A: raw integer seconds (YouTube `&t=` contract). Optional —
+   * cards served before the API carried them render without a time chip.
+   * The card formats them to `M:SS` for display only.
+   */
+  startS?: number;
+  endS?: number;
 }

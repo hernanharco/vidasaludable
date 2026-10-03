@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { formatTime } from "../lib/format";
 import {
   api,
   Video,
@@ -599,7 +600,7 @@ export function VideosPage() {
                     )}
                   </td>
                   <td className="px-4 py-3 font-mono text-xs">
-                    {s.startS}–{s.endS} s
+                    {formatTime(s.startS)} – {formatTime(s.endS)}
                   </td>
                   <td className="px-4 py-3">
                     <button
