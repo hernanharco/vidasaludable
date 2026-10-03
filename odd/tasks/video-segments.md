@@ -48,8 +48,45 @@ URL resolution: `clipYoutubeId` present → `watch?v=<clip>`; otherwise
 
 ## Evidence (commits recorded per task)
 
-- T1: branch `feat/video-segments`
+- T1: branch `feat/video-segments` + plan — `6b7bd7f3`
+- T2: `docs/video-permissions.md` — `5cd16bbd`
+- T3: DB tables (schema + DDL) — `2006897a`
+- T4: videoService + symptomMatcher + tests — `e5a79cf8`
 - _(append hashes as tasks close)_
+
+## Native review (T3–T4 candidate)
+
+- Lineage `review-23a1fdc01ae8e36b`, tier medium, lens `review-reliability`:
+  **approved** on first capture, no corrections; authority burned
+  (`native-approved-acknowledgement-completed`). Target
+  `sha256:b5a1eb7298ed477056c26982dcd6dfc5724c97341301d54c980a24095598571e`.
+- Advisory findings (informational, NOT blocking; later work only):
+  - R3-001 WARNING `backend/src/services/videoService.ts:75-78` (removeVideo FK-ordering hazard)
+  - R3-002 WARNING `backend/src/db/migrate.ts:157-172` (video_segments lacks video_id index)
+  - R3-003 SUGGESTION `backend/src/services/videoService.ts:68`
+  - R3-004 SUGGESTION `backend/test/video-service.test.ts:181-192`
+  - R3-005 SUGGESTION `backend/test/video-service.test.ts:194-216`
+  - R3-006 SUGGESTION `backend/src/services/symptomMatcher.ts:39`
+
+## Verification log (T3–T4)
+
+- `vitest video-service + guidance`: 31/31 PASS (RED observed first).
+- `tsx src/db/migrate.ts` twice: PASS (idempotent, tables/columns/indexes/FKs PRAGMA-checked).
+- `tsc -p tsconfig.json` (backend build): PASS.
+- `vitest reconsent.integration`: PASS. `vitest assessment.integration`: 2/9 FAIL —
+  **pre-existing, unrelated** (`assessment_responses` DDL has composite PK without
+  `id`, Drizzle declares autoincrement `id`; both lines predate this feature —
+  follow-up task outside this feature).
+- `gentle-ai-verify` subagent unusable this session (2 internal assistant errors);
+  verification rerun inline as declared fallback.
+
+## Progress
+- T1 done: feature plan + branch — `6b7bd7f3`
+- T2 done: permission checklist — `5cd16bbd`
+- T3 done: DB tables — `2006897a` (reviewed + approved)
+- T4 done: service/matcher/tests — `e5a79cf8` (reviewed + approved)
+- T5 next: pipeline CLI (delegated next).
+
 
 ## Decisions
 
