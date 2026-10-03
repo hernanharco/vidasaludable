@@ -37,6 +37,12 @@ row regex `^\d{4,6} ` (refs are 4–6 digits, e.g. `5847`).
   R3-PDPFALLBACK, R3-PDPWIRING, R3-SCOREPRICE)
 - T3: seed + CRM verified live — 16 products served by /admin/catalog
   (Cal Mag €29.71, Double X €86.87); idempotent seed; suite 171/171, tsc clean
+- T4: Phase A mm:ss (formatTime helper, CRM table, VideoCard chip, prompt
+  ranges, raw seconds kept in DB/API) — `478367f1` · reviewed APPROVED
+  (lineage 75146bb6; two reviewer payloads refused at admission for a
+  trailing-period path citation in reviewer prose — relaunched per protocol,
+  third admitted; 2 advisory: R3-BACKEND-FORMAT-DUPLICATION,
+  R3-PARTIAL-TIME-PAYLOAD)
 - _(append as tasks close)_
 
 ## Decisions
@@ -49,8 +55,8 @@ row regex `^\d{4,6} ` (refs are 4–6 digits, e.g. `5847`).
   ref (`product_references`).
 
 ## Progress
-- T1–T3 DONE (see Evidence). Sources learned: amway.es PDPs via Jina keyless
+- T1–T4 DONE (see Evidence). Sources learned: amway.es PDPs via Jina keyless
   (r.jina.ai); the hidden "Detalles" tab lives in the embedded RSC payload —
   `x-respond-with: html` exposes dosage/ingredients/aviso. Flippingbook catalogs
   and Wayback have no extractable text; local fichas were cart screenshots.
-- T4 next: Phase A mm:ss time format.
+- T5 next: Phase B — segment product mentions + links (backend), pilot re-run.
