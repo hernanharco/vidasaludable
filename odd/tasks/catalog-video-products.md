@@ -43,6 +43,12 @@ row regex `^\d{4,6} ` (refs are 4–6 digits, e.g. `5847`).
   trailing-period path citation in reviewer prose — relaunched per protocol,
   third admitted; 2 advisory: R3-BACKEND-FORMAT-DUPLICATION,
   R3-PARTIAL-TIME-PAYLOAD)
+- T5: Phase B product mentions — `6aeefb04` · reviewed APPROVED (lineage
+  70b83191, 2 advisory: R3-ColloquialPairingNeverRenders,
+  R3-DuplicateRefsRenderTwice). Pilot re-run: 19 segments, 14 mentions,
+  12 with catalog refs (126132×7, 110606×4, 109741×4, 121576×3, 110178×3…).
+  Note: first analyzer prompt linked 0 refs (colloquial “Calmac”/“doble X”)
+  → prompt reworded to link by correspondence, strict ref validation kept.
 - _(append as tasks close)_
 
 ## Decisions
@@ -59,4 +65,6 @@ row regex `^\d{4,6} ` (refs are 4–6 digits, e.g. `5847`).
   (r.jina.ai); the hidden "Detalles" tab lives in the embedded RSC payload —
   `x-respond-with: html` exposes dosage/ingredients/aviso. Flippingbook catalogs
   and Wayback have no extractable text; local fichas were cart screenshots.
-- T5 next: Phase B — segment product mentions + links (backend), pilot re-run.
+- T6 next: ProductCard frontend + GET /assistant/products (info card — no
+  purchase link: the app has no store; a products.url column is a noted
+  follow-up if deep links are wanted later).
