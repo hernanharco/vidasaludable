@@ -1,0 +1,200 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import React from "react";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { ChatMessages } from "../src/app/components/chat/ChatMessages";
+import { ChatWidget } from "../src/app/components/chat";
+import type { VideoCardInfo } from "../src/app/components/chat/types";
+
+// Mock fetch
+const mockFetch = vi.fn();
+global.fetch = mockFetch;
+
+const VIDEOS: VideoCardInfo[] = [
+  {
+    id: 7,
+    title: "Vitamina D y huesos",
+    condition: "Dolor óseo",
+    summary: "Resumen del segmento sobre vitamina D.",
+    url: "https://www.youtube.com/watch?v=abc123&t=90",
+    speaker: "Luis Collantes",
+  },
+  {
+    id: 12,
+    title: "Magnesio y sueño",
+    condition: null,
+    summary: "Resumen del segmento sobre magnesio.",
+    url: "https://www.youtube.com/watch?v=def456",
+    speaker: "Luis Collantes",
+  },
+];
+
+function videoMap(list: VideoCardInfo[] = VIDEOS): Map<number, VideoCardInfo> {
+  return new Map(list.map((v) => [v.id, v]));
+}
+
+function renderMessages(
+  text: string,
+  sender: "user" | "agent",
+  videos: Map<number, VideoCardInfo>,
+) {
+  return render(
+    <ChatMessages
+      messages={[{ sender, text }]}
+      sending={false}
+      chatError={null}
+      scrollRef={{ current: null } as React.RefObject<HTMLDivElement>}
+      videos={videos}
+    />,
+  );
+}
+
+function installMemoryLocalStorage() {
+  // jsdom 30 under vitest runs with an opaque origin (about:blank), where
+  // jsdom refuses to expose localStorage. ChatWidget reads it at render time,
+  // so the widget-level tests install a tiny in-memory stand-in.
+  const store = new Map<string, string>();
+  const impl = {
+    getItem: (key: string) => (store.has(key) ? (store.get(key) as string) : null),
+    setItem: (key: string, value: string) => { store.set(key, String(value)); },
+    removeItem: (key: string) => { store.delete(key); },
+    clear: () => { store.clear(); },
+  };
+  Object.defineProperty(window, "localStorage", { configurable: true, value: impl });
+}
+
+installMemoryLocalStorage();
+
+describe("ChatMessages video cards", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("renders a video card for a known marker in an agent message", () => {
+    renderMessages("Mira este video [VIDEO:7] para saber más.", "agent", videoMap());
+
+    const card = screen.getByRole("link", { name: /Vitamina D y huesos/i });
+    expect(card).toHaveAttribute("href", VIDEOS[0].url);
+    expect(card).toHaveAttribute("target", "_blank");
+    expect(card.getAttribute("rel")).toContain("noopener");
+    expect(card.getAttribute("rel")).toContain("noreferrer");
+    // Card shows title, condition chip, and speaker
+    expect(card).toHaveTextContent("Vitamina D y huesos");
+    expect(card).toHaveTextContent("Dolor óseo");
+    expect(card).toHaveTextContent("Luis Collantes");
+    // Surrounding text intact, marker token gone
+    expect(screen.getByText(/Mira este video/)).toBeInTheDocument();
+    expect(screen.queryByText(/VIDEO:/)).not.toBeInTheDocument();
+  });
+
+  it("renders both cards for two markers, surrounding text intact and in order", () => {
+    renderMessages("Antes [VIDEO:7] en medio [VIDEO:12] después.", "agent", videoMap());
+
+    const links = screen.getAllByRole("link");
+    expect(links).toHaveLength(2);
+    expect(links[0]).toHaveAttribute("href", VIDEOS[0].url);
+    expect(links[1]).toHaveAttribute("href", VIDEOS[1].url);
+    // Card without a condition renders title + speaker only (no crash)
+    expect(links[1]).toHaveTextContent("Magnesio y sueño");
+    expect(links[1]).toHaveTextContent("Luis Collantes");
+
+    const bubble = screen.getByText(/Antes/) as HTMLElement;
+    const text = bubble.textContent ?? "";
+    const iBefore = text.indexOf("Antes");
+    const iCard1 = text.indexOf("Vitamina D y huesos");
+    const iMiddle = text.indexOf("en medio");
+    const iCard2 = text.indexOf("Magnesio y sueño");
+    const iAfter = text.indexOf("después");
+    expect(iBefore).toBeGreaterThanOrEqual(0);
+    expect(iCard1).toBeGreaterThan(iBefore);
+    expect(iMiddle).toBeGreaterThan(iCard1);
+    expect(iCard2).toBeGreaterThan(iMiddle);
+    expect(iAfter).toBeGreaterThan(iCard2);
+    expect(text).not.toContain("[VIDEO");
+  });
+
+  it("removes an unknown marker id without rendering a card", () => {
+    renderMessages("Esto es [VIDEO:999] invisible.", "agent", videoMap());
+
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+    const bubble = screen.getByText(/Esto es/) as HTMLElement;
+    expect(bubble.textContent).toContain("Esto es");
+    expect(bubble.textContent).toContain("invisible.");
+    expect(bubble.textContent).not.toContain("[VIDEO");
+    expect(bubble.textContent).not.toContain("999");
+  });
+
+  it("strips markers and does not crash with an empty video map", () => {
+    const { container } = renderMessages("Video útil [VIDEO:1] fin.", "agent", new Map());
+
+    expect(container).toBeInTheDocument();
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+    const bubble = screen.getByText(/Video útil/) as HTMLElement;
+    expect(bubble.textContent).toContain("fin.");
+    expect(bubble.textContent).not.toContain("[VIDEO");
+  });
+
+  it("renders user messages as plain text without parsing markers", () => {
+    renderMessages("¿Puedes ver [VIDEO:7]?", "user", videoMap());
+
+    expect(screen.getByText(/¿Puedes ver \[VIDEO:7\]\?/)).toBeInTheDocument();
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  });
+});
+
+describe("ChatWidget video map boot", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    window.localStorage.clear();
+  });
+
+  it("fetches /api/assistant/videos at boot", async () => {
+    mockFetch.mockImplementation((url: string) => {
+      if (url.includes("/api/assistant/videos")) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ videos: VIDEOS }),
+        });
+      }
+      return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({}) });
+    });
+
+    render(<ChatWidget />);
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledWith("/api/assistant/videos");
+    });
+  });
+
+  it("still opens the widget when the videos fetch fails", async () => {
+    const user = userEvent.setup();
+    mockFetch.mockImplementation((url: string) => {
+      if (url.includes("/api/assistant/videos")) {
+        return Promise.reject(new Error("network down"));
+      }
+      return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({}) });
+    });
+
+    render(<ChatWidget />);
+    await user.click(screen.getByRole("button"));
+
+    // Chat flow is not blocked by the videos failure: access-code gate shows.
+    expect(await screen.findByText("Código de acceso")).toBeInTheDocument();
+  });
+
+  it("still opens the widget when the videos response is not an array", async () => {
+    const user = userEvent.setup();
+    mockFetch.mockImplementation((url: string) => {
+      if (url.includes("/api/assistant/videos")) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ videos: "nope" }),
+        });
+      }
+      return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({}) });
+    });
+
+    render(<ChatWidget />);
+    await user.click(screen.getByRole("button"));
+    expect(await screen.findByText("Código de acceso")).toBeInTheDocument();
+  });
+});

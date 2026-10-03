@@ -1,19 +1,44 @@
 import React from "react";
-import { AlertCircle, CheckCircle2 } from "lucide-react";
+import { AlertCircle } from "lucide-react";
+import { VideoCard } from "./VideoCard";
+import type { ChatMessage, VideoCardInfo } from "./types";
 
-export interface ChatMessage {
-  sender: "user" | "agent";
-  text: string;
-}
+export type { ChatMessage };
+
+// Matches a persisted video citation; the captured group is the segment id.
+const VIDEO_MARKER = /\[VIDEO:(\d+)\]/;
 
 interface ChatMessagesProps {
   messages: ChatMessage[];
   sending: boolean;
   chatError: string | null;
   scrollRef: React.RefObject<HTMLDivElement>;
+  /** Boot-fetched map of ENABLED segment ids → card data. */
+  videos: Map<number, VideoCardInfo>;
 }
 
-export function ChatMessages({ messages, sending, chatError, scrollRef }: ChatMessagesProps) {
+/**
+ * Agent message body: splits on `[VIDEO:<id>]` markers. Known ids render a
+ * VideoCard between the surrounding text chunks; unknown ids render nothing
+ * (the marker token is stripped).
+ */
+function AgentMessageBody({ text, videos }: { text: string; videos: Map<number, VideoCardInfo> }) {
+  // split with a capture group → [chunk, id, chunk, id, ..., chunk]
+  const parts = text.split(VIDEO_MARKER);
+  return (
+    <>
+      {parts.map((part, i) => {
+        if (i % 2 === 0) {
+          return part ? <React.Fragment key={i}>{part}</React.Fragment> : null;
+        }
+        const video = videos.get(Number(part));
+        return video ? <VideoCard key={i} video={video} /> : null;
+      })}
+    </>
+  );
+}
+
+export function ChatMessages({ messages, sending, chatError, scrollRef, videos }: ChatMessagesProps) {
   return (
     <div
       ref={scrollRef}
@@ -28,7 +53,11 @@ export function ChatMessages({ messages, sending, chatError, scrollRef }: ChatMe
               : "bg-white border border-stone-200 text-stone-700 rounded-bl-none self-start shadow-sm whitespace-pre-wrap"
           }`}
         >
-          {msg.text}
+          {msg.sender === "agent" ? (
+            <AgentMessageBody text={msg.text} videos={videos} />
+          ) : (
+            msg.text
+          )}
         </div>
       ))}
       {sending && (
