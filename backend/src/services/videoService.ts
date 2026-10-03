@@ -23,6 +23,8 @@ import type { Video, NewVideo, VideoSegment, NewVideoSegment } from "../db/schem
  * Shape of an enabled segment joined with its video row — the consumer card
  * for `GET /assistant/videos`. The widget resolves `[VIDEO:<id>]` markers
  * against these cards; `id` is the SEGMENT id (the agent cites segments).
+ * Product lists arrive PARSED (the raw columns are JSON strings; see
+ * parseSegmentProductList) so consumers never touch the wire format.
  */
 export interface VideoSegmentCard {
   id: number;
@@ -35,6 +37,57 @@ export interface VideoSegmentCard {
   speaker: string; // from the joined videos row
   youtubeId: string; // ORIGINAL video id (fallback deep-link target)
   clipYoutubeId: string | null; // owner-channel clip, null until uploaded
+  mentionedProducts: string[]; // T5: raw mentions the educator said in the segment
+  productReferences: string[]; // T5: valid catalog refs linked to the segment
+}
+
+/**
+ * T5 — product fields on segment writes: the persisted JSON string, or the
+ * array the service stringifies on write (same guidance convention: the
+ * COLUMN is a JSON string, the wire/service API deals in arrays).
+ */
+export type SegmentProductFields = {
+  mentionedProducts?: string[] | string | null;
+  productReferences?: string[] | string | null;
+};
+
+export type SegmentCreateInput = Omit<
+  NewVideoSegment,
+  "mentionedProducts" | "productReferences"
+> &
+  SegmentProductFields;
+
+export type SegmentPatchInput = Partial<
+  Omit<NewVideoSegment, "mentionedProducts" | "productReferences">
+> &
+  SegmentProductFields;
+
+/**
+ * Parses the persisted JSON-array of a segment's product lists. Defensive,
+ * mirroring parseGuidanceRefs: a corrupted row degrades to an empty list
+ * instead of crashing the chat (never throws).
+ */
+export function parseSegmentProductList(raw: string | null | undefined): string[] {
+  if (typeof raw !== "string" || raw === "") return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.map((item) => String(item)) : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Write-side normalization for product fields: arrays are stringified (the
+ * persisted form), strings pass through, `undefined` leaves the column
+ * untouched (drizzle skips it), `null` clears it.
+ */
+function normalizeProductField(
+  value: string[] | string | null | undefined,
+): string | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  return Array.isArray(value) ? JSON.stringify(value) : value;
 }
 
 export interface VideoService {
@@ -54,10 +107,12 @@ export interface VideoService {
   listEnabledSegments(): VideoSegment[];
   /** Enabled segments joined with their video row, shaped for `GET /assistant/videos`. */
   listEnabledSegmentCards(): VideoSegmentCard[];
-  /** Create a segment. `enabled` defaults to 0, `summary` to '' at the DB. */
-  createSegment(input: NewVideoSegment): VideoSegment;
-  /** Partial update by id; refreshes `updatedAt`. Returns null when absent. */
-  updateSegment(id: number, patch: Partial<NewVideoSegment>): VideoSegment | null;
+  /** Create a segment. `enabled` defaults to 0, `summary` to '' at the DB;
+   * product fields accept arrays (stringified) or JSON strings. */
+  createSegment(input: SegmentCreateInput): VideoSegment;
+  /** Partial update by id; refreshes `updatedAt`. Product fields accept arrays
+   * or JSON strings. Returns null when absent. */
+  updateSegment(id: number, patch: SegmentPatchInput): VideoSegment | null;
   /** Delete a segment. Returns whether a row was removed. */
   removeSegment(id: number): boolean;
 }
@@ -106,7 +161,7 @@ export function createVideoService(db: Db): VideoService {
     },
 
     listEnabledSegmentCards(): VideoSegmentCard[] {
-      return db
+      const rows = db
         .select({
           id: videoSegments.id,
           videoId: videoSegments.videoId,
@@ -118,26 +173,50 @@ export function createVideoService(db: Db): VideoService {
           speaker: videos.speaker,
           youtubeId: videos.youtubeId,
           clipYoutubeId: videoSegments.clipYoutubeId,
+          mentionedProducts: videoSegments.mentionedProducts,
+          productReferences: videoSegments.productReferences,
         })
         .from(videoSegments)
         .innerJoin(videos, eq(videoSegments.videoId, videos.id))
         .where(eq(videoSegments.enabled, 1))
         .all();
+      return rows.map((row) => ({
+        ...row,
+        mentionedProducts: parseSegmentProductList(row.mentionedProducts),
+        productReferences: parseSegmentProductList(row.productReferences),
+      }));
     },
 
-    createSegment(input: NewVideoSegment): VideoSegment {
+    createSegment(input: SegmentCreateInput): VideoSegment {
       const now = new Date().toISOString();
+      const { mentionedProducts, productReferences, ...rest } = input;
       return db
         .insert(videoSegments)
-        .values({ ...input, createdAt: now, updatedAt: now })
+        .values({
+          ...rest,
+          mentionedProducts: normalizeProductField(mentionedProducts),
+          productReferences: normalizeProductField(productReferences),
+          createdAt: now,
+          updatedAt: now,
+        })
         .returning()
         .get();
     },
 
-    updateSegment(id: number, patch: Partial<NewVideoSegment>): VideoSegment | null {
+    updateSegment(id: number, patch: SegmentPatchInput): VideoSegment | null {
+      const { mentionedProducts, productReferences, ...rest } = patch;
       const row = db
         .update(videoSegments)
-        .set({ ...patch, updatedAt: new Date().toISOString() })
+        .set({
+          ...rest,
+          ...(mentionedProducts !== undefined
+            ? { mentionedProducts: normalizeProductField(mentionedProducts) }
+            : {}),
+          ...(productReferences !== undefined
+            ? { productReferences: normalizeProductField(productReferences) }
+            : {}),
+          updatedAt: new Date().toISOString(),
+        })
         .where(eq(videoSegments.id, id))
         .returning()
         .get();

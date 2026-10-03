@@ -35,6 +35,10 @@ export interface VideoSegmentsContext {
     // to mm:ss only in the human-facing prompt line, never in storage.
     startS: number;
     endS: number;
+    // T5: products the educator mentions in the segment, paired with the
+    // catalog ref when the mention matches a linked product (see
+    // pairSegmentProducts). Omitted/empty ⇒ no `productos:` clause.
+    products?: Array<{ mention: string; ref: string }>;
   }>;
 }
 
@@ -123,18 +127,120 @@ function formatTimeRange(startS: number, endS: number): string {
 }
 
 /**
+ * T5 — pairs a segment's raw product mentions with catalog refs for the
+ * prompt's `productos:` clause. Linking is catalog-anchored (ODD Decision):
+ * a mention pairs with a product when it matches the catalog product NAME
+ * (containment rules mirroring matchSymptom — accent/brand-insensitive) AND
+ * that product's ref is among the segment's stored `product_references`.
+ * Mentions that match nothing linked stay raw (no ref); stored refs with no
+ * matching mention (admin-linked by hand) render with the catalog name.
+ *
+ * Pure: no DB access. The catalog is the same product list the chat already
+ * injects, so an unlinked or unknown mention never gains an invented ref.
+ */
+export function pairSegmentProducts(
+  mentions: string[],
+  refs: string[],
+  catalog: Array<{ name: string; reference: string }>,
+): Array<{ mention: string; ref: string }> {
+  const refSet = new Set(refs);
+  const out: Array<{ mention: string; ref: string }> = [];
+  const consumed = new Set<string>();
+  for (const mention of mentions) {
+    const hit = matchCatalogProduct(mention, catalog);
+    if (hit && refSet.has(hit.reference)) {
+      out.push({ mention, ref: hit.reference });
+      consumed.add(hit.reference);
+    } else {
+      out.push({ mention, ref: "" });
+    }
+  }
+  for (const ref of refs) {
+    if (!consumed.has(ref)) {
+      const name = catalog.find((p) => p.reference === ref)?.name ?? ref;
+      out.push({ mention: name, ref });
+    }
+  }
+  return out;
+}
+
+/**
+ * Accent/brand-insensitive normalization for product-name matching: the same
+ * rules as normalizeSymptomText (lowercase → strip diacritics → punctuation
+ * and symbols such as ™ collapse to single spaces → trim), so "Cal Mag D
+ * Plus" matches "Nutrilite™ Cal Mag D Plus".
+ */
+function normalizeProductName(input: string): string {
+  return input
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Best catalog product for a raw mention (mirrors matchSymptom's containment
+ * rules, over names instead of symptom vocabulary):
+ * - exact post-normalization match wins;
+ * - name contains the mention (the mention is a fragment) → prefer the
+ *   SHORTEST name (most specific product that still fits);
+ * - mention contains the whole name → prefer the LONGEST name (most
+ *   informative product carried by the mention).
+ * Nothing comparable → null.
+ */
+function matchCatalogProduct(
+  mention: string,
+  catalog: Array<{ name: string; reference: string }>,
+): { name: string; reference: string } | null {
+  const needle = normalizeProductName(mention);
+  if (!needle) return null;
+  let best: { name: string; reference: string } | null = null;
+  let bestScore = -Infinity;
+  for (const product of catalog) {
+    const name = normalizeProductName(product.name);
+    if (!name) continue;
+    let score: number;
+    if (name === needle) {
+      score = 3;
+    } else if (name.includes(needle)) {
+      score = 2 - name.length / 1e6;
+    } else if (needle.includes(name)) {
+      score = 1 + name.length / 1e6;
+    } else {
+      continue;
+    }
+    if (score > bestScore) {
+      bestScore = score;
+      best = product;
+    }
+  }
+  return best;
+}
+
+/**
  * Educational video segments block. Omitted entirely when no segment is
  * enabled — an empty knowledge base must never look like an empty context
  * (same convention as guidanceBlock: no stale header).
+ *
+ * T5: when a segment carries products, the line gains the `productos:` clause
+ * AFTER the time range — `… (0:05–1:49) — productos: Cal Mag D Plus [110606],
+ * Double X [121576] — <summary>`; the clause is omitted entirely when the
+ * product list is empty (or the item carries none).
  */
 export function videoSegmentsBlock(ctx: VideoSegmentsContext): string {
   if (ctx.items.length === 0) {
     return "";
   }
-  const lines = ctx.items.map(
-    (v) =>
-      `- [VIDEO:${v.id}] ${v.title} — tema: ${v.condition ?? "(sin tema asignado)"} (${formatTimeRange(v.startS, v.endS)}) — ${v.summary}`,
-  );
+  const lines = ctx.items.map((v) => {
+    const products = v.products ?? [];
+    const productsClause =
+      products.length > 0
+        ? ` — productos: ${products.map((p) => (p.ref ? `${p.mention} [${p.ref}]` : p.mention)).join(", ")}`
+        : "";
+    return `- [VIDEO:${v.id}] ${v.title} — tema: ${v.condition ?? "(sin tema asignado)"} (${formatTimeRange(v.startS, v.endS)})${productsClause} — ${v.summary}`;
+  });
   return `VIDEOS EDUCATIVOS DISPONIBLES (cuando el tema del usuario coincida con un video, cita su marcador exacto):\n${lines.join("\n")}`;
 }
 

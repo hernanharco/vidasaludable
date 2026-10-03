@@ -5,9 +5,9 @@ import { createConversationService } from "../services/conversationService.js";
 import { createRecommendationService } from "../services/recommendationService.js";
 import { createCatalogService } from "../services/catalogService.js";
 import { createGuidanceService } from "../services/guidanceService.js";
-import { createVideoService } from "../services/videoService.js";
+import { createVideoService, parseSegmentProductList } from "../services/videoService.js";
 import { createGeminiClient } from "../agent/gemini.js";
-import { buildSystemPrompt, buildHistoryMessages, extractProductRefs, extractVideoRefs } from "../agent/prompt.js";
+import { buildSystemPrompt, buildHistoryMessages, extractProductRefs, extractVideoRefs, pairSegmentProducts } from "../agent/prompt.js";
 import { guardReply } from "../agent/guard.js";
 import { getCurrentConsent } from "../config/consent.js";
 import type { Product } from "../db/schema.js";
@@ -55,6 +55,9 @@ export function createAssistantRouter(db: Db): Hono {
         // T4 Phase A: raw integer seconds — the frontend formats to mm:ss.
         startS: card.startS,
         endS: card.endS,
+        // T5: valid catalog refs linked to the segment (parsed by the service),
+        // for the frontend product cards that pair with `[VIDEO:id]` cites.
+        productReferences: card.productReferences,
       })),
     });
   });
@@ -147,6 +150,14 @@ export function createAssistantRouter(db: Db): Hono {
           // Raw integer seconds — videoSegmentsBlock formats the mm:ss range.
           startS: s.startS,
           endS: s.endS,
+          // T5: the segment's product mentions paired with catalog refs
+          // (catalog-anchored: a mention gains `[ref]` only when it matches a
+          // linked product — see pairSegmentProducts).
+          products: pairSegmentProducts(
+            parseSegmentProductList(s.mentionedProducts),
+            parseSegmentProductList(s.productReferences),
+            catalogProducts,
+          ),
         })),
       },
     );

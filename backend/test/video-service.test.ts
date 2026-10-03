@@ -2,8 +2,10 @@ import { describe, it, expect, beforeAll } from "vitest";
 import { createDatabase } from "../src/db/client.js";
 import type { Db } from "../src/db/client.js";
 import { migrate } from "../src/db/migrate.js";
+import { eq } from "drizzle-orm";
 import { assessmentSymptoms } from "../src/db/assessmentSchema.js";
-import { createVideoService } from "../src/services/videoService.js";
+import { videoSegments } from "../src/db/schema.js";
+import { createVideoService, parseSegmentProductList } from "../src/services/videoService.js";
 import { matchSymptom, normalizeSymptomText } from "../src/services/symptomMatcher.js";
 import seedData from "../src/seed/assessment_seed_data.json";
 
@@ -86,6 +88,24 @@ describe("matchSymptom", () => {
   it("returns the original (un-normalized) symptom entry on a hit", () => {
     const hit = matchSymptom("acne", seedSymptoms);
     expect(hit).toEqual({ id: ACNE, name_es: "Acné" });
+  });
+});
+
+describe("parseSegmentProductList", () => {
+  it("parses the persisted JSON string array", () => {
+    expect(parseSegmentProductList('["Cal Mag D Plus","Double X"]')).toEqual([
+      "Cal Mag D Plus",
+      "Double X",
+    ]);
+    expect(parseSegmentProductList("[]")).toEqual([]);
+  });
+
+  it("degrades null/corrupt/non-array payloads to [] (never throws)", () => {
+    expect(parseSegmentProductList(null)).toEqual([]);
+    expect(parseSegmentProductList(undefined)).toEqual([]);
+    expect(parseSegmentProductList("no es json")).toEqual([]);
+    expect(parseSegmentProductList('{"a":1}')).toEqual([]);
+    expect(parseSegmentProductList('["a", 2]')).toEqual(["a", "2"]);
   });
 });
 
@@ -209,8 +229,97 @@ describe("videoService", () => {
     expect(seg.enabled).toBe(0);
     expect(seg.summary).toBe("");
     expect(seg.clipYoutubeId).toBeNull();
+    expect(seg.mentionedProducts).toBeNull();
+    expect(seg.productReferences).toBeNull();
     expect(seg.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     expect(seg.updatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it("createSegment persists product fields as JSON strings (arrays stringified)", () => {
+    const svc = createVideoService(db);
+    const video = svc.createVideo({ speaker: "Luis", youtubeId: "seg-prod-1", url: "u", title: "t" });
+    const plain = svc.createSegment({ videoId: video.id, startS: 0, endS: 10, title: "T" });
+    expect(plain.mentionedProducts).toBeNull();
+    expect(plain.productReferences).toBeNull();
+
+    const seg = svc.createSegment({
+      videoId: video.id,
+      startS: 0,
+      endS: 30,
+      title: "Con productos",
+      mentionedProducts: ["Cal Mag D Plus", "Double X"],
+      productReferences: ["110606", "121576"],
+    });
+    expect(seg.mentionedProducts).toBe(JSON.stringify(["Cal Mag D Plus", "Double X"]));
+    expect(seg.productReferences).toBe(JSON.stringify(["110606", "121576"]));
+    expect(parseSegmentProductList(seg.mentionedProducts)).toEqual(["Cal Mag D Plus", "Double X"]);
+    expect(parseSegmentProductList(seg.productReferences)).toEqual(["110606", "121576"]);
+  });
+
+  it("updateSegment patches product fields from arrays or JSON strings", () => {
+    const svc = createVideoService(db);
+    const video = svc.createVideo({ speaker: "Luis", youtubeId: "seg-prod-2", url: "u", title: "t" });
+    const seg = svc.createSegment({
+      videoId: video.id,
+      startS: 0,
+      endS: 30,
+      title: "T",
+      mentionedProducts: ["Omega-3"],
+      productReferences: ["126132"],
+    });
+    // Arrays are stringified on write; untouched fields survive.
+    const byArray = svc.updateSegment(seg.id, { productReferences: [] });
+    expect(parseSegmentProductList(byArray?.productReferences)).toEqual([]);
+    expect(parseSegmentProductList(byArray?.mentionedProducts)).toEqual(["Omega-3"]);
+    // JSON strings pass through as-is.
+    const byString = svc.updateSegment(seg.id, {
+      mentionedProducts: '["Doble X"]',
+      productReferences: '["121576"]',
+    });
+    expect(parseSegmentProductList(byString?.mentionedProducts)).toEqual(["Doble X"]);
+    expect(parseSegmentProductList(byString?.productReferences)).toEqual(["121576"]);
+  });
+
+  it("listEnabledSegmentCards parses product lists (empty when null or corrupt)", () => {
+    const svc = createVideoService(db);
+    const video = svc.createVideo({ speaker: "Luis", youtubeId: "seg-prod-3", url: "u", title: "t" });
+    const withProducts = svc.createSegment({
+      videoId: video.id,
+      startS: 0,
+      endS: 10,
+      title: "Con productos",
+      enabled: 1,
+      mentionedProducts: ["Cal Mag D Plus"],
+      productReferences: ["110606"],
+    });
+    const withoutProducts = svc.createSegment({
+      videoId: video.id,
+      startS: 10,
+      endS: 20,
+      title: "Sin productos",
+      enabled: 1,
+    });
+    // A corrupt row degrades to an empty list instead of crashing the chat.
+    const corrupt = svc.createSegment({
+      videoId: video.id,
+      startS: 20,
+      endS: 30,
+      title: "Corrupto",
+      enabled: 1,
+    });
+    db.update(videoSegments)
+      .set({ productReferences: "no es json" })
+      .where(eq(videoSegments.id, corrupt.id))
+      .run();
+
+    const cards = svc.listEnabledSegmentCards().filter((c) => c.videoId === video.id);
+    const byId = new Map(cards.map((c) => [c.id, c]));
+    expect(byId.get(withProducts.id)?.mentionedProducts).toEqual(["Cal Mag D Plus"]);
+    expect(byId.get(withProducts.id)?.productReferences).toEqual(["110606"]);
+    expect(byId.get(withoutProducts.id)?.mentionedProducts).toEqual([]);
+    expect(byId.get(withoutProducts.id)?.productReferences).toEqual([]);
+    expect(byId.get(corrupt.id)?.mentionedProducts).toEqual([]);
+    expect(byId.get(corrupt.id)?.productReferences).toEqual([]);
   });
 
   it("listSegments returns every segment; listEnabledSegments only enabled ones", () => {

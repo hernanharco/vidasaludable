@@ -2,8 +2,10 @@ import { Hono } from "hono";
 import { basicAuth } from "hono/basic-auth";
 import type { Db } from "../db/client.js";
 import { createCatalogService } from "../services/catalogService.js";
+import type { CatalogService } from "../services/catalogService.js";
 import { createGuidanceService } from "../services/guidanceService.js";
-import { createVideoService } from "../services/videoService.js";
+import { createVideoService, parseSegmentProductList } from "../services/videoService.js";
+import type { SegmentCreateInput, SegmentPatchInput } from "../services/videoService.js";
 import { matchSymptom } from "../services/symptomMatcher.js";
 import type { SymptomCandidate } from "../services/symptomMatcher.js";
 import { parseVideoId } from "../tools/parsers.js";
@@ -11,7 +13,7 @@ import { createRecommendationService } from "../services/recommendationService.j
 import { createConversationService } from "../services/conversationService.js";
 import { customers, conversations, messages, products, purchases, videos, videoSegments } from "../db/schema.js";
 import { assessmentSymptoms } from "../db/assessmentSchema.js";
-import type { NewGuidance, NewVideo, NewVideoSegment } from "../db/schema.js";
+import type { NewGuidance, NewVideo } from "../db/schema.js";
 import { eq, count } from "drizzle-orm";
 
 /** Allowed `videos.status` values — the pipeline lifecycle state machine. */
@@ -397,17 +399,23 @@ export function createAdminRouter(db: Db): Hono {
   });
 
   // --- Video segments: timestamped excerpts per condition. All rows (enabled
-  // and not) are listed; approval is PATCH enabled=1. ---
+  // and not) are listed; approval is PATCH enabled=1. Product fields (T5) are
+  // delivered as PARSED arrays — see toSegmentWire. ---
   app.get("/video-segments", (c) => {
     const videoIdRaw = c.req.query("video_id");
     if (videoIdRaw != null && videoIdRaw !== "") {
       const videoId = Number(videoIdRaw);
       if (!Number.isInteger(videoId)) return c.json({ error: "invalid video_id" }, 400);
       return c.json({
-        segments: db.select().from(videoSegments).where(eq(videoSegments.videoId, videoId)).all(),
+        segments: db
+          .select()
+          .from(videoSegments)
+          .where(eq(videoSegments.videoId, videoId))
+          .all()
+          .map(toSegmentWire),
       });
     }
-    return c.json({ segments: videoService.listSegments() });
+    return c.json({ segments: videoService.listSegments().map(toSegmentWire) });
   });
 
   app.post("/video-segments", async (c) => {
@@ -435,7 +443,14 @@ export function createAdminRouter(db: Db): Hono {
     const resolved = resolveConditionPatch(db, body);
     if (resolved.action === "error") return c.json({ error: resolved.error }, 400);
 
-    const input: NewVideoSegment = {
+    // T5: product mentions + catalog refs (arrays or JSON strings; refs
+    // validated against the catalog, invalid ones dropped — never invented).
+    const productFields = resolveSegmentProductPatch(catalog, body);
+    if (productFields.action === "error") {
+      return c.json({ error: productFields.error }, 400);
+    }
+
+    const input: SegmentCreateInput = {
       videoId,
       startS,
       endS,
@@ -444,8 +459,9 @@ export function createAdminRouter(db: Db): Hono {
       ...(resolved.action === "set"
         ? { symptomId: resolved.symptomId, condition: resolved.condition }
         : {}),
+      ...(productFields.action === "set" ? productFields.patch : {}),
     };
-    return c.json({ segment: videoService.createSegment(input) }, 201);
+    return c.json({ segment: toSegmentWire(videoService.createSegment(input)) }, 201);
   });
 
   app.patch("/video-segments/:id", async (c) => {
@@ -457,7 +473,7 @@ export function createAdminRouter(db: Db): Hono {
     const existing = db.select().from(videoSegments).where(eq(videoSegments.id, id)).get();
     if (!existing) return c.json({ error: "segment not found" }, 404);
 
-    const patch: Partial<NewVideoSegment> = {};
+    const patch: SegmentPatchInput = {};
     // Bounds are validated on the EFFECTIVE values (existing merged with the
     // patch) so a lone startS cannot cross the stored endS.
     const startS = body.startS != null ? Number(body.startS) : existing.startS;
@@ -495,10 +511,18 @@ export function createAdminRouter(db: Db): Hono {
       patch.clipYoutubeId = body.clipYoutubeId == null ? null : String(body.clipYoutubeId);
     }
 
+    // T5: product mentions + catalog refs (arrays or JSON strings; refs
+    // validated against the catalog — unknown ones are dropped).
+    const productFields = resolveSegmentProductPatch(catalog, body);
+    if (productFields.action === "error") {
+      return c.json({ error: productFields.error }, 400);
+    }
+    if (productFields.action === "set") Object.assign(patch, productFields.patch);
+
     if (Object.keys(patch).length === 0) return c.json({ error: "nothing to update" }, 400);
     const segment = videoService.updateSegment(id, patch);
     if (!segment) return c.json({ error: "segment not found" }, 404);
-    return c.json({ segment });
+    return c.json({ segment: toSegmentWire(segment) });
   });
 
   app.delete("/video-segments/:id", (c) => {
@@ -573,4 +597,79 @@ function parseProductRefs(value: unknown): string[] | null {
     refs.push(ref);
   }
   return refs;
+}
+
+/**
+ * T5 — product payload parser for segment routes: accepts an array of strings
+ * or a JSON string encoding one (guidance-style wire format). Returns null on
+ * invalid SHAPE (route replies 400); blank entries are dropped.
+ */
+function parseStringArrayPayload(value: unknown): string[] | null {
+  let arr: unknown = value;
+  if (typeof value === "string") {
+    try {
+      arr = JSON.parse(value);
+    } catch {
+      return null;
+    }
+  }
+  if (!Array.isArray(arr)) return null;
+  return arr
+    .map((item) => String(item ?? "").trim())
+    .filter((s) => s !== "");
+}
+
+/**
+ * T5 — product fields for segment create/patch. Invalid SHAPE → error (route
+ * replies 400). `product_references` are validated against the CATALOG:
+ * entries that are not real refs are DROPPED (never invented links — the
+ * same defensive rule as the analyzer's ref validation). `mentioned_products`
+ * stay raw: the mention is the educator's words until an admin links a ref.
+ */
+function resolveSegmentProductPatch(
+  catalog: CatalogService,
+  body: Record<string, unknown>,
+):
+  | { action: "none" }
+  | {
+      action: "set";
+      patch: { mentionedProducts?: string[]; productReferences?: string[] };
+    }
+  | { action: "error"; error: string } {
+  const patch: { mentionedProducts?: string[]; productReferences?: string[] } = {};
+  if (body.mentioned_products != null) {
+    const arr = parseStringArrayPayload(body.mentioned_products);
+    if (arr === null) {
+      return { action: "error", error: "mentioned_products must be an array of strings" };
+    }
+    patch.mentionedProducts = arr;
+  }
+  if (body.product_references != null) {
+    const arr = parseStringArrayPayload(body.product_references);
+    if (arr === null) {
+      return { action: "error", error: "product_references must be an array of strings" };
+    }
+    patch.productReferences = arr.filter((ref) => catalog.lookup(ref).found);
+  }
+  return Object.keys(patch).length > 0 ? { action: "set", patch } : { action: "none" };
+}
+
+/**
+ * Wire shape for segment responses (GET/POST/PATCH): the JSON product columns
+ * are delivered as PARSED arrays (T5) so consumers never touch the storage
+ * format; every other field passes through raw.
+ */
+function toSegmentWire<
+  T extends { mentionedProducts?: string | null; productReferences?: string | null },
+>(
+  row: T,
+): Omit<T, "mentionedProducts" | "productReferences"> & {
+  mentionedProducts: string[];
+  productReferences: string[];
+} {
+  return {
+    ...row,
+    mentionedProducts: parseSegmentProductList(row.mentionedProducts),
+    productReferences: parseSegmentProductList(row.productReferences),
+  };
 }

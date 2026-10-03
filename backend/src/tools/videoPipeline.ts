@@ -24,7 +24,8 @@ import { createDatabase } from "../db/client.js";
 import type { Db } from "../db/client.js";
 import { migrate } from "../db/migrate.js";
 import { assessmentSymptoms } from "../db/assessmentSchema.js";
-import { createVideoService } from "../services/videoService.js";
+import { products } from "../db/schema.js";
+import { createVideoService, parseSegmentProductList } from "../services/videoService.js";
 import type { SymptomCandidate } from "../services/symptomMatcher.js";
 import { matchSymptom } from "../services/symptomMatcher.js";
 import type { Video, VideoSegment } from "../db/schema.js";
@@ -46,26 +47,44 @@ export const DEFAULT_CLIPS_ROOT = join(BACKEND_ROOT, "data", "clips");
 
 // ─── Prompt builders (pure, exported for tests) ───────────────────────
 
+/** Catalog product injected into the analyze prompt (name + reference). */
+export interface AnalyzeCatalogProduct {
+  name: string;
+  reference: string;
+}
+
 /**
  * System prompt for the segment analyzer:
  * (a) injects the full condition vocabulary (the 95 `assessment_symptoms.name_es`
- *     rows read from the DB), (b) demands STRICT JSON only, no fences, with the
- *     exact `segments[]` shape, (c) requires boundaries aligned to the timed
- *     transcript lines passed in the user message, (d) Spanish output, no
- *     diagnosis language.
+ *     rows read from the DB), (b) injects the CATALOG (T5: name + reference per
+ *     product, read from the `products` table of the same DB), (c) demands
+ *     STRICT JSON only, no fences, with the exact `segments[]` shape — now
+ *     including the per-segment `products[]` array, (d) requires boundaries
+ *     aligned to the timed transcript lines passed in the user message,
+ *     (e) Spanish output, no diagnosis language.
  */
-export function buildAnalyzeSystemPrompt(vocabulary: string[]): string {
+export function buildAnalyzeSystemPrompt(
+  vocabulary: string[],
+  catalog: AnalyzeCatalogProduct[],
+): string {
   const vocabBlock =
     vocabulary.length > 0 ? vocabulary.map((name) => `- ${name}`).join("\n") : "(vacío)";
+  const catalogBlock =
+    catalog.length > 0
+      ? catalog.map((p) => `- [${p.reference}] ${p.name}`).join("\n")
+      : "(vacío)";
   return [
     "Eres un analizador de videos educativos de salud.",
     "Tu ÚNICA salida debe ser JSON válido (un solo objeto, sin explicaciones, sin texto antes o después, SIN cercas de Markdown tipo ```).",
-    'Formato exacto: {"segments":[{"start_s":<enteros>,"end_s":<enteros>,"title":"...","summary":"...","condition":"<una entrada del vocabulario o vacío>"}]}',
+    'Formato exacto: {"segments":[{"start_s":<enteros>,"end_s":<enteros>,"title":"...","summary":"...","condition":"<una entrada del vocabulario o vacío>","products":[{"mention":"<nombre verbatim del producto>","ref":"<referencia del catálogo o vacío>"}]}]}',
     "Cada segmento debe empezar y terminar EXACTAMENTE en las marcas de tiempo de las líneas de la transcripción temporizada que te pasan en el mensaje del usuario: usa esos valores enteros en segundos como start_s/end_s, con 0 <= start_s < end_s <= duración del video.",
     "Escribe title, summary y condition en español.",
     "No uses lenguaje diagnóstico ni de tratamiento médico: describe de qué habla cada segmento.",
     'En "condition" usa EXACTAMENTE una entrada de este vocabulario (sin añadir ni quitar texto) o cadena vacía si el segmento no corresponde a ninguna:',
     vocabBlock,
+    'En "products" lista SOLO los productos que el educador mencione de forma oral en el segmento: "mention" es el nombre EXACTAMENTE como él lo dice (verbatim, sin inventar). Para "ref": si el producto mencionado CORRESPONDE a uno de la lista de abajo — aunque el educador use un nombre corto o coloquial, p. ej. "Cal Mag" o "doble X" — copia EXACTAMENTE su referencia de la lista; si NO corresponde a ningún producto de la lista, deja "ref" vacío. NO inventes productos ni referencias.',
+    "PRODUCTOS DEL CATÁLOGO (referencias válidas):",
+    catalogBlock,
   ].join("\n");
 }
 
@@ -104,9 +123,10 @@ export interface AnalyzeResult {
 /**
  * Full `analyze` flow (pure orchestration over injected deps):
  * parse URL → yt-dlp metadata + json3 transcript → timed transcript →
- * Gemini → parseGeminiSegments → matchSymptom per condition → persist one
- * `videos` row (status=analyzed) + one `video_segments` row per segment
- * (enabled=0).
+ * Gemini → parseGeminiSegments (catalog refs injected, defensive product
+ * validation) → matchSymptom per condition → persist one `videos` row
+ * (status=analyzed) + one `video_segments` row per segment (enabled=0),
+ * carrying the segment's product mentions + linked catalog refs (T5).
  *
  * Re-running on an existing youtubeId replaces its metadata and segments
  * (idempotent, mirroring the seed scripts) instead of failing on the unique
@@ -129,8 +149,19 @@ export async function analyzeVideo(opts: AnalyzeVideoOptions): Promise<AnalyzeRe
     throw new Error("No se encontró transcripción utilizable en el video (json3 vacío o ilegible).");
   }
 
+  // T5: el catálogo (products table de ESTA base) se inyecta en el prompt y
+  // ancla la validación de refs del parser (defensa anti-invención).
+  const catalogProducts: AnalyzeCatalogProduct[] = db
+    .select()
+    .from(products)
+    .all()
+    .map((p) => ({ name: p.name, reference: p.reference }));
+
   const durationS = meta.durationS ?? 0;
-  const systemPrompt = buildAnalyzeSystemPrompt(vocabulary.map((s) => s.name_es));
+  const systemPrompt = buildAnalyzeSystemPrompt(
+    vocabulary.map((s) => s.name_es),
+    catalogProducts,
+  );
   const userMessage = buildTranscriptMessage(cues, durationS);
 
   let raw: string;
@@ -141,7 +172,11 @@ export async function analyzeVideo(opts: AnalyzeVideoOptions): Promise<AnalyzeRe
     throw new Error(`Gemini falló al analizar la transcripción: ${detail}`);
   }
 
-  const parsed = parseGeminiSegments(raw, durationS);
+  const parsed = parseGeminiSegments(
+    raw,
+    durationS,
+    catalogProducts.map((p) => p.reference),
+  );
   if (parsed.length === 0) {
     throw new Error(
       "Gemini devolvió una respuesta sin segmentos utilizables (JSON inválido o todos los segmentos descartados).",
@@ -158,6 +193,9 @@ export async function analyzeVideo(opts: AnalyzeVideoOptions): Promise<AnalyzeRe
       summary: seg.summary,
       condition: hit ? hit.name_es : null,
       symptomId: hit ? hit.id : null,
+      // T5: menciones crudas (todas) + solo las refs válidas del catálogo.
+      mentionedProducts: seg.products.map((p) => p.mention),
+      productReferences: seg.products.filter((p) => p.ref).map((p) => p.ref),
     };
   });
 
@@ -197,6 +235,9 @@ export async function analyzeVideo(opts: AnalyzeVideoOptions): Promise<AnalyzeRe
       title: seg.title,
       summary: seg.summary,
       enabled: 0,
+      // T5: service stringifies arrays → JSON columns.
+      mentionedProducts: seg.mentionedProducts,
+      productReferences: seg.productReferences,
     }),
   );
 
@@ -364,7 +405,15 @@ export async function runCli(argv: string[], deps: CliDeps = {}): Promise<number
           const cond = seg.condition
             ? ` (${seg.condition}${seg.symptomId != null ? `, symptomId=${seg.symptomId}` : ""})`
             : " (sin condición asignada)";
-          out(`  - #${seg.id} [${seg.startS}–${seg.endS}s] ${seg.title}${cond}`);
+          // T5: productos mencionados en el segmento (menciones crudas y
+          // refs válidas del catálogo) — visibles en la salida del CLI.
+          const mentions = parseSegmentProductList(seg.mentionedProducts);
+          const refs = parseSegmentProductList(seg.productReferences);
+          const prod =
+            mentions.length > 0 || refs.length > 0
+              ? ` · productos: ${mentions.join(", ")}${refs.length > 0 ? ` · refs: ${refs.join(", ")}` : ""}`
+              : "";
+          out(`  - #${seg.id} [${seg.startS}–${seg.endS}s] ${seg.title}${cond}${prod}`);
         }
         out(
           `video:analyze — ${segments.length} segmento(s) creados con enabled=0 (aprueba en el CRM para habilitarlos en chat).`,

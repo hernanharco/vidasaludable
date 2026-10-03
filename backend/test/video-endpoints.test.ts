@@ -1,8 +1,10 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { eq } from "drizzle-orm";
 import { createDatabase } from "../src/db/client.js";
 import type { Db } from "../src/db/client.js";
 import { migrate } from "../src/db/migrate.js";
 import { assessmentSymptoms } from "../src/db/assessmentSchema.js";
+import { products } from "../src/db/schema.js";
 import { buildApp } from "../src/index.js";
 import { createVideoService } from "../src/services/videoService.js";
 import type { Hono } from "hono";
@@ -48,6 +50,26 @@ describe("video endpoints (T7)", () => {
       headers: { "Content-Type": "application/json" },
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     });
+
+  /** Catalog row so segment product refs can be validated against it (T5).
+   * Idempotent: the shared test db seeds several tests with the same refs. */
+  const insertCatalogProduct = (reference: string, name: string) => {
+    const existing = db.select().from(products).where(eq(products.reference, reference)).get();
+    if (existing) return;
+    db.insert(products)
+      .values({
+        reference,
+        name,
+        category: "Nutrición",
+        size: "90 uds",
+        price: 29.71,
+        benefits: "b",
+        dosage: "d",
+        ingredients: "i",
+        disclaimer: "dis",
+      })
+      .run();
+  };
 
   beforeAll(async () => {
     // Admin router is open in development (documented dev mode) — no auth.
@@ -111,6 +133,7 @@ describe("video endpoints (T7)", () => {
           speaker: string;
           startS: number;
           endS: number;
+          productReferences: string[];
         }>;
       };
 
@@ -128,8 +151,39 @@ describe("video endpoints (T7)", () => {
         // the &t= deep-link contract keeps seconds on the wire).
         startS: 123,
         endS: 180,
+        // T5: valid catalog refs linked to the segment, parsed ([] when none).
+        productReferences: [],
       });
       expect(data.videos.map((v) => v.id)).not.toContain(disabled.id);
+    });
+
+    it("includes productReferences (parsed array) per card for the frontend product cards", async () => {
+      const svc = createVideoService(db);
+      const video = svc.createVideo({
+        speaker: "Luis Collantes",
+        youtubeId: "yt-public-products",
+        url: "https://www.youtube.com/watch?v=yt-public-products",
+        title: "Con productos",
+      });
+      svc.createSegment({
+        videoId: video.id,
+        startS: 0,
+        endS: 60,
+        title: "Espalda con productos",
+        summary: "El educador menciona productos.",
+        enabled: 1,
+        mentionedProducts: ["Cal Mag D Plus", "Double X"],
+        productReferences: ["110606", "121576"],
+      });
+
+      const res = await get("/assistant/videos");
+      expect(res.status).toBe(200);
+      const data = (await res.json()) as {
+        videos: Array<{ id: number; title: string; productReferences: string[] }>;
+      };
+      const card = data.videos.find((v) => v.title === "Espalda con productos");
+      expect(card).toBeDefined();
+      expect(card!.productReferences).toEqual(["110606", "121576"]);
     });
 
     it("uses the clip URL (no t param) when clipYoutubeId is present", async () => {
@@ -613,6 +667,152 @@ describe("video endpoints (T7)", () => {
       const del = await send("DELETE", "/admin/video-segments/99999");
       expect(del.status).toBe(404);
       expect(((await del.json()) as { error: string }).error).toBe("segment not found");
+    });
+  });
+
+  // ─── Segment product fields (T5) ──────────────────────────────────────
+
+  describe("segment product fields (T5)", () => {
+    const makeVideo = async (youtubeId: string) => {
+      const res = await send("POST", "/admin/videos", {
+        speaker: "Luis Collantes",
+        url: `https://www.youtube.com/watch?v=${youtubeId}`,
+        title: "Video productos",
+      });
+      expect(res.status).toBe(201);
+      return ((await res.json()) as { video: { id: number } }).video.id;
+    };
+
+    it("POST accepta arrays, descarta refs fuera del catálogo y responde con arrays parseados", async () => {
+      insertCatalogProduct("110606", "Cal Mag D Plus");
+      insertCatalogProduct("121576", "Double X");
+      const videoId = await makeVideo("segProd01");
+      const res = await send("POST", "/admin/video-segments", {
+        videoId,
+        startS: 0,
+        endS: 60,
+        title: "Espalda",
+        mentioned_products: ["Cal Mag D Plus", "Double X", "Desconocido"],
+        product_references: ["110606", "999999", "121576"], // 999999 no existe → se cae
+      });
+      expect(res.status).toBe(201);
+      const { segment } = (await res.json()) as {
+        segment: { mentionedProducts: string[]; productReferences: string[] };
+      };
+      expect(segment.mentionedProducts).toEqual(["Cal Mag D Plus", "Double X", "Desconocido"]);
+      expect(segment.productReferences).toEqual(["110606", "121576"]);
+    });
+
+    it("POST acepta JSON strings y devuelve 400 con shape inválido", async () => {
+      insertCatalogProduct("110606", "Cal Mag D Plus");
+      const videoId = await makeVideo("segProd02");
+      const ok = await send("POST", "/admin/video-segments", {
+        videoId,
+        startS: 0,
+        endS: 30,
+        title: "T",
+        mentioned_products: '["Cal Mag D Plus"]',
+        product_references: '["110606","999999"]',
+      });
+      expect(ok.status).toBe(201);
+      const data = (await ok.json()) as {
+        segment: { mentionedProducts: string[]; productReferences: string[] };
+      };
+      expect(data.segment.mentionedProducts).toEqual(["Cal Mag D Plus"]);
+      expect(data.segment.productReferences).toEqual(["110606"]);
+
+      const bad = await send("POST", "/admin/video-segments", {
+        videoId,
+        startS: 0,
+        endS: 30,
+        title: "T2",
+        product_references: 42,
+      });
+      expect(bad.status).toBe(400);
+      expect(((await bad.json()) as { error: string }).error).toBe(
+        "product_references must be an array of strings",
+      );
+
+      const badMentions = await send("POST", "/admin/video-segments", {
+        videoId,
+        startS: 0,
+        endS: 30,
+        title: "T3",
+        mentioned_products: '{"a":1}',
+      });
+      expect(badMentions.status).toBe(400);
+    });
+
+    it("PATCH reemplaza los campos de producto, descarta refs inválidas y limpia con []", async () => {
+      insertCatalogProduct("110606", "Cal Mag D Plus");
+      const videoId = await makeVideo("segProd03");
+      const created = await send("POST", "/admin/video-segments", {
+        videoId,
+        startS: 0,
+        endS: 30,
+        title: "T",
+        mentioned_products: ["Cal Mag D Plus"],
+        product_references: ["110606"],
+      });
+      const { segment } = (await created.json()) as { segment: { id: number } };
+
+      const patched = await send("PATCH", `/admin/video-segments/${segment.id}`, {
+        mentioned_products: ["Double X"],
+        product_references: ["121576", "999999"], // 999999 fuera de catálogo → se cae
+      });
+      expect(patched.status).toBe(200);
+      const pdata = (await patched.json()) as {
+        segment: { mentionedProducts: string[]; productReferences: string[] };
+      };
+      expect(pdata.segment.mentionedProducts).toEqual(["Double X"]);
+      expect(pdata.segment.productReferences).toEqual(["121576"]);
+
+      const cleared = await send("PATCH", `/admin/video-segments/${segment.id}`, {
+        product_references: [],
+      });
+      expect(
+        ((await cleared.json()) as { segment: { productReferences: string[] } }).segment
+          .productReferences,
+      ).toEqual([]);
+
+      const bad = await send("PATCH", `/admin/video-segments/${segment.id}`, {
+        mentioned_products: "no-array",
+      });
+      expect(bad.status).toBe(400);
+    });
+
+    it("GET /admin/video-segments devuelve los arrays parseados (con y sin filtro)", async () => {
+      insertCatalogProduct("110606", "Cal Mag D Plus");
+      const videoId = await makeVideo("segProd04");
+      const created = await send("POST", "/admin/video-segments", {
+        videoId,
+        startS: 0,
+        endS: 30,
+        title: "T",
+        mentioned_products: ["Cal Mag D Plus"],
+        product_references: ["110606"],
+      });
+      const { segment } = (await created.json()) as { segment: { id: number } };
+
+      const res = await get("/admin/video-segments");
+      expect(res.status).toBe(200);
+      const data = (await res.json()) as {
+        segments: Array<{
+          id: number;
+          mentionedProducts: string[];
+          productReferences: string[];
+        }>;
+      };
+      const row = data.segments.find((s) => s.id === segment.id);
+      expect(row?.mentionedProducts).toEqual(["Cal Mag D Plus"]);
+      expect(row?.productReferences).toEqual(["110606"]);
+
+      const filtered = await get(`/admin/video-segments?video_id=${videoId}`);
+      const fdata = (await filtered.json()) as {
+        segments: Array<{ mentionedProducts: string[]; productReferences: string[] }>;
+      };
+      expect(fdata.segments[0]?.mentionedProducts).toEqual(["Cal Mag D Plus"]);
+      expect(fdata.segments[0]?.productReferences).toEqual(["110606"]);
     });
   });
 

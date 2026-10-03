@@ -5,7 +5,8 @@
  * - `parseJson3Transcript`: turns a yt-dlp json3 subtitle payload into timed
  *   text lines (the "transcript line timestamps" the analyzer must align to).
  * - `parseGeminiSegments`: defensively turns the model's raw reply into
- *   validated segments (fences stripped, bounds coerced/clamped, junk dropped).
+ *   validated segments (fences stripped, bounds coerced/clamped, junk dropped)
+ *   including the per-segment product mentions linked to the injected catalog.
  */
 
 /** One timed transcript line, in milliseconds (json3 native unit). */
@@ -15,6 +16,12 @@ export interface TimedCue {
   text: string;
 }
 
+/** One product mention inside a segment (T5), already validated. */
+export interface ParsedProduct {
+  mention: string; // verbatim (trimmed) product name the educator said
+  ref: string; // catalog ref — "" when the ref was empty or NOT in the catalog
+}
+
 /** One validated segment produced by the analyzer (integer seconds). */
 export interface ParsedSegment {
   startS: number;
@@ -22,6 +29,7 @@ export interface ParsedSegment {
   title: string;
   summary: string;
   condition: string;
+  products: ParsedProduct[]; // T5: mentions extracted from this segment
 }
 
 /**
@@ -93,8 +101,18 @@ export function parseJson3Transcript(json: unknown): TimedCue[] {
  * - Coerces bounds to integers, drops non-finite/swapped/out-of-range bounds
  *   and empty titles, and clamps `end_s` to `durationS` when known
  *   (`durationS <= 0` means "duration unknown" → no clamping).
+ * - Products (T5): each `products[]` entry must be an object with a non-empty
+ *   trimmed string `mention`. The `ref` survives ONLY when it exists in
+ *   `catalogRefs` — the refs injected into the analyze prompt from the
+ *   products table. Defensive by design: an unknown/empty ref is dropped
+ *   (kept as `""`), the mention stays raw. Entries are skipped outright when
+ *   the mention is missing/blank, whatever the ref says.
  */
-export function parseGeminiSegments(raw: string, durationS: number): ParsedSegment[] {
+export function parseGeminiSegments(
+  raw: string,
+  durationS: number,
+  catalogRefs: string[] = [],
+): ParsedSegment[] {
   const warn = (why: string): [] => {
     console.warn(`video:analyze — respuesta de Gemini descartada: ${why}`);
     return [];
@@ -128,10 +146,18 @@ export function parseGeminiSegments(raw: string, durationS: number): ParsedSegme
   }
 
   const clampKnown = Number.isFinite(durationS) && durationS > 0;
+  const knownRefs = new Set(catalogRefs);
   const out: ParsedSegment[] = [];
   for (const item of segments) {
     if (typeof item !== "object" || item === null) continue;
-    const s = item as { start_s?: unknown; end_s?: unknown; title?: unknown; summary?: unknown; condition?: unknown };
+    const s = item as {
+      start_s?: unknown;
+      end_s?: unknown;
+      title?: unknown;
+      summary?: unknown;
+      condition?: unknown;
+      products?: unknown;
+    };
 
     const startRaw = Number(s.start_s);
     const endRaw = Number(s.end_s);
@@ -149,12 +175,27 @@ export function parseGeminiSegments(raw: string, durationS: number): ParsedSegme
     const title = typeof s.title === "string" ? s.title.trim() : "";
     if (!title) continue; // sin título no es un segmento usable
 
+    // T5: productos mencionados — mention recortada no vacía; el ref solo
+    // sobrevive si existe en el catálogo inyectado (anti-invención).
+    const products: ParsedProduct[] = [];
+    if (Array.isArray(s.products)) {
+      for (const entry of s.products) {
+        if (typeof entry !== "object" || entry === null) continue;
+        const p = entry as { mention?: unknown; ref?: unknown };
+        const mention = typeof p.mention === "string" ? p.mention.trim() : "";
+        if (!mention) continue; // sin mention no hay producto utilizable
+        const refRaw = typeof p.ref === "string" ? p.ref.trim() : String(p.ref ?? "").trim();
+        products.push({ mention, ref: refRaw && knownRefs.has(refRaw) ? refRaw : "" });
+      }
+    }
+
     out.push({
       startS,
       endS,
       title,
       summary: typeof s.summary === "string" ? s.summary.trim() : "",
       condition: typeof s.condition === "string" ? s.condition.trim() : "",
+      products,
     });
   }
   return out;

@@ -165,6 +165,8 @@ CREATE TABLE IF NOT EXISTS video_segments (
   title TEXT NOT NULL,
   summary TEXT NOT NULL DEFAULT '',
   clip_youtube_id TEXT,
+  mentioned_products TEXT,
+  product_references TEXT,
   enabled INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -192,6 +194,10 @@ export async function migrate(db: ReturnType<typeof createDatabase>): Promise<vo
     // Legacy dev DBs from old drizzle-kit pushes predate the DDL shape
     // (assessmentSchema follows migrate.ts DDL: score, no matched_weight/ratio).
     `ALTER TABLE assessment_results ADD COLUMN score REAL`,
+    // T5 — video segment product fields (JSON string arrays). Existing DBs
+    // predate the columns; the CREATE TABLE above covers fresh files.
+    `ALTER TABLE video_segments ADD COLUMN mentioned_products TEXT`,
+    `ALTER TABLE video_segments ADD COLUMN product_references TEXT`,
   ];
   for (const stmt of alterStatements) {
     try {

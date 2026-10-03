@@ -241,6 +241,13 @@ export const videoSegments = sqliteTable(
     title: text("title").notNull(),
     summary: text("summary").notNull().default(""),
     clipYoutubeId: text("clip_youtube_id"), // owner-channel clip, null until uploaded
+    // T5: products the educator MENTIONS inside the segment. Both columns
+    // store JSON string arrays, same convention as guidance.product_references:
+    // `mentionedProducts` keeps the RAW mentions (catalog-anchored later),
+    // `productReferences` holds only VALID catalog refs. Nullable: pre-T5 rows
+    // and segments without product mentions stay NULL.
+    mentionedProducts: text("mentioned_products"), // JSON array of raw mentions
+    productReferences: text("product_references"), // JSON array of valid catalog refs
     enabled: integer("enabled").notNull().default(0), // 0 | 1 — approved for chat injection
     createdAt: text("created_at")
       .notNull()

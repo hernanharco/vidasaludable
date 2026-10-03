@@ -6,6 +6,7 @@ import { createDatabase } from "../src/db/client.js";
 import type { Db } from "../src/db/client.js";
 import { migrate } from "../src/db/migrate.js";
 import { assessmentSymptoms } from "../src/db/assessmentSchema.js";
+import { products } from "../src/db/schema.js";
 import { createVideoService } from "../src/services/videoService.js";
 import type { GeminiClient } from "../src/agent/gemini.js";
 import seedData from "../src/seed/assessment_seed_data.json";
@@ -160,12 +161,12 @@ describe("parseGeminiSegments", () => {
     const fenced =
       '```json\n{"segments":[{"start_s":0,"end_s":60,"title":"Intro","summary":"s1","condition":"Acné"}]}\n```';
     expect(parseGeminiSegments(fenced, 120)).toEqual([
-      { startS: 0, endS: 60, title: "Intro", summary: "s1", condition: "Acné" },
+      { startS: 0, endS: 60, title: "Intro", summary: "s1", condition: "Acné", products: [] },
     ]);
     const plainFence =
       '```\n{"segments":[{"start_s":10,"end_s":30,"title":"T","summary":"","condition":""}]}\n```';
     expect(parseGeminiSegments(plainFence, 120)).toEqual([
-      { startS: 10, endS: 30, title: "T", summary: "", condition: "" },
+      { startS: 10, endS: 30, title: "T", summary: "", condition: "", products: [] },
     ]);
   });
 
@@ -186,7 +187,7 @@ describe("parseGeminiSegments", () => {
       '{"segments":[{"start_s":100,"end_s":500,"title":"T","summary":"","condition":""}]}',
       120,
     );
-    expect(segs).toEqual([{ startS: 100, endS: 120, title: "T", summary: "", condition: "" }]);
+    expect(segs).toEqual([{ startS: 100, endS: 120, title: "T", summary: "", condition: "", products: [] }]);
   });
 
   it("descarta límites invertidos o inválidos", () => {
@@ -231,7 +232,76 @@ describe("parseGeminiSegments", () => {
       '{"segments":[{"start_s":10.9,"end_s":30.7,"title":"T","summary":null,"condition":42}]}',
       120,
     );
-    expect(segs).toEqual([{ startS: 10, endS: 30, title: "T", summary: "", condition: "" }]);
+    expect(segs).toEqual([{ startS: 10, endS: 30, title: "T", summary: "", condition: "", products: [] }]);
+  });
+
+  it("extrae products por segmento: mention verbatim + ref solo si está en el catálogo inyectado", () => {
+    const raw = JSON.stringify({
+      segments: [
+        {
+          start_s: 0,
+          end_s: 60,
+          title: "Espalda",
+          summary: "s",
+          condition: "Dolor de espalda",
+          products: [
+            { mention: "  Cal Mag D Plus  ", ref: "110606" }, // ref válido → se conserva, mention recortada
+            { mention: "Double X", ref: "999999" }, // ref desconocido → se cae, la mention se queda
+            { mention: "   ", ref: "121576" }, // mention vacía → entrada descartada
+            { mention: "Proteína Vegetal", ref: "" }, // ref vacío → solo la mention
+            "junk", // no-objeto → descartado
+          ],
+        },
+      ],
+    });
+    const segs = parseGeminiSegments(raw, 120, ["110606", "121576"]);
+    expect(segs).toEqual([
+      {
+        startS: 0,
+        endS: 60,
+        title: "Espalda",
+        summary: "s",
+        condition: "Dolor de espalda",
+        products: [
+          { mention: "Cal Mag D Plus", ref: "110606" },
+          { mention: "Double X", ref: "" },
+          { mention: "Proteína Vegetal", ref: "" },
+        ],
+      },
+    ]);
+  });
+
+  it("sin catálogo inyectado → ningún ref sobrevive (defensa anti-invención)", () => {
+    const segs = parseGeminiSegments(
+      '{"segments":[{"start_s":0,"end_s":10,"title":"T","summary":"","condition":"","products":[{"mention":"Cal Mag D Plus","ref":"110606"}]}]}',
+      120,
+    );
+    expect(segs).toEqual([
+      {
+        startS: 0,
+        endS: 10,
+        title: "T",
+        summary: "",
+        condition: "",
+        products: [{ mention: "Cal Mag D Plus", ref: "" }],
+      },
+    ]);
+  });
+
+  it("products no-array o campos no-string → se normaliza sin romper", () => {
+    const noArray = parseGeminiSegments(
+      '{"segments":[{"start_s":0,"end_s":10,"title":"T","summary":"","condition":"","products":"nope"}]}',
+      120,
+      ["110606"],
+    );
+    expect(noArray[0]!.products).toEqual([]);
+    // Mention no-string → entrada descartada (aunque el ref coercionado exista en catálogo).
+    const badMention = parseGeminiSegments(
+      '{"segments":[{"start_s":0,"end_s":10,"title":"T","summary":"","condition":"","products":[{"mention":42,"ref":110606}]}]}',
+      120,
+      ["110606"],
+    );
+    expect(badMention[0]!.products).toEqual([]);
   });
 });
 
@@ -256,14 +326,29 @@ describe("buildFfmpegArgs", () => {
 });
 
 describe("buildAnalyzeSystemPrompt", () => {
-  it("inyecta el vocabulario y exige JSON estricto en español, sin lenguaje diagnóstico", () => {
-    const prompt = buildAnalyzeSystemPrompt(["Acné", "Ansiedad o tensión"]);
+  it("inyecta el vocabulario, el catálogo (nombre + ref) y exige products por segmento", () => {
+    const prompt = buildAnalyzeSystemPrompt(
+      ["Acné", "Ansiedad o tensión"],
+      [
+        { name: "Nutrilite™ Cal Mag D Plus", reference: "110606" },
+        { name: "Nutrilite™ Double X™ Multivitaminas / Multiminerales / Fitonutrientes", reference: "121576" },
+      ],
+    );
     expect(prompt).toContain("Acné");
     expect(prompt).toContain("Ansiedad o tensión");
     expect(prompt).toContain('{"segments":[');
     expect(prompt).toContain("start_s");
     expect(prompt.toLowerCase()).toContain("sin cercas");
     expect(prompt.toLowerCase()).toContain("diagnóstico");
+    // T5: catálogo inyectado (nombre + referencia por producto)…
+    expect(prompt).toContain("110606");
+    expect(prompt).toContain("Cal Mag D Plus");
+    expect(prompt).toContain("121576");
+    expect(prompt).toContain("Double X");
+    // …y el campo products del esquema JSON estricto.
+    expect(prompt).toContain('"products"');
+    expect(prompt).toContain('"mention"');
+    expect(prompt).toContain('"ref"');
   });
 });
 
@@ -335,6 +420,80 @@ describe("analyzeVideo (analyzer wiring)", () => {
     const { segments } = await analyzeVideo({ url: YOUTUBE_URL, db, gemini, ytdlp: fakeYtdlp(), vocabulary });
     expect(segments[0]!.condition).toBeNull();
     expect(segments[0]!.symptomId).toBeNull();
+  });
+
+  it("inyecta el catálogo en el prompt de analyze y persiste ambos campos de productos", async () => {
+    const db = await seededDb();
+    // Catálogo real en la MISMA base que abre el CLI (products table).
+    db.insert(products)
+      .values([
+        {
+          reference: "110606",
+          name: "Nutrilite™ Cal Mag D Plus",
+          category: "Nutrición",
+          size: "90 uds",
+          price: 29.71,
+          benefits: "b",
+          dosage: "d",
+          ingredients: "i",
+          disclaimer: "dis",
+        },
+        {
+          reference: "121576",
+          name: "Nutrilite™ Double X™",
+          category: "Nutrición",
+          size: "180 uds",
+          price: 86.87,
+          benefits: "b",
+          dosage: "d",
+          ingredients: "i",
+          disclaimer: "dis",
+        },
+      ])
+      .run();
+
+    const capture: { systemPrompt?: string; userMessage?: string } = {};
+    const gemini = fakeGemini(
+      JSON.stringify({
+        segments: [
+          {
+            start_s: 0,
+            end_s: 30,
+            title: "Espalda",
+            summary: "Hablamos de la espalda.",
+            condition: "Dolor de espalda",
+            products: [
+              { mention: "Cal Mag D Plus", ref: "110606" },
+              { mention: "Double X", ref: "121576" },
+              { mention: "Proteína Fantasma", ref: "999999" },
+            ],
+          },
+        ],
+      }),
+      capture,
+    );
+    const { segments } = await analyzeVideo({
+      url: YOUTUBE_URL,
+      db,
+      gemini,
+      ytdlp: fakeYtdlp(),
+      vocabulary: seedSymptoms,
+    });
+
+    // El catálogo (nombre + referencia) se inyecta en el system prompt.
+    expect(capture.systemPrompt).toContain("110606");
+    expect(capture.systemPrompt).toContain("Cal Mag D Plus");
+    expect(capture.systemPrompt).toContain("121576");
+
+    // Persistencia: menciones crudas (incluida la no enlazable) + refs válidas.
+    const svc = createVideoService(db);
+    const row = svc.listSegments().find((s) => s.id === segments[0]!.id)!;
+    expect(JSON.parse(row.mentionedProducts!)).toEqual([
+      "Cal Mag D Plus",
+      "Double X",
+      "Proteína Fantasma",
+    ]);
+    expect(JSON.parse(row.productReferences!)).toEqual(["110606", "121576"]);
   });
 
   it("respuesta de Gemini sin segmentos utilizables → error claro", async () => {
@@ -669,6 +828,21 @@ describe("runCli", () => {
 
   it("analyze end-to-end con fakes → 0, filas persistidas y salida en español", async () => {
     const db = await seededDb();
+    db.insert(products)
+      .values([
+        {
+          reference: "110606",
+          name: "Nutrilite™ Cal Mag D Plus",
+          category: "Nutrición",
+          size: "90 uds",
+          price: 29.71,
+          benefits: "b",
+          dosage: "d",
+          ingredients: "i",
+          disclaimer: "dis",
+        },
+      ])
+      .run();
     const out: string[] = [];
     const gemini = fakeGemini(
       JSON.stringify({
@@ -679,6 +853,7 @@ describe("runCli", () => {
             title: "Ansiedad o tensión",
             summary: "Hablamos de la ansiedad diaria.",
             condition: "Ansiedad o tensión",
+            products: [{ mention: "Cal Mag D Plus", ref: "110606" }],
           },
         ],
       }),
@@ -698,7 +873,12 @@ describe("runCli", () => {
     expect(segs).toHaveLength(1);
     expect(segs[0]!.symptomId).toBe(ANXIETY);
     expect(segs[0]!.condition).toBe("Ansiedad o tensión");
-    expect(out.join("\n")).toContain("segmento(s) creados");
+    // T5: productos persistidos y visibles en la salida del CLI.
+    expect(JSON.parse(segs[0]!.mentionedProducts!)).toEqual(["Cal Mag D Plus"]);
+    expect(JSON.parse(segs[0]!.productReferences!)).toEqual(["110606"]);
+    const text = out.join("\n");
+    expect(text).toContain("segmento(s) creados");
+    expect(text).toContain("productos: Cal Mag D Plus · refs: 110606");
   });
 
   it("cut end-to-end con fakes → 0, imprime rutas + recordatorio de permiso y status=cut", async () => {

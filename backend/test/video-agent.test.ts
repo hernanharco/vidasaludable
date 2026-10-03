@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import {
   buildSystemPrompt,
   extractVideoRefs,
+  pairSegmentProducts,
   videoSegmentsBlock,
 } from "../src/agent/prompt.js";
 import { createDatabase } from "../src/db/client.js";
@@ -77,6 +78,96 @@ describe("videoSegmentsBlock", () => {
 
   it("returns \"\" for empty items (no stale header, same as guidanceBlock)", () => {
     expect(videoSegmentsBlock({ items: [] })).toBe("");
+  });
+
+  it("añade la cláusula productos después del rango horario cuando hay productos", () => {
+    const block = videoSegmentsBlock({
+      items: [
+        {
+          id: 12,
+          title: "Ejercicios para la espalda",
+          condition: "Dolor de espalda",
+          summary: "Movilidad suave.",
+          startS: 5,
+          endS: 109,
+          products: [
+            { mention: "Cal Mag D Plus", ref: "110606" },
+            { mention: "Double X", ref: "121576" },
+          ],
+        },
+      ],
+    });
+    expect(block).toContain(
+      "- [VIDEO:12] Ejercicios para la espalda — tema: Dolor de espalda (0:05–1:49) — productos: Cal Mag D Plus [110606], Double X [121576] — Movilidad suave.",
+    );
+  });
+
+  it("omite la cláusula productos cuando la lista está vacía o el item no la trae", () => {
+    const withEmpty = videoSegmentsBlock({
+      items: [
+        { id: 1, title: "T", condition: null, summary: "s", startS: 0, endS: 30, products: [] },
+      ],
+    });
+    expect(withEmpty).toContain("- [VIDEO:1] T — tema: (sin tema asignado) (0:00–0:30) — s");
+    expect(withEmpty).not.toContain("productos:");
+
+    const withoutField = videoSegmentsBlock({
+      items: [{ id: 2, title: "T2", condition: null, summary: "s", startS: 0, endS: 30 }],
+    });
+    expect(withoutField).not.toContain("productos:");
+  });
+
+  it("renderiza la mención sin corchetes cuando no hay ref enlazado", () => {
+    const block = videoSegmentsBlock({
+      items: [
+        {
+          id: 5,
+          title: "T",
+          condition: null,
+          summary: "s",
+          startS: 0,
+          endS: 30,
+          products: [{ mention: "Vitamina C", ref: "" }],
+        },
+      ],
+    });
+    expect(block).toContain("— productos: Vitamina C — s");
+  });
+});
+
+describe("pairSegmentProducts", () => {
+  const catalog = [
+    { name: "Nutrilite™ Cal Mag D Plus", reference: "110606" },
+    { name: "Nutrilite™ Double X™ Multivitaminas / Multiminerales / Fitonutrientes", reference: "121576" },
+    { name: "Nutrilite™ Proteína Vegetal", reference: "110415" },
+  ];
+
+  it("vincula cada mención con su ref de catálogo (match por nombre, insensible a marca/mayúsculas)", () => {
+    expect(
+      pairSegmentProducts(["Cal Mag D Plus", "Double X"], ["110606", "121576"], catalog),
+    ).toEqual([
+      { mention: "Cal Mag D Plus", ref: "110606" },
+      { mention: "Double X", ref: "121576" },
+    ]);
+  });
+
+  it("mención sin ref enlazado se queda cruda; ref sin mención se renderiza con el nombre del catálogo", () => {
+    // "Vitamina C" no está en el catálogo → mention cruda; "Proteína Vegetal"
+    // sí coincide con un producto cuyo ref está enlazado → pareada.
+    expect(
+      pairSegmentProducts(["Vitamina C", "Proteína Vegetal"], ["110415"], catalog),
+    ).toEqual([
+      { mention: "Vitamina C", ref: "" },
+      { mention: "Proteína Vegetal", ref: "110415" },
+    ]);
+    // Ref administrativa sin mención asociada → nombre del catálogo + ref.
+    expect(pairSegmentProducts([], ["110606"], catalog)).toEqual([
+      { mention: "Nutrilite™ Cal Mag D Plus", ref: "110606" },
+    ]);
+  });
+
+  it("arrays vacíos → [] (la cláusula productos se omite)", () => {
+    expect(pairSegmentProducts([], [], catalog)).toEqual([]);
   });
 });
 
@@ -257,5 +348,33 @@ describe("ask route: video block injection + video_refs filtering", () => {
 
     const data = await ask(customerId, "hola");
     expect(data.video_refs).toEqual([]);
+  });
+
+  it("inyecta la cláusula productos (mención [ref]) cuando el segmento tiene productos", async () => {
+    // Segment with product mentions linked to the seeded catalog
+    // (seedProducts: "Nutrilite™ Cal Mag D Plus" 110606, Double X 121576).
+    const productSegment = createVideoService(db).createSegment({
+      videoId: enabledSegment.videoId,
+      condition: "Dolor de espalda",
+      startS: 0,
+      endS: 120,
+      title: "Nutrición para la espalda",
+      summary: "El educador menciona productos.",
+      enabled: 1,
+      mentionedProducts: ["Cal Mag D Plus", "Double X"],
+      productReferences: ["110606", "121576"],
+    });
+    cannedReply =
+      `Mira este video educativo [VIDEO:${productSegment.id}] y consulta a tu médico ante dudas.`;
+    const customerId = await register("video-products@x.com");
+
+    await ask(customerId, "¿qué productos para la espalda?");
+
+    const sent = capturedBodies[capturedBodies.length - 1];
+    const sysPrompt = (sent.systemInstruction as { parts: { text: string }[] }).parts[0].text;
+    // T5: la línea lleva la cláusula productos DESPUÉS del rango horario.
+    expect(sysPrompt).toContain(
+      `[VIDEO:${productSegment.id}] Nutrición para la espalda — tema: Dolor de espalda (0:00–2:00) — productos: Cal Mag D Plus [110606], Double X [121576] — El educador menciona productos.`,
+    );
   });
 });
