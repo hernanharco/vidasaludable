@@ -53,7 +53,17 @@ URL resolution: `clipYoutubeId` present → `watch?v=<clip>`; otherwise
 - T3: DB tables (schema + DDL) — `2006897a`
 - T4: videoService + symptomMatcher + tests — `e5a79cf8`
 - T5: pipeline CLI (analyze + cut) — `a953bfa7`
+- T6: agent [VIDEO] citations + injection — `880269eb`
 - _(append hashes as tasks close)_
+
+## Native review (T6 candidate)
+
+- Lineage `review-d34da6dad66fba33`, tier medium, lens `review-reliability`:
+  **approved** (first reviewer payload refused at admission — missing proof
+  reference; slot relaunched per protocol, second payload admitted). Authority
+  burned. Target `sha256:2465617081426ff8cd750ba8224ffa86516317021b6a56de27cf21c2ddea2f25`.
+- Advisory (2, informational): `R3-empty-condition-boundary` video-agent.test.ts:60-61 ·
+  `R3-weak-hard-limit-assertion` video-agent.test.ts:114.
 
 ## Native review (T5 candidate)
 
@@ -96,6 +106,8 @@ URL resolution: `clipYoutubeId` present → `watch?v=<clip>`; otherwise
 - T5: `vitest video-pipeline + video-service` 58/58 PASS (RED first) ·
   `tsx src/tools/videoPipeline.ts --help` exit 0 · `tsc` PASS · CLI misuse smokes
   exit 2/1/127 as specified.
+- T6: `vitest video-agent + guard + assistant.integration + catalog` 32/32 PASS (RED
+  first, 13 new) · `tsc` PASS.
 - `gentle-ai-verify` subagent unusable this session (2 internal assistant errors);
   verification rerun inline as declared fallback.
 
@@ -105,7 +117,8 @@ URL resolution: `clipYoutubeId` present → `watch?v=<clip>`; otherwise
 - T3 done: DB tables — `2006897a` (reviewed + approved)
 - T4 done: service/matcher/tests — `e5a79cf8` (reviewed + approved)
 - T5 done: pipeline CLI — `a953bfa7` (reviewed + approved, 4 lenses)
-- T6 next: agent `[VIDEO]` integration (delegated next).
+- T6 done: agent [VIDEO] integration — `880269eb` (reviewed + approved)
+- T7 next: GET /assistant/videos + admin CRUD/approve routes (delegated next).
 
 
 ## Decisions
