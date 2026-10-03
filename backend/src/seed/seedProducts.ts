@@ -2,7 +2,12 @@ import { eq } from "drizzle-orm";
 import { createDatabase } from "../db/client.js";
 import { products } from "../db/schema.js";
 import { migrate } from "../db/migrate.js";
-import { readyProducts, flaggedIncomplete } from "./curatedProducts.js";
+import {
+  CURATED_PRODUCTS,
+  readyProducts,
+  flaggedIncomplete,
+} from "./curatedProducts.js";
+import { PRICE_LIST_PRODUCTS } from "./priceListProducts.js";
 
 export interface SeedProductsResult {
   upserted: number;
@@ -12,22 +17,54 @@ export interface SeedProductsResult {
 }
 
 /**
+ * Price-list rows are secondary to the curated catalog: on a reference
+ * collision the CURATED entry always wins and the price-list row is dropped —
+ * never merged, never double-flagged.
+ */
+export function preferCuratedByReference<T extends { reference: string }>(
+  curated: readonly T[],
+  pricelist: readonly T[],
+): { kept: T[]; dropped: string[] } {
+  const curatedRefs = new Set(curated.map((e) => e.reference));
+  const kept: T[] = [];
+  const dropped: string[] = [];
+  for (const row of pricelist) {
+    if (curatedRefs.has(row.reference)) dropped.push(row.reference);
+    else kept.push(row);
+  }
+  return { kept, dropped };
+}
+
+/**
  * Idempotently upserts the curated catalog into the products table.
  *
  * Keyed on `reference` (pk): existing rows are updated, new rows inserted —
  * re-running never duplicates (product-catalog spec, "Re-seed idempotency").
  * Incomplete curated rows (missing required fields) are FLAGGED and NOT
  * inserted (spec: "records without required fields are rejected or flagged").
+ * Price-list rows (curate-pricelist.ts, all `complete: false`) follow the
+ * same incomplete path: FLAGGED, not inserted; curated entries win on ref
+ * collision via preferCuratedByReference.
  */
 export async function seedProducts(db: ReturnType<typeof createDatabase>): Promise<SeedProductsResult> {
   await migrate(db);
 
   let inserted = 0;
   let updated = 0;
-  const flagged = flaggedIncomplete().map((p) => ({
-    reference: p.reference,
-    reason: "incomplete curated fields (benefits/dosage/ingredients/disclaimer)",
-  }));
+  const { kept: pricelistRows } = preferCuratedByReference(
+    CURATED_PRODUCTS,
+    PRICE_LIST_PRODUCTS,
+  );
+  const flagged = [
+    ...flaggedIncomplete().map((p) => ({
+      reference: p.reference,
+      reason: "incomplete curated fields (benefits/dosage/ingredients/disclaimer)",
+    })),
+    ...pricelistRows.map((p) => ({
+      reference: p.reference,
+      reason: `price-list row (${p.source ?? "pricelist"}) — incomplete fields (benefits/dosage/ingredients/disclaimer); flagged, not inserted`,
+    })),
+  ];
 
   for (const product of readyProducts()) {
     const existing = db

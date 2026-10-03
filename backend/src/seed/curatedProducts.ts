@@ -17,6 +17,11 @@ export interface CuratedProduct extends Partial<NewProduct> {
   complete: boolean;
   /** Nutrient IDs this product helps supplement (maps to assessment_nutrients.id). */
   nutrientIds: string[];
+  /**
+   * Provenance marker for machine-generated rows (additive, optional).
+   * e.g. "pricelist-2026-04" on rows extracted by curate-pricelist.ts.
+   */
+  source?: string;
 }
 
 export const CURATED_PRODUCTS: CuratedProduct[] = [
