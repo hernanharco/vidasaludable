@@ -202,13 +202,33 @@ URL resolution: `clipYoutubeId` present → `watch?v=<clip>`; otherwise
   (all 5 code work-units individually reviewed + approved; authorities burned).
   Branch `feat/video-segments` holds 16 commits; push/PR is the user's decision.
   FEATURE COMPLETE.
+- T13 done: pre-existing test rot resolved — commits `f9ff0f9f` + `dd7967a6`,
+  reviewed with one CRITICAL correction cycle → APPROVED. Repo suites: backend
+  159/159, frontend 31/31, zero known failures.
 
-## Follow-ups OUTSIDE this feature (pre-existing, need own authorization)
-- frontend: AssessmentWidget.test.tsx — 7 heading/flow failures ("Evaluación de
-  Deficiencias" renamed, access-code flow).
-- backend: assessment.integration 2/9 (assessment_responses DDL PK vs Drizzle id).
+## Follow-ups / Task 13 — PRE-EXISTENT TEST ROT: RESOLVED
+
+- Backend root cause: `assessmentSchema.ts` declared `id`/phantom columns absent
+  from the migrate.ts DDL (composite PK tables) → INSERTs with `id` failed.
+  Fixed by aligning schema to DDL + `score` column handling in the service.
+  Commits: `f9ff0f9f` (schema/service/migrate).
+- Legacy dev DB repair (additive): ADD `score` → backfill from `ratio` → DROP
+  legacy NOT NULL `matched_weight`/`max_weight`/`ratio` (the drop block is the
+  corrected CRITICAL `R3-LegacyColumnGap`); smoke insert on old-shape
+  dev.sqlite verified, 279 rows preserved.
+- Frontend root cause: access-code gate (`5afb98f3`) — tests never traversed it.
+  Fixed test-only (mock `/api/referrer/validate` + `enterAccessCode`).
+  Commit: `dd7967a6`.
+- Native review: lineage `review-0eda0bcf68fb66b3`, medium, reliability —
+  **correction_required** (CRITICAL `R3-LegacyColumnGap`, deterministic,
+  introduced) → 16-line correction plan admitted → targeted validator →
+  **APPROVED**, authority burned. Advisory after approval (2): `R3-MissingBackendTests`
+  assessmentService.ts:175 · `R3-ReadPathReconstruction` assessmentService.ts:216.
+- Verification after fix: backend **159/159** (×2 consecutive; one transient
+  5s timeout flake in reconsent.observed once and not reproducible) · frontend
+  **31/31** · tsc + builds clean · migrate idempotent.
 - Advisory backlog from reviews R3-001..006 (T3-4), 17 findings (T5), 1 TOCTOU (T7),
-  5 findings (T8) — see sections above.
+  5 findings (T8), 3 (T9) — see sections above.
 
 
 ## Decisions
