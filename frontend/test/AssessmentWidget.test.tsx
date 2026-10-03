@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { AssessmentWidget } from "../src/app/components/AssessmentWidget";
+import { AssessmentWidget } from "../src/app/components/assessment/AssessmentWidget";
 
 // Mock fetch
 const mockFetch = vi.fn();
@@ -59,20 +59,20 @@ describe("AssessmentWidget", () => {
 
   it("renders the floating button", async () => {
     render(<AssessmentWidget />);
-    expect(screen.getByText("Prevenión")).toBeInTheDocument();
+    expect(screen.getByText("Prevenición")).toBeInTheDocument();
   });
 
   it("opens the modal when clicked", async () => {
     const user = userEvent.setup();
     render(<AssessmentWidget />);
-    await user.click(screen.getByText("Prevenión"));
+    await user.click(screen.getByText("Prevenición"));
     expect(screen.getByText("Evaluación de Prevención")).toBeInTheDocument();
   });
 
   it("shows patient form after loading", async () => {
     const user = userEvent.setup();
     render(<AssessmentWidget />);
-    await user.click(screen.getByText("Prevenión"));
+    await user.click(screen.getByText("Prevenición"));
     await waitFor(() => {
       expect(screen.getByText("Evaluación de Deficiencias")).toBeInTheDocument();
     });
@@ -82,7 +82,7 @@ describe("AssessmentWidget", () => {
   it("disables start button when form is incomplete", async () => {
     const user = userEvent.setup();
     render(<AssessmentWidget />);
-    await user.click(screen.getByText("Prevenión"));
+    await user.click(screen.getByText("Prevenición"));
     await waitFor(() => {
       expect(screen.getByText("Evaluación de Deficiencias")).toBeInTheDocument();
     });
@@ -92,7 +92,7 @@ describe("AssessmentWidget", () => {
   it("enables start button when form is complete", async () => {
     const user = userEvent.setup();
     render(<AssessmentWidget />);
-    await user.click(screen.getByText("Prevenión"));
+    await user.click(screen.getByText("Prevenición"));
     await waitFor(() => {
       expect(screen.getByText("Evaluación de Deficiencias")).toBeInTheDocument();
     });
@@ -105,7 +105,7 @@ describe("AssessmentWidget", () => {
   it("shows symptoms after clicking start", async () => {
     const user = userEvent.setup();
     render(<AssessmentWidget />);
-    await user.click(screen.getByText("Prevenión"));
+    await user.click(screen.getByText("Prevenición"));
     await waitFor(() => {
       expect(screen.getByText("Evaluación de Deficiencias")).toBeInTheDocument();
     });
@@ -122,7 +122,7 @@ describe("AssessmentWidget", () => {
   it("navigates between steps", async () => {
     const user = userEvent.setup();
     render(<AssessmentWidget />);
-    await user.click(screen.getByText("Prevenión"));
+    await user.click(screen.getByText("Prevenición"));
     await waitFor(() => {
       expect(screen.getByText("Evaluación de Deficiencias")).toBeInTheDocument();
     });
@@ -142,7 +142,7 @@ describe("AssessmentWidget", () => {
   it("shows results after calculation", async () => {
     const user = userEvent.setup();
     render(<AssessmentWidget />);
-    await user.click(screen.getByText("Prevenión"));
+    await user.click(screen.getByText("Prevenición"));
     await waitFor(() => {
       expect(screen.getByText("Evaluación de Deficiencias")).toBeInTheDocument();
     });
@@ -163,7 +163,7 @@ describe("AssessmentWidget", () => {
   it("shows summary cards", async () => {
     const user = userEvent.setup();
     render(<AssessmentWidget />);
-    await user.click(screen.getByText("Prevenión"));
+    await user.click(screen.getByText("Prevenición"));
     await waitFor(() => {
       expect(screen.getByText("Evaluación de Deficiencias")).toBeInTheDocument();
     });
