@@ -52,7 +52,26 @@ URL resolution: `clipYoutubeId` present → `watch?v=<clip>`; otherwise
 - T2: `docs/video-permissions.md` — `5cd16bbd`
 - T3: DB tables (schema + DDL) — `2006897a`
 - T4: videoService + symptomMatcher + tests — `e5a79cf8`
+- T5: pipeline CLI (analyze + cut) — `a953bfa7`
 - _(append hashes as tasks close)_
+
+## Native review (T5 candidate)
+
+- Lineage `review-fc50eac2d5cdd80c`, tier **high** (`shell_process` in media.ts),
+  4 lenses (risk → resilience → readability → reliability): **approved** on the
+  first group capture, no corrections; authority burned. Target
+  `sha256:ef65bcea05aee8c23e8ecdc53eb4fe0b1caba9312336fd23034461a0de096258`.
+- Advisory findings (17, informational — later work only):
+  - WARNINGs: `R1-001` videoPipeline.ts:82-96 · `R2-cli-branch-duplication` :341-374 ·
+    `R2-db-path-convention` :349-350 · `R2-direct-exec-guard` :429 ·
+    `R2-list-then-filter` :236-243 · `R2-signal-code-127` media.ts:39-43 ·
+    `R2-update-readback` :262-263 · `R3-non-numeric-error-code-mapping` media.ts:42 ·
+    `R3-rerun-path-untested` :166-178 · `R4-001` media.ts:37 · `R4-002` :166-170
+  - SUGGESTIONs: `R1-002` parsers.ts:42-45 · `R2-exit-code-classification` :337-340 ·
+    `R2-test-magic-ids` test:30-31 · `R2-unused-readdir` test:2 ·
+    `R3-console-warn-in-pure-parser` parsers.ts:99 · `R3-import-meta-url-guard` :429
+- Known operational caveat: ffmpeg args have no `-y` (spec-fixed array) — re-cut
+  requires removing `backend/data/clips/<videoId>/` first (documented in report).
 
 ## Native review (T3–T4 candidate)
 
@@ -68,15 +87,15 @@ URL resolution: `clipYoutubeId` present → `watch?v=<clip>`; otherwise
   - R3-005 SUGGESTION `backend/test/video-service.test.ts:194-216`
   - R3-006 SUGGESTION `backend/src/services/symptomMatcher.ts:39`
 
-## Verification log (T3–T4)
+## Verification log (T3–T5)
 
-- `vitest video-service + guidance`: 31/31 PASS (RED observed first).
-- `tsx src/db/migrate.ts` twice: PASS (idempotent, tables/columns/indexes/FKs PRAGMA-checked).
-- `tsc -p tsconfig.json` (backend build): PASS.
-- `vitest reconsent.integration`: PASS. `vitest assessment.integration`: 2/9 FAIL —
-  **pre-existing, unrelated** (`assessment_responses` DDL has composite PK without
-  `id`, Drizzle declares autoincrement `id`; both lines predate this feature —
-  follow-up task outside this feature).
+- T3–T4: `vitest video-service + guidance` 31/31 · migrate ×2 idempotent · `tsc` PASS ·
+  `reconsent.integration` PASS. `assessment.integration` 2/9 FAIL — **pre-existing,
+  unrelated** (assessment_responses DDL composite PK vs Drizzle autoincrement id;
+  follow-up outside this feature).
+- T5: `vitest video-pipeline + video-service` 58/58 PASS (RED first) ·
+  `tsx src/tools/videoPipeline.ts --help` exit 0 · `tsc` PASS · CLI misuse smokes
+  exit 2/1/127 as specified.
 - `gentle-ai-verify` subagent unusable this session (2 internal assistant errors);
   verification rerun inline as declared fallback.
 
@@ -85,7 +104,8 @@ URL resolution: `clipYoutubeId` present → `watch?v=<clip>`; otherwise
 - T2 done: permission checklist — `5cd16bbd`
 - T3 done: DB tables — `2006897a` (reviewed + approved)
 - T4 done: service/matcher/tests — `e5a79cf8` (reviewed + approved)
-- T5 next: pipeline CLI (delegated next).
+- T5 done: pipeline CLI — `a953bfa7` (reviewed + approved, 4 lenses)
+- T6 next: agent `[VIDEO]` integration (delegated next).
 
 
 ## Decisions
