@@ -5,8 +5,9 @@ import { createConversationService } from "../services/conversationService.js";
 import { createRecommendationService } from "../services/recommendationService.js";
 import { createCatalogService } from "../services/catalogService.js";
 import { createGuidanceService } from "../services/guidanceService.js";
+import { createVideoService } from "../services/videoService.js";
 import { createGeminiClient } from "../agent/gemini.js";
-import { buildSystemPrompt, buildHistoryMessages, extractProductRefs } from "../agent/prompt.js";
+import { buildSystemPrompt, buildHistoryMessages, extractProductRefs, extractVideoRefs } from "../agent/prompt.js";
 import { guardReply } from "../agent/guard.js";
 import { getCurrentConsent } from "../config/consent.js";
 import type { Product } from "../db/schema.js";
@@ -29,6 +30,7 @@ export function createAssistantRouter(db: Db): Hono {
   const recommendations = createRecommendationService(db);
   const catalog = createCatalogService(db);
   const guidance = createGuidanceService(db);
+  const videos = createVideoService(db);
   const gemini = createGeminiClient();
 
   app.get("/consent", (c) => {
@@ -100,6 +102,10 @@ export function createAssistantRouter(db: Db): Hono {
     conversations.saveMessage(conversationId, "user", message);
     const history = conversations.loadHistory(conversationId);
     const guidanceItems = guidance.listEnabled();
+    // Enabled (admin-approved) video segments: injected as context AND used
+    // to validate the `[VIDEO:id]` markers the agent cites (defensive filter,
+    // same pattern as product refs + catalog.lookup).
+    const enabledSegments = videos.listEnabledSegments();
     const systemPrompt = buildSystemPrompt(
       { products: catalogProducts },
       { refs: purchaseRefs },
@@ -108,6 +114,14 @@ export function createAssistantRouter(db: Db): Hono {
           title: g.title,
           content: g.content,
           productReferences: parseGuidanceRefs(g.productReferences),
+        })),
+      },
+      {
+        items: enabledSegments.map((s) => ({
+          id: s.id,
+          title: s.title,
+          condition: s.condition,
+          summary: s.summary,
         })),
       },
     );
@@ -124,6 +138,11 @@ export function createAssistantRouter(db: Db): Hono {
 
     // Deterministic legal guard.
     const guarded = guardReply(rawReply);
+
+    // Video refs: only ids of ENABLED segments survive; unknown/invented ids
+    // are dropped from `video_refs` (the reply text keeps its markers).
+    const enabledSegmentIds = new Set(enabledSegments.map((s) => s.id));
+    const videoRefs = extractVideoRefs(guarded.reply).filter((id) => enabledSegmentIds.has(id));
 
     // Append-only audit log entry.
     const refs = extractProductRefs(guarded.reply).filter((r) => catalog.lookup(r).found);
@@ -144,6 +163,7 @@ export function createAssistantRouter(db: Db): Hono {
       reply: guarded.reply,
       guard_blocked: guarded.guardBlocked,
       recommended_product_refs: refs,
+      video_refs: videoRefs,
     });
   });
 

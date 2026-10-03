@@ -24,6 +24,11 @@ export interface GuidanceContext {
   items: Array<{ title: string; content: string; productReferences: string[] }>;
 }
 
+export interface VideoSegmentsContext {
+  /** Enabled, admin-approved video segments the agent may cite in chat. */
+  items: Array<{ id: number; title: string; condition: string | null; summary: string }>;
+}
+
 export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
@@ -47,7 +52,13 @@ const HARD_LIMIT = `ERES UN ASISTENTE PREVENTIVO DE NUTRILITE™. LÍMITE DURO E
    personalizar sugerencias preventivas, pero nunca lo cites de forma alarmante.
 6. IDIOMA. Responde SIEMPRE en español, de forma clara y empática.
 7. FORMATO. Cita las referencias de los productos que recomiendas entre corchetes,
-   p. ej. [100305].`;
+   p. ej. [100305].
+8. VIDEOS. Cita los videos educativos con su marcador exacto [VIDEO:id],
+   usando SOLO los ids de la lista de videos inyectada a continuación: NUNCA
+   inventes ids de video. Preséntalos SIEMPRE como contenido educativo sobre un
+   tema, NUNCA como diagnóstico, tratamiento ni prescripción de la condición del
+   usuario. Si ningún video coincide con el tema del usuario, simplemente no
+   cites ninguno.`;
 
 function catalogBlock(ctx: CatalogContext): string {
   if (ctx.products.length === 0) {
@@ -82,15 +93,32 @@ function guidanceBlock(ctx: GuidanceContext): string {
 }
 
 /**
+ * Educational video segments block. Omitted entirely when no segment is
+ * enabled — an empty knowledge base must never look like an empty context
+ * (same convention as guidanceBlock: no stale header).
+ */
+export function videoSegmentsBlock(ctx: VideoSegmentsContext): string {
+  if (ctx.items.length === 0) {
+    return "";
+  }
+  const lines = ctx.items.map(
+    (v) =>
+      `- [VIDEO:${v.id}] ${v.title} — tema: ${v.condition ?? "(sin tema asignado)"} — ${v.summary}`,
+  );
+  return `VIDEOS EDUCATIVOS DISPONIBLES (cuando el tema del usuario coincida con un video, cita su marcador exacto):\n${lines.join("\n")}`;
+}
+
+/**
  * Builds the full system prompt, injecting only valid catalog rows, the
- * user's purchase history and the doctor's guidance (server-side injection —
- * never tool-calling). Empty blocks are filtered out so no stale headers leak
- * into the prompt.
+ * user's purchase history, the doctor's guidance and the enabled video
+ * segments (server-side injection — never tool-calling). Empty blocks are
+ * filtered out so no stale headers leak into the prompt.
  */
 export function buildSystemPrompt(
   ctx: CatalogContext,
   purchases: PurchaseContext | null,
   guidance: GuidanceContext,
+  video: VideoSegmentsContext,
 ): string {
   const blocks = [
     HARD_LIMIT,
@@ -100,6 +128,7 @@ export function buildSystemPrompt(
     "",
     catalogBlock(ctx),
     guidanceBlock(guidance),
+    videoSegmentsBlock(video),
   ].filter((block) => block.length > 0);
   return blocks.join("\n");
 }
@@ -117,4 +146,14 @@ export function buildHistoryMessages(history: ChatMessage[], userMessage: string
 export function extractProductRefs(reply: string): string[] {
   const matches = reply.match(/\[(\d{4,6})\]/g) ?? [];
   return [...new Set(matches.map((m) => m.replace(/[\[\]]/g, "")))];
+}
+
+/**
+ * Scans a reply for video markers written as `[VIDEO:id]` and returns the
+ * unique numeric ids in first-appearance order (mirrors extractProductRefs;
+ * non-numeric or empty ids like `[VIDEO:abc]` never match).
+ */
+export function extractVideoRefs(reply: string): number[] {
+  const matches = reply.match(/\[VIDEO:(\d+)\]/g) ?? [];
+  return [...new Set(matches.map((m) => Number(m.replace("[VIDEO:", "").replace("]", ""))))];
 }
