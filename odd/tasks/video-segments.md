@@ -55,7 +55,19 @@ URL resolution: `clipYoutubeId` present → `watch?v=<clip>`; otherwise
 - T5: pipeline CLI (analyze + cut) — `a953bfa7`
 - T6: agent [VIDEO] citations + injection — `880269eb`
 - T7: GET /assistant/videos + admin CRUD — `8fbd5c37`
+- T8: chat video link cards — `6ed65c88` (+ test rot repair `ee2af621`)
 - _(append hashes as tasks close)_
+
+## Native review (T8 candidate)
+
+- Lineage `review-c95f90db5718caf6`, medium, lens `review-reliability`:
+  **approved** first capture, authority burned. Target
+  `sha256:5b8efeadeedb2f0a55fcc1636e40d53e838da2f120b53cf6ed5c611eb6ae8048`.
+- Advisory (5, informational): `R3-AssessmentSpellingAssertionsChangeWithoutComponentChange`
+  test:62 · `R3-AssessmentTestImportsComponentOutsideCandidate` test:4 ·
+  `R3-EndToEndMarkerResolutionUncovered` VideoCards.test.tsx:139-197 ·
+  `R3-VideoCardInfoSummaryFieldNeverRendered` types.ts:22 ·
+  `R3-VideoUrlAcceptedWithoutSchemeValidation` VideoCard.tsx:13 (WARNING).
 
 ## Native review (T7 candidate)
 
@@ -120,6 +132,10 @@ URL resolution: `clipYoutubeId` present → `watch?v=<clip>`; otherwise
   first, 13 new) · `tsc` PASS.
 - T7: `vitest video-endpoints + video-agent + assistant.integration + video-service`
   65/65 PASS (RED first, 23 new) · `tsc` PASS ×2.
+- T8: `vitest VideoCards` 8/8 PASS (RED first) · `pnpm --dir frontend build` PASS ×2 ·
+  AssessmentWidget suite: 2/9 after entry-point repair, **7 FAIL pre-existing**
+  (heading renamed at ccbfaf31, flow changed with access codes 5afb98f3) —
+  follow-up OUTSIDE this feature.
 - `gentle-ai-verify` subagent unusable this session (2 internal assistant errors);
   verification rerun inline as declared fallback.
 
@@ -131,7 +147,15 @@ URL resolution: `clipYoutubeId` present → `watch?v=<clip>`; otherwise
 - T5 done: pipeline CLI — `a953bfa7` (reviewed + approved, 4 lenses)
 - T6 done: agent [VIDEO] integration — `880269eb` (reviewed + approved)
 - T7 done: video endpoints + admin CRUD — `8fbd5c37` (reviewed + approved)
-- T8 next: chat widget segment map + video link cards (delegated next).
+- T8 done: chat video cards — `6ed65c88` + `ee2af621` (reviewed + approved)
+- T9 next: admin CRM VideosPage + api client + nav (delegated next).
+
+## Follow-ups OUTSIDE this feature (pre-existing, need own authorization)
+- frontend: AssessmentWidget.test.tsx — 7 heading/flow failures ("Evaluación de
+  Deficiencias" renamed, access-code flow).
+- backend: assessment.integration 2/9 (assessment_responses DDL PK vs Drizzle id).
+- Advisory backlog from reviews R3-001..006 (T3-4), 17 findings (T5), 1 TOCTOU (T7),
+  5 findings (T8) — see sections above.
 
 
 ## Decisions
