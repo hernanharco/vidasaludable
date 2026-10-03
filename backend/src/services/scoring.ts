@@ -194,7 +194,7 @@ const PRODUCT_CATALOG: Record<
     name: "Nutrilite™ Double X",
     category: "Multivitamínicos / Multiminerales / Fitonutrientes",
     size: "186 comprimidos",
-    price: 72.39,
+    price: 86.87, // calibrated price-list column (was 72.39, pre-calibration VN)
     benefits:
       "Cobertura completa de vitaminas, minerales y fitonutrientes con extractos botánicos concentrados.",
     dosage:
