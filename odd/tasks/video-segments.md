@@ -54,7 +54,17 @@ URL resolution: `clipYoutubeId` present → `watch?v=<clip>`; otherwise
 - T4: videoService + symptomMatcher + tests — `e5a79cf8`
 - T5: pipeline CLI (analyze + cut) — `a953bfa7`
 - T6: agent [VIDEO] citations + injection — `880269eb`
+- T7: GET /assistant/videos + admin CRUD — `8fbd5c37`
 - _(append hashes as tasks close)_
+
+## Native review (T7 candidate)
+
+- Lineage `review-3610e57a2e91a031`, tier medium, lens `review-reliability`:
+  **approved** first capture (one consent-binding expiry en route — resolved by
+  re-running START per protocol; no lineage lost). Authority burned. Target
+  `sha256:bdbdcad61ccf1f87d74c80dbd52dd39c2b65ada62732dc2e458025c6b7de0e48`.
+- Advisory (1): `R3-TOCTOU-DUP-YOUTUBEID` WARNING admin.ts:308-310 (check-then-
+  insert race on duplicate youtubeId; the unique index still guarantees one row).
 
 ## Native review (T6 candidate)
 
@@ -108,6 +118,8 @@ URL resolution: `clipYoutubeId` present → `watch?v=<clip>`; otherwise
   exit 2/1/127 as specified.
 - T6: `vitest video-agent + guard + assistant.integration + catalog` 32/32 PASS (RED
   first, 13 new) · `tsc` PASS.
+- T7: `vitest video-endpoints + video-agent + assistant.integration + video-service`
+  65/65 PASS (RED first, 23 new) · `tsc` PASS ×2.
 - `gentle-ai-verify` subagent unusable this session (2 internal assistant errors);
   verification rerun inline as declared fallback.
 
@@ -118,7 +130,8 @@ URL resolution: `clipYoutubeId` present → `watch?v=<clip>`; otherwise
 - T4 done: service/matcher/tests — `e5a79cf8` (reviewed + approved)
 - T5 done: pipeline CLI — `a953bfa7` (reviewed + approved, 4 lenses)
 - T6 done: agent [VIDEO] integration — `880269eb` (reviewed + approved)
-- T7 next: GET /assistant/videos + admin CRUD/approve routes (delegated next).
+- T7 done: video endpoints + admin CRUD — `8fbd5c37` (reviewed + approved)
+- T8 next: chat widget segment map + video link cards (delegated next).
 
 
 ## Decisions
