@@ -28,10 +28,23 @@ const mockCalculateResponse = {
   recommendations: [
     { nutrientId: "vitamina_a", nutrientName: "Vitamina A", nutrientType: "vitamin", matchedWeight: 1, maxWeight: 9, ratio: 0.11, status: "deficient" },
   ],
+  // Required by CalculateResponse (types.ts) and read by AssessmentResults
+  // (productRecommendations.length > 0) — must be an array, not undefined.
+  productRecommendations: [],
+};
+
+// Access-code gate: POST /api/referrer/validate → { valid, referrerId, referrerName }
+const mockReferrerValidateResponse = {
+  valid: true,
+  referrerId: 1,
+  referrerName: "Ana Referidora",
 };
 
 function setupDefaultMocks() {
   mockFetch.mockImplementation((url: string) => {
+    if (url.includes("/referrer/validate")) {
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(mockReferrerValidateResponse) });
+    }
     if (url.includes("/questionnaire")) {
       return Promise.resolve({ json: () => Promise.resolve(mockQuestionnaire) });
     }
@@ -49,6 +62,24 @@ async function waitForLoadingToFinish() {
   await waitFor(() => {
     expect(screen.queryByText(/Cargando/i)).not.toBeInTheDocument();
   }, { timeout: 3000 });
+}
+
+/**
+ * Traverse the access-code gate (AssessmentWidget starts in phase "access_code").
+ * Types a code, submits POST /api/referrer/validate (mocked in setupDefaultMocks),
+ * confirms via "Continuar", and waits for the questionnaire to load (phase
+ * "welcome" → AssessmentWelcome heading).
+ */
+async function enterAccessCode(user: ReturnType<typeof userEvent.setup>) {
+  await user.type(screen.getByPlaceholderText("Ej: 190643239"), "12345");
+  await user.click(screen.getByText("Validar código"));
+  await waitFor(() => {
+    expect(screen.getByText("Código válido")).toBeInTheDocument();
+  });
+  await user.click(screen.getByText("Continuar"));
+  await waitFor(() => {
+    expect(screen.getByText("Evaluación de Deficiencias")).toBeInTheDocument();
+  });
 }
 
 describe("AssessmentWidget", () => {
@@ -73,9 +104,7 @@ describe("AssessmentWidget", () => {
     const user = userEvent.setup();
     render(<AssessmentWidget />);
     await user.click(screen.getByText("Prevenición"));
-    await waitFor(() => {
-      expect(screen.getByText("Evaluación de Deficiencias")).toBeInTheDocument();
-    });
+    await enterAccessCode(user);
     expect(screen.getByLabelText("Nombre")).toBeInTheDocument();
   });
 
@@ -83,9 +112,7 @@ describe("AssessmentWidget", () => {
     const user = userEvent.setup();
     render(<AssessmentWidget />);
     await user.click(screen.getByText("Prevenición"));
-    await waitFor(() => {
-      expect(screen.getByText("Evaluación de Deficiencias")).toBeInTheDocument();
-    });
+    await enterAccessCode(user);
     expect(screen.getByText("Comenzar Evaluación")).toBeDisabled();
   });
 
@@ -93,9 +120,7 @@ describe("AssessmentWidget", () => {
     const user = userEvent.setup();
     render(<AssessmentWidget />);
     await user.click(screen.getByText("Prevenición"));
-    await waitFor(() => {
-      expect(screen.getByText("Evaluación de Deficiencias")).toBeInTheDocument();
-    });
+    await enterAccessCode(user);
     await user.type(screen.getByLabelText("Nombre"), "María");
     await user.click(screen.getByText("Femenino"));
     await user.type(screen.getByLabelText("Edad"), "35");
@@ -106,9 +131,7 @@ describe("AssessmentWidget", () => {
     const user = userEvent.setup();
     render(<AssessmentWidget />);
     await user.click(screen.getByText("Prevenición"));
-    await waitFor(() => {
-      expect(screen.getByText("Evaluación de Deficiencias")).toBeInTheDocument();
-    });
+    await enterAccessCode(user);
     await user.type(screen.getByLabelText("Nombre"), "María");
     await user.click(screen.getByText("Femenino"));
     await user.type(screen.getByLabelText("Edad"), "35");
@@ -123,9 +146,7 @@ describe("AssessmentWidget", () => {
     const user = userEvent.setup();
     render(<AssessmentWidget />);
     await user.click(screen.getByText("Prevenición"));
-    await waitFor(() => {
-      expect(screen.getByText("Evaluación de Deficiencias")).toBeInTheDocument();
-    });
+    await enterAccessCode(user);
     await user.type(screen.getByLabelText("Nombre"), "María");
     await user.click(screen.getByText("Femenino"));
     await user.type(screen.getByLabelText("Edad"), "35");
@@ -143,9 +164,7 @@ describe("AssessmentWidget", () => {
     const user = userEvent.setup();
     render(<AssessmentWidget />);
     await user.click(screen.getByText("Prevenición"));
-    await waitFor(() => {
-      expect(screen.getByText("Evaluación de Deficiencias")).toBeInTheDocument();
-    });
+    await enterAccessCode(user);
     await user.type(screen.getByLabelText("Nombre"), "María");
     await user.click(screen.getByText("Femenino"));
     await user.type(screen.getByLabelText("Edad"), "35");
@@ -164,9 +183,7 @@ describe("AssessmentWidget", () => {
     const user = userEvent.setup();
     render(<AssessmentWidget />);
     await user.click(screen.getByText("Prevenición"));
-    await waitFor(() => {
-      expect(screen.getByText("Evaluación de Deficiencias")).toBeInTheDocument();
-    });
+    await enterAccessCode(user);
     await user.type(screen.getByLabelText("Nombre"), "María");
     await user.click(screen.getByText("Femenino"));
     await user.type(screen.getByLabelText("Edad"), "35");
