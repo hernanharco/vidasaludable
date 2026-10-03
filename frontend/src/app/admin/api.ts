@@ -136,6 +136,65 @@ export interface AssessmentResult {
   completedAt: string | null;
 }
 
+// ─── Educational videos + segments (T9 admin CRM) ──────────────────
+
+export type VideoStatus = "draft" | "analyzed" | "cut" | "published";
+
+export interface Video {
+  id: number;
+  speaker: string;
+  youtubeId: string;
+  url: string;
+  title: string;
+  durationS: number | null;
+  status: VideoStatus;
+  licenseNote: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface VideoInput {
+  speaker: string;
+  url: string;
+  title: string;
+  durationS?: number;
+  status?: VideoStatus;
+}
+
+export type VideoPatch = Partial<Pick<VideoInput, "title" | "speaker" | "status" | "durationS">> & {
+  licenseNote?: string | null;
+};
+
+export interface VideoSegment {
+  id: number;
+  videoId: number;
+  condition: string | null; // normalized symptom text; null → needs assignment
+  symptomId: number | null;
+  startS: number;
+  endS: number;
+  title: string;
+  summary: string;
+  clipYoutubeId: string | null; // null → deep link into the original video
+  enabled: number; // 0 | 1 — approved for chat injection
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SegmentInput {
+  videoId: number;
+  startS: number;
+  endS: number;
+  title: string;
+  summary?: string;
+  condition?: string | null;
+  symptomId?: number | null;
+}
+
+export type SegmentPatch = Partial<Omit<SegmentInput, "videoId">> & {
+  enabled?: number;
+  clipYoutubeId?: string | null; // null clears the clip (falls back to the deep link)
+};
+
 export class AdminError extends Error {
   status: number;
   constructor(status: number, message: string) {
@@ -309,4 +368,35 @@ export const api = {
     }),
   deleteReferrer: (id: number) =>
     request<null>(`/referrers/${id}`, { method: "DELETE" }),
+
+  // ─── Educational videos + segments (T9 admin CRM) ──────────────
+  listVideos: () => request<{ videos: Video[] }>("/videos"),
+  createVideo: (input: VideoInput) =>
+    request<{ video: Video }>("/videos", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  updateVideo: (id: number, patch: VideoPatch) =>
+    request<{ video: Video }>(`/videos/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
+  // 409 { error, count } when segments still reference the video → AdminError
+  deleteVideo: (id: number) => request<null>(`/videos/${id}`, { method: "DELETE" }),
+  listVideoSegments: (videoId?: number) =>
+    request<{ segments: VideoSegment[] }>(
+      videoId == null ? "/video-segments" : `/video-segments?video_id=${videoId}`,
+    ),
+  createVideoSegment: (input: SegmentInput) =>
+    request<{ segment: VideoSegment }>("/video-segments", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  updateVideoSegment: (id: number, patch: SegmentPatch) =>
+    request<{ segment: VideoSegment }>(`/video-segments/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
+  deleteVideoSegment: (id: number) =>
+    request<null>(`/video-segments/${id}`, { method: "DELETE" }),
 };

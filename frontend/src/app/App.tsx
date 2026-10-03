@@ -19,6 +19,7 @@ import { GuidancePage } from "./admin/GuidancePage";
 import { RecommendationsPage } from "./admin/RecommendationsPage";
 import { ReferrersPage } from "./admin/ReferrersPage";
 import { AssessmentAdminPage } from "./admin/AssessmentAdminPage";
+import { VideosPage } from "./admin/VideosPage";
 
 function Landing() {
   return (
@@ -52,6 +53,7 @@ export default function App() {
         <Route path="recommendations" element={<RecommendationsPage />} />
         <Route path="referrers" element={<ReferrersPage />} />
         <Route path="assessment" element={<AssessmentAdminPage />} />
+        <Route path="videos" element={<VideosPage />} />
       </Route>
     </Routes>
   );
