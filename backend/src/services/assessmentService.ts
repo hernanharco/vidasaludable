@@ -165,15 +165,14 @@ export function createAssessmentService(db: Db) {
         .run();
     }
 
-    // Insert results
+    // Insert results — DDL persists `score` (ratio snapshot) + `status` only;
+    // assessment_results has a composite PK (assessment_id, nutrient_id).
     for (const r of results) {
       db.insert(assessmentResults)
         .values({
           assessmentId: id,
           nutrientId: r.nutrientId,
-          matchedWeight: r.matchedWeight,
-          maxWeight: r.maxWeight,
-          ratio: r.ratio,
+          score: r.ratio,
           status: r.status,
         })
         .run();
@@ -202,20 +201,41 @@ export function createAssessmentService(db: Db) {
 
     if (!assessment) return null;
 
+    const responseRows = db
+      .select()
+      .from(assessmentResponses)
+      .where(eq(assessmentResponses.assessmentId, id))
+      .all();
+
+    // DDL persists only `score` (ratio snapshot) + `status` in
+    // assessment_results; matchedWeight / maxWeight are reconstructed from
+    // the persisted responses + current mappings, while the stored
+    // score/status remain the historical record of the saved assessment.
+    const responseMap = new Map(responseRows.map((r) => [r.symptomId, r.answered]));
+    const recomputed = new Map(
+      calculateAllNutrients(responseMap, loadNutrientMappings()).map((r) => [
+        r.nutrientId,
+        r,
+      ]),
+    );
+
     const results = db
       .select()
       .from(assessmentResults)
       .where(eq(assessmentResults.assessmentId, id))
       .all()
-      .map((r) => ({
-        nutrientId: r.nutrientId,
-        nutrientName: "", // Will be filled from mappings
-        nutrientType: "",
-        matchedWeight: r.matchedWeight,
-        maxWeight: r.maxWeight,
-        ratio: r.ratio,
-        status: r.status as ScoringResult["status"],
-      }));
+      .map((r) => {
+        const base = recomputed.get(r.nutrientId);
+        return {
+          nutrientId: r.nutrientId,
+          nutrientName: "", // Will be filled from mappings
+          nutrientType: "",
+          matchedWeight: base?.matchedWeight ?? 0,
+          maxWeight: base?.maxWeight ?? 0,
+          ratio: r.score,
+          status: r.status as ScoringResult["status"],
+        };
+      });
 
     // Enrich with nutrient names
     const nutrientMap = new Map(
@@ -233,12 +253,10 @@ export function createAssessmentService(db: Db) {
       }
     }
 
-    const responses = db
-      .select()
-      .from(assessmentResponses)
-      .where(eq(assessmentResponses.assessmentId, id))
-      .all()
-      .map((r) => ({ symptomId: r.symptomId, answered: r.answered }));
+    const responses = responseRows.map((r) => ({
+      symptomId: r.symptomId,
+      answered: r.answered,
+    }));
 
     return {
       id: assessment.id,
