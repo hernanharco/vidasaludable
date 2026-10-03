@@ -30,3 +30,19 @@ export interface VideoCardInfo {
   startS?: number;
   endS?: number;
 }
+
+/**
+ * T6 — Resolved card data for a catalog product, as served by
+ * `GET /api/assistant/products`. The chat widget fetches the list at boot and
+ * resolves the `[REF]` citations (extract convention `\[\d{4,6}\]`, same as
+ * the backend's extractProductRefs) against it. `price` stays a number on the
+ * wire; ProductCard formats it to es-ES currency for display.
+ */
+export interface ProductCardInfo {
+  reference: string;
+  name: string;
+  price: number;
+  category: string;
+  benefits: string;
+  disclaimer: string;
+}

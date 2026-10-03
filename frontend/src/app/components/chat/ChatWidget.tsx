@@ -8,7 +8,7 @@ import { ChatMessages, ChatMessage } from "./ChatMessages";
 import { ChatInput } from "./ChatInput";
 import { RegistrationGate } from "./RegistrationGate";
 import { AccessCodeGate } from "../AccessCodeGate";
-import { ConsentInfo, Phase, VideoCardInfo } from "./types";
+import { ConsentInfo, Phase, ProductCardInfo, VideoCardInfo } from "./types";
 
 /**
  * Preventive vitamin recommender — real client.
@@ -73,6 +73,10 @@ export function ChatWidget() {
   // ENABLED video segments for `[VIDEO:<id>]` cards — fetched at boot.
   const [videos, setVideos] = useState<Map<number, VideoCardInfo>>(() => new Map());
 
+  // T6 — Catalog products for `[REF]` citations — fetched at boot. Same
+  // best-effort contract as videos: failure → empty map, never blocks chat.
+  const [products, setProducts] = useState<Map<string, ProductCardInfo>>(() => new Map());
+
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Boot: resolve the persisted `[VIDEO:<id>]` markers in assistant replies
@@ -109,6 +113,46 @@ export function ChatWidget() {
         if (!cancelled) setVideos(map);
       } catch {
         // Video cards are best-effort; chat keeps working without them
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // T6 — Boot: resolve the `[REF]` citations in agent replies into ProductCards.
+  // Best-effort only — a failure here must never block consent, gates, or chat.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/assistant/products");
+        if (!res.ok) return;
+        const data = (await res.json()) as { products?: unknown };
+        const list = Array.isArray(data?.products) ? data.products : [];
+        const map = new Map<string, ProductCardInfo>();
+        for (const item of list) {
+          if (item == null || typeof item !== "object") continue;
+          const p = item as Partial<ProductCardInfo>;
+          if (
+            typeof p.reference !== "string" ||
+            typeof p.name !== "string" ||
+            typeof p.price !== "number"
+          ) {
+            continue;
+          }
+          map.set(p.reference, {
+            reference: p.reference,
+            name: p.name,
+            price: p.price,
+            category: typeof p.category === "string" ? p.category : "",
+            benefits: typeof p.benefits === "string" ? p.benefits : "",
+            disclaimer: typeof p.disclaimer === "string" ? p.disclaimer : "",
+          });
+        }
+        if (!cancelled) setProducts(map);
+      } catch {
+        // Product cards are best-effort; chat keeps working without them
       }
     })();
     return () => {
@@ -378,6 +422,7 @@ export function ChatWidget() {
                   chatError={chatError}
                   scrollRef={scrollRef}
                   videos={videos}
+                  products={products}
                 />
                 <ChatInput
                   inputValue={inputValue}

@@ -1,12 +1,17 @@
 import React from "react";
 import { AlertCircle } from "lucide-react";
+import { ProductCard } from "./ProductCard";
 import { VideoCard } from "./VideoCard";
-import type { ChatMessage, VideoCardInfo } from "./types";
+import type { ChatMessage, ProductCardInfo, VideoCardInfo } from "./types";
 
 export type { ChatMessage };
 
 // Matches a persisted video citation; the captured group is the segment id.
 const VIDEO_MARKER = /\[VIDEO:(\d+)\]/;
+
+// Matches a persisted product citation; the captured group is the catalog ref
+// (extract convention \[\d{4,6}\], same as the backend's extractProductRefs).
+const PRODUCT_REF = /\[(\d{4,6})\]/;
 
 interface ChatMessagesProps {
   messages: ChatMessage[];
@@ -15,21 +20,68 @@ interface ChatMessagesProps {
   scrollRef: React.RefObject<HTMLDivElement>;
   /** Boot-fetched map of ENABLED segment ids → card data. */
   videos: Map<number, VideoCardInfo>;
+  /**
+   * T6 — Boot-fetched map of catalog references → card data. Optional: the
+   * chat works without it (a failed products fetch degrades to an empty map,
+   * same best-effort contract as the videos map).
+   */
+  products?: Map<string, ProductCardInfo>;
 }
 
 /**
- * Agent message body: splits on `[VIDEO:<id>]` markers. Known ids render a
- * VideoCard between the surrounding text chunks; unknown ids render nothing
- * (the marker token is stripped).
+ * T6 — Agent text chunk: renders known `[REF]` citations as ProductCards and
+ * keeps unknown refs as literal `[12345]` text (backward compatible — unlike
+ * video markers, where unknown ids are stripped). `[VIDEO:id]` contains
+ * letters, so PRODUCT_REF never matches it; videos are split out first.
  */
-function AgentMessageBody({ text, videos }: { text: string; videos: Map<number, VideoCardInfo> }) {
+function ProductRefs({
+  text,
+  products,
+}: {
+  text: string;
+  products: Map<string, ProductCardInfo>;
+}) {
+  // split with a capture group → [chunk, ref, chunk, ref, ..., chunk]
+  const parts = text.split(PRODUCT_REF);
+  return (
+    <>
+      {parts.map((part, i) => {
+        if (i % 2 === 0) {
+          return part ? <React.Fragment key={i}>{part}</React.Fragment> : null;
+        }
+        const product = products.get(part);
+        if (product) return <ProductCard key={i} product={product} />;
+        // Unknown ref: keep the literal token in the text (backward compatible).
+        return <React.Fragment key={i}>[{part}]</React.Fragment>;
+      })}
+    </>
+  );
+}
+
+/**
+ * Agent message body: splits on `[VIDEO:<id>]` markers first. Known ids render
+ * a VideoCard between the surrounding text chunks; unknown ids render nothing
+ * (the marker token is stripped). Each surviving text chunk then goes through
+ * ProductRefs, so video and product cards coexist in one message.
+ */
+function AgentMessageBody({
+  text,
+  videos,
+  products,
+}: {
+  text: string;
+  videos: Map<number, VideoCardInfo>;
+  products: Map<string, ProductCardInfo>;
+}) {
   // split with a capture group → [chunk, id, chunk, id, ..., chunk]
   const parts = text.split(VIDEO_MARKER);
   return (
     <>
       {parts.map((part, i) => {
         if (i % 2 === 0) {
-          return part ? <React.Fragment key={i}>{part}</React.Fragment> : null;
+          return part ? (
+            <ProductRefs key={i} text={part} products={products} />
+          ) : null;
         }
         const video = videos.get(Number(part));
         return video ? <VideoCard key={i} video={video} /> : null;
@@ -38,7 +90,14 @@ function AgentMessageBody({ text, videos }: { text: string; videos: Map<number, 
   );
 }
 
-export function ChatMessages({ messages, sending, chatError, scrollRef, videos }: ChatMessagesProps) {
+export function ChatMessages({
+  messages,
+  sending,
+  chatError,
+  scrollRef,
+  videos,
+  products = new Map<string, ProductCardInfo>(),
+}: ChatMessagesProps) {
   return (
     <div
       ref={scrollRef}
@@ -54,7 +113,7 @@ export function ChatMessages({ messages, sending, chatError, scrollRef, videos }
           }`}
         >
           {msg.sender === "agent" ? (
-            <AgentMessageBody text={msg.text} videos={videos} />
+            <AgentMessageBody text={msg.text} videos={videos} products={products} />
           ) : (
             msg.text
           )}

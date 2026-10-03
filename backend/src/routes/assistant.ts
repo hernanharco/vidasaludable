@@ -22,6 +22,10 @@ import type { Product } from "../db/schema.js";
  * - GET  /assistant/videos  → enabled segment cards with resolved URLs
  *   (public, no auth — the widget fetches them at boot to render the
  *   `[VIDEO:id]` markers the agent cites; same surface as /assistant/consent).
+ * - GET  /assistant/products → public catalog map (all products-table rows,
+ *   public card fields only — the widget boot-fetches it to resolve the
+ *   `[REF]` citations the agent writes, extract convention \[\d{4,6}\],
+ *   same as extractProductRefs; T6).
  *
  * Product not-found is internal, never a 404 to the client: only valid catalog
  * refs are injected, so the agent never invents details.
@@ -58,6 +62,25 @@ export function createAssistantRouter(db: Db): Hono {
         // T5: valid catalog refs linked to the segment (parsed by the service),
         // for the frontend product cards that pair with `[VIDEO:id]` cites.
         productReferences: card.productReferences,
+      })),
+    });
+  });
+
+  // T6 — public product catalog for the chat widget's `[REF]` citations.
+  // Same public surface as /assistant/videos (no auth): all products-table
+  // rows, mapped to the exact ProductCard fields the frontend renders. The
+  // payload deliberately exposes only the public card shape — size, dosage
+  // and ingredients stay server-side.
+  app.get("/products", (c) => {
+    const rows = catalog.listAll();
+    return c.json({
+      products: rows.map((p) => ({
+        reference: p.reference, // the `[ref]` citation token the agent writes
+        name: p.name,
+        price: p.price, // number on the wire; the card formats to es-ES currency
+        category: p.category,
+        benefits: p.benefits,
+        disclaimer: p.disclaimer,
       })),
     });
   });
