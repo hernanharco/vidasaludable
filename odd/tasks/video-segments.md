@@ -198,7 +198,10 @@ URL resolution: `clipYoutubeId` present → `watch?v=<clip>`; otherwise
   pre-existing assessment rot remains, tracked as task 13)
 - T11 done: pilot SUCCESS on `xpFX1KZ0uh8` (19 segments, enabled=0) — see runbook;
   `0RYeUT3Yl0Q` documented as not-analyzable (no captions at all)
-- T12 next: close (final review inspect + report + session memory).
+- T12 done: final inspect `9928b1cd…` = `.atl` cache only → documentation-only skip
+  (all 5 code work-units individually reviewed + approved; authorities burned).
+  Branch `feat/video-segments` holds 16 commits; push/PR is the user's decision.
+  FEATURE COMPLETE.
 
 ## Follow-ups OUTSIDE this feature (pre-existing, need own authorization)
 - frontend: AssessmentWidget.test.tsx — 7 heading/flow failures ("Evaluación de
