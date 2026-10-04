@@ -76,6 +76,8 @@ two with real failure-mode value.
 
 - [x] Batch 1 (1.1-1.4) — commits 85cd8f41 · 3868f3a5 · 763884f0 (branch
   fix/backend-quick-wins; see odd/tasks/backend-quick-wins.md)
+- [x] Batch 2 (2.1-2.3) — commits 642c8628 · 5d52406f · 1906c09c (branch
+  fix/chat-card-ux; see odd/tasks/chat-card-ux.md)
 - [ ] Batch 2 (2.1-2.3)
 - [ ] Batch 3 (3.1-3.4)
 - [ ] Deferred pipeline batch
