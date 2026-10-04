@@ -34,7 +34,19 @@ change, same session pattern as previous docs commits).
 
 ## Evidence
 
-(to be filled after push)
+- T1: PATCH `commandForIgnoringBuildStep` applied to `prj_OpeTmO5Bs2V5DGfdH4NiThlzdTdD`
+  (team `team_0iXBDap6vHdalM0fEFusXlzy`); response echoed the exact command.
+- T2+T3+doc: commit `05db8ad5` (branch fix/deploy-pipeline-cleanup → main ff).
+- T4 live verification (push fae688c5 → 05db8ad5):
+  - `gh run list`: `Deploy Frontend` 37209968426 **success** (52s); no new
+    `Build Backend` run (this push touched no `backend/**` path — by design).
+  - `vercel ls`: new Vercel-Git deployment `fm3gr3hgy` = **Canceled in 925ms**
+    (ignore-step skip — no more `vite: command not found` Error);
+    prebuilt deployment `mccb97ovk` = **Ready Production**.
+  - Historical `Error` rows in `vercel ls` (39m/14h/5d old) are the pre-fix
+    race artifacts; no new ones after the PATCH.
+  - Prod: home **200**, `/api/health` `{"ok":true,"env":"production"}`,
+    bundle `index-De29tEXk.js`.
 
 ## Decisions
 
