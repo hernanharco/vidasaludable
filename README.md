@@ -13,6 +13,14 @@ Landing page y sistema de recomendación de vitaminas Nutrilite.
 cd frontend && pnpm install && pnpm dev
 cd backend && pnpm install && pnpm dev
 
+## Admin (/admin)
+
+El CRM se protege con **authCore** (hub del ecosistema): login con Google →
+JWT RS256 verificado por el backend contra JWKS. En producción solo roles
+`ADMIN`/`SUPERADMIN`; en desarrollo (`NODE_ENV=development`) el backend queda
+abierto y el gate del frontend entra sin ceremonia. Config del hub:
+`AUTHCORE_PUBLIC_KEY_URL` (default `https://api-authcore.rincom.es/.well-known/jwks.json`).
+
 ## Deploy
 
 - **Frontend**: Vercel vía GH Actions (`Deploy Frontend`: `vercel build` +
