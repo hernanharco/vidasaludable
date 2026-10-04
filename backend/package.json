@@ -15,7 +15,9 @@
     "seed:products": "tsx src/seed/seedProducts.ts",
     "seed:purchases": "tsx src/seed/seedPurchases.ts",
     "seed:guidance": "tsx src/seed/seedGuidance.ts",
-    "seed:curate": "tsx src/seed/curate-pdfs.ts"
+    "seed:curate": "tsx src/seed/curate-pdfs.ts",
+    "video:analyze": "tsx src/tools/videoPipeline.ts analyze",
+    "video:cut": "tsx src/tools/videoPipeline.ts cut"
   },
   "dependencies": {
     "@hono/node-server": "^2.1.1",

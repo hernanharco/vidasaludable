@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, real, index } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, real, index, primaryKey } from "drizzle-orm/sqlite-core";
 import { referrers } from "./schema.js";
 import { sql } from "drizzle-orm";
 
@@ -80,47 +80,39 @@ export const assessments = sqliteTable(
   ],
 );
 
-/** Individual symptom responses for an assessment. */
-export const assessmentResponses = sqliteTable(
-  "assessment_responses",
-  {
-    id: integer("id").primaryKey({ autoIncrement: true }),
-    assessmentId: text("assessment_id")
-      .notNull()
-      .references(() => assessments.id),
-    symptomId: integer("symptom_id")
-      .notNull()
-      .references(() => assessmentSymptoms.id),
-    answered: integer("answered", { mode: "boolean" }).notNull(), // true = SI
-  },
-  (t) => [
-    index("assessment_responses_assessment_idx").on(t.assessmentId),
-    index("assessment_responses_symptom_idx").on(t.symptomId),
-  ],
-);
+/**
+ * Individual symptom responses for an assessment.
+ *
+ * DDL (src/db/migrate.ts) is the source of truth: no `id` column; the
+ * primary key is the composite (assessment_id, symptom_id).
+ */
+export const assessmentResponses = sqliteTable("assessment_responses", {
+  assessmentId: text("assessment_id")
+    .notNull()
+    .references(() => assessments.id),
+  symptomId: integer("symptom_id")
+    .notNull()
+    .references(() => assessmentSymptoms.id),
+  answered: integer("answered", { mode: "boolean" }).notNull(), // true = SI
+}, (t) => [primaryKey({ columns: [t.assessmentId, t.symptomId] })]);
 
-/** Calculated nutrient scores for a completed assessment. */
-export const assessmentResults = sqliteTable(
-  "assessment_results",
-  {
-    id: integer("id").primaryKey({ autoIncrement: true }),
-    assessmentId: text("assessment_id")
-      .notNull()
-      .references(() => assessments.id),
-    nutrientId: text("nutrient_id")
-      .notNull()
-      .references(() => assessmentNutrients.id),
-    matchedWeight: integer("matched_weight").notNull(),
-    maxWeight: integer("max_weight").notNull(),
-    ratio: real("ratio").notNull(),
-    status: text("status").notNull(), // "OK" | "deficient" | "urgent"
-  },
-  (t) => [
-    index("assessment_results_assessment_idx").on(t.assessmentId),
-    index("assessment_results_nutrient_idx").on(t.nutrientId),
-    index("assessment_results_status_idx").on(t.status),
-  ],
-);
+/**
+ * Calculated nutrient scores for a completed assessment.
+ *
+ * DDL (src/db/migrate.ts) is the source of truth: no `id` column; `score`
+ * is the persisted ratio snapshot (matchedWeight / maxWeight); the primary
+ * key is the composite (assessment_id, nutrient_id).
+ */
+export const assessmentResults = sqliteTable("assessment_results", {
+  assessmentId: text("assessment_id")
+    .notNull()
+    .references(() => assessments.id),
+  nutrientId: text("nutrient_id")
+    .notNull()
+    .references(() => assessmentNutrients.id),
+  score: real("score").notNull(), // ratio snapshot (matchedWeight / maxWeight)
+  status: text("status").notNull(), // "OK" | "deficient" | "urgent"
+}, (t) => [primaryKey({ columns: [t.assessmentId, t.nutrientId] })]);
 
 // ─── Types ───────────────────────────────────────────────────────────
 

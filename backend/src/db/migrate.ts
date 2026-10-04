@@ -140,6 +140,39 @@ CREATE TABLE IF NOT EXISTS assessment_results (
   status TEXT NOT NULL,
   PRIMARY KEY (assessment_id, nutrient_id)
 );
+
+CREATE TABLE IF NOT EXISTS videos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  speaker TEXT NOT NULL,
+  youtube_id TEXT NOT NULL,
+  url TEXT NOT NULL,
+  title TEXT NOT NULL,
+  duration_s INTEGER,
+  status TEXT NOT NULL DEFAULT 'draft',
+  license_note TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS videos_youtube_id_unique ON videos (youtube_id);
+
+CREATE TABLE IF NOT EXISTS video_segments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  video_id INTEGER NOT NULL REFERENCES videos(id),
+  condition TEXT,
+  symptom_id INTEGER REFERENCES assessment_symptoms(id),
+  start_s INTEGER NOT NULL,
+  end_s INTEGER NOT NULL,
+  title TEXT NOT NULL,
+  summary TEXT NOT NULL DEFAULT '',
+  clip_youtube_id TEXT,
+  mentioned_products TEXT,
+  product_references TEXT,
+  enabled INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS video_segments_enabled_idx ON video_segments (enabled);
+CREATE INDEX IF NOT EXISTS video_segments_condition_idx ON video_segments (condition);
 `;
 
 /**
@@ -158,12 +191,42 @@ export async function migrate(db: ReturnType<typeof createDatabase>): Promise<vo
   const alterStatements = [
     `ALTER TABLE customers ADD COLUMN referrer_id INTEGER REFERENCES referrers(id)`,
     `ALTER TABLE assessments ADD COLUMN referrer_id INTEGER REFERENCES referrers(id)`,
+    // Legacy dev DBs from old drizzle-kit pushes predate the DDL shape
+    // (assessmentSchema follows migrate.ts DDL: score, no matched_weight/ratio).
+    `ALTER TABLE assessment_results ADD COLUMN score REAL`,
+    // T5 — video segment product fields (JSON string arrays). Existing DBs
+    // predate the columns; the CREATE TABLE above covers fresh files.
+    `ALTER TABLE video_segments ADD COLUMN mentioned_products TEXT`,
+    `ALTER TABLE video_segments ADD COLUMN product_references TEXT`,
   ];
   for (const stmt of alterStatements) {
     try {
       db.$client.exec(stmt);
     } catch {
       // Column already exists — ignore
+    }
+  }
+  // Backfill score from the legacy ratio column (old-shape files only; new
+  // files have no `ratio` column and this fails harmlessly).
+  try {
+    db.$client.exec(`UPDATE assessment_results SET score = ratio WHERE score IS NULL`);
+  } catch {
+    // New-shape database — ignore
+  }
+
+  // Legacy NOT NULL columns absent from the DDL — drop them AFTER the backfill
+  // so DDL-shaped inserts (assessment_id, nutrient_id, score, status) succeed
+  // on old files (drops are no-ops on new-shape databases).
+  const legacyDropStatements = [
+    `ALTER TABLE assessment_results DROP COLUMN matched_weight`,
+    `ALTER TABLE assessment_results DROP COLUMN max_weight`,
+    `ALTER TABLE assessment_results DROP COLUMN ratio`,
+  ];
+  for (const stmt of legacyDropStatements) {
+    try {
+      db.$client.exec(stmt);
+    } catch {
+      // Column already absent — ignore
     }
   }
 }

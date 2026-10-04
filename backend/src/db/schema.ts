@@ -1,5 +1,6 @@
 import { sqliteTable, text, integer, real, index, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { sql } from "drizzle-orm";
+import { assessmentSymptoms } from "./assessmentSchema.js";
 
 /**
  * Portable Drizzle schema (SQLite dialect). The relational model maps 1:1 to
@@ -187,3 +188,81 @@ export const referrers = sqliteTable(
 
 export type Referrer = typeof referrers.$inferSelect;
 export type NewReferrer = typeof referrers.$inferInsert;
+
+/**
+ * Educational videos analyzed by the pipeline (speaker, YouTube original URL).
+ *
+ * `status` is a small state machine over the pipeline lifecycle: a freshly
+ * ingested row is `draft`; analysis promotes it to `analyzed`; the ffmpeg cut
+ * step to `cut`; the owner's channel upload to `published`.
+ */
+export const videos = sqliteTable(
+  "videos",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    speaker: text("speaker").notNull(), // e.g. "Luis Collantes"
+    youtubeId: text("youtube_id").notNull(), // ORIGINAL video id
+    url: text("url").notNull(),
+    title: text("title").notNull(),
+    durationS: integer("duration_s"), // null while unknown
+    status: text("status").notNull().default("draft"), // 'draft' | 'analyzed' | 'cut' | 'published'
+    licenseNote: text("license_note"), // written owner permission, gate for clip re-upload
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text("updated_at")
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  (t) => [uniqueIndex("videos_youtube_id_unique").on(t.youtubeId)],
+);
+
+/**
+ * Timestamped educational segments extracted from a video, one row per
+ * condition excerpt. `condition` is the normalized assessment-symptom text;
+ * `symptomId` is the resolved `assessment_symptoms` row (nullable until the
+ * admin assigns it). `enabled` gates injection into the chat assistant.
+ *
+ * URL resolution (see assistant.ts): `clipYoutubeId` present → the owner's
+ * channel clip; otherwise a deep link into the ORIGINAL video
+ * (`watch?v=<youtube_id>&t=<start_s>`), which works with no clip uploaded.
+ */
+export const videoSegments = sqliteTable(
+  "video_segments",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    videoId: integer("video_id")
+      .notNull()
+      .references(() => videos.id),
+    condition: text("condition"), // normalized assessment-symptom text (nullable until matched)
+    symptomId: integer("symptom_id").references(() => assessmentSymptoms.id),
+    startS: integer("start_s").notNull(), // seconds into the original video
+    endS: integer("end_s").notNull(),
+    title: text("title").notNull(),
+    summary: text("summary").notNull().default(""),
+    clipYoutubeId: text("clip_youtube_id"), // owner-channel clip, null until uploaded
+    // T5: products the educator MENTIONS inside the segment. Both columns
+    // store JSON string arrays, same convention as guidance.product_references:
+    // `mentionedProducts` keeps the RAW mentions (catalog-anchored later),
+    // `productReferences` holds only VALID catalog refs. Nullable: pre-T5 rows
+    // and segments without product mentions stay NULL.
+    mentionedProducts: text("mentioned_products"), // JSON array of raw mentions
+    productReferences: text("product_references"), // JSON array of valid catalog refs
+    enabled: integer("enabled").notNull().default(0), // 0 | 1 — approved for chat injection
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text("updated_at")
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  (t) => [
+    index("video_segments_enabled_idx").on(t.enabled),
+    index("video_segments_condition_idx").on(t.condition),
+  ],
+);
+
+export type Video = typeof videos.$inferSelect;
+export type NewVideo = typeof videos.$inferInsert;
+export type VideoSegment = typeof videoSegments.$inferSelect;
+export type NewVideoSegment = typeof videoSegments.$inferInsert;

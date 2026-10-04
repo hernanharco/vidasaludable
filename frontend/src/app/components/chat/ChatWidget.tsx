@@ -8,7 +8,7 @@ import { ChatMessages, ChatMessage } from "./ChatMessages";
 import { ChatInput } from "./ChatInput";
 import { RegistrationGate } from "./RegistrationGate";
 import { AccessCodeGate } from "../AccessCodeGate";
-import { ConsentInfo, Phase } from "./types";
+import { ConsentInfo, Phase, ProductCardInfo, VideoCardInfo } from "./types";
 
 /**
  * Preventive vitamin recommender — real client.
@@ -70,7 +70,95 @@ export function ChatWidget() {
   const [sending, setSending] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
 
+  // ENABLED video segments for `[VIDEO:<id>]` cards — fetched at boot.
+  const [videos, setVideos] = useState<Map<number, VideoCardInfo>>(() => new Map());
+
+  // T6 — Catalog products for `[REF]` citations — fetched at boot. Same
+  // best-effort contract as videos: failure → empty map, never blocks chat.
+  const [products, setProducts] = useState<Map<string, ProductCardInfo>>(() => new Map());
+
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Boot: resolve the persisted `[VIDEO:<id>]` markers in assistant replies
+  // (live and reloaded history) into clickable cards. Best-effort only — a
+  // failure here must never block consent, gates, or chat.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/assistant/videos");
+        if (!res.ok) return;
+        const data = (await res.json()) as { videos?: unknown };
+        const list = Array.isArray(data?.videos) ? data.videos : [];
+        const map = new Map<number, VideoCardInfo>();
+        for (const item of list) {
+          if (item == null || typeof item !== "object") continue;
+          const v = item as Partial<VideoCardInfo>;
+          if (typeof v.id !== "number" || typeof v.title !== "string" || typeof v.url !== "string") {
+            continue;
+          }
+          map.set(v.id, {
+            id: v.id,
+            title: v.title,
+            condition: typeof v.condition === "string" ? v.condition : null,
+            summary: typeof v.summary === "string" ? v.summary : "",
+            url: v.url,
+            speaker: typeof v.speaker === "string" ? v.speaker : "",
+            // T4 Phase A: optional raw seconds (numbers only; the card
+            // formats them to mm:ss; absent times → no chip, no crash).
+            ...(typeof v.startS === "number" ? { startS: v.startS } : {}),
+            ...(typeof v.endS === "number" ? { endS: v.endS } : {}),
+          });
+        }
+        if (!cancelled) setVideos(map);
+      } catch {
+        // Video cards are best-effort; chat keeps working without them
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // T6 — Boot: resolve the `[REF]` citations in agent replies into ProductCards.
+  // Best-effort only — a failure here must never block consent, gates, or chat.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/assistant/products");
+        if (!res.ok) return;
+        const data = (await res.json()) as { products?: unknown };
+        const list = Array.isArray(data?.products) ? data.products : [];
+        const map = new Map<string, ProductCardInfo>();
+        for (const item of list) {
+          if (item == null || typeof item !== "object") continue;
+          const p = item as Partial<ProductCardInfo>;
+          if (
+            typeof p.reference !== "string" ||
+            typeof p.name !== "string" ||
+            typeof p.price !== "number"
+          ) {
+            continue;
+          }
+          map.set(p.reference, {
+            reference: p.reference,
+            name: p.name,
+            price: p.price,
+            category: typeof p.category === "string" ? p.category : "",
+            benefits: typeof p.benefits === "string" ? p.benefits : "",
+            disclaimer: typeof p.disclaimer === "string" ? p.disclaimer : "",
+          });
+        }
+        if (!cancelled) setProducts(map);
+      } catch {
+        // Product cards are best-effort; chat keeps working without them
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const fetchConsent = useCallback(async (): Promise<ConsentInfo | null> => {
     try {
@@ -333,6 +421,8 @@ export function ChatWidget() {
                   sending={sending}
                   chatError={chatError}
                   scrollRef={scrollRef}
+                  videos={videos}
+                  products={products}
                 />
                 <ChatInput
                   inputValue={inputValue}
