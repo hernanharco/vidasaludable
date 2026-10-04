@@ -105,8 +105,16 @@ function installFetchMock() {
       videosState = [...videosState, video];
       return ok(201, { video });
     }
-    if (url === "/api/admin/videos/2" && method === "DELETE") {
-      return bad(409, { error: "video has segments", count: 1 });
+    const videoDelete = url.match(/^\/api\/admin\/videos\/(\d+)$/);
+    if (videoDelete && method === "DELETE") {
+      const id = Number(videoDelete[1]);
+      // Video 2 still has segments in the fixture → backend refuses with 409
+      if (id === 2) {
+        return bad(409, { error: "video has segments", count: 1 });
+      }
+      videosState = videosState.filter((v) => v.id !== id);
+      segmentsState = segmentsState.filter((s) => s.videoId !== id);
+      return ok(204, null);
     }
     if (url === "/api/admin/video-segments" && method === "GET") {
       return ok(200, { segments: segmentsState });
@@ -130,13 +138,18 @@ function installFetchMock() {
       segmentsState = [...segmentsState, segment];
       return ok(201, { segment });
     }
-    const segPatch = url.match(/^\/api\/admin\/video-segments\/(\d+)$/);
-    if (segPatch && method === "PATCH") {
-      const id = Number(segPatch[1]);
+    const segRoute = url.match(/^\/api\/admin\/video-segments\/(\d+)$/);
+    if (segRoute && method === "PATCH") {
+      const id = Number(segRoute[1]);
       const body = JSON.parse(String(init?.body ?? "{}"));
       segmentsState = segmentsState.map((s) => (s.id === id ? { ...s, ...body } : s));
       const segment = segmentsState.find((s) => s.id === id);
       return ok(200, { segment });
+    }
+    if (segRoute && method === "DELETE") {
+      const id = Number(segRoute[1]);
+      segmentsState = segmentsState.filter((s) => s.id !== id);
+      return ok(204, null);
     }
     return bad(404, { error: `unmocked ${method} ${url}` });
   });
@@ -312,5 +325,164 @@ describe("VideosPage admin CRM", () => {
     expect(await screen.findByText("video has segments")).toBeInTheDocument();
     // Video still listed — deletion was refused, not silently ignored
     expect(screen.getAllByText("Magnesio y sueño").length).toBeGreaterThan(0);
+  });
+
+  it("resets the segment filter to 'Todos los vídeos' after deleting the selected video", async () => {
+    const user = userEvent.setup();
+    render(<VideosPage />);
+    await screen.findByText("Introducción a la vitamina D");
+
+    // Filter by video 1: only its segment is listed, select shows that video
+    const filterSelect = screen.getByLabelText("Filtrar por vídeo") as HTMLSelectElement;
+    await user.selectOptions(filterSelect, "1");
+    expect(filterSelect).toHaveValue("1");
+    expect(screen.getByText("Introducción a la vitamina D")).toBeInTheDocument();
+    expect(screen.queryByText("Magnesio antes de dormir")).not.toBeInTheDocument();
+
+    // Delete the filtered video (confirm mocked true; mock DELETE succeeds)
+    const row = screen.getAllByText("Vitamina D y huesos")[0].closest("tr") as HTMLElement;
+    await user.click(within(row).getByRole("button", { name: "Eliminar" }));
+
+    // The filter must not stay pointed at the deleted video: the select shows
+    // "Todos los vídeos" again and the unfiltered segment list is rendered.
+    await waitFor(() => {
+      expect(screen.getByText("Magnesio antes de dormir")).toBeInTheDocument();
+    });
+    const freshSelect = screen.getByLabelText("Filtrar por vídeo") as HTMLSelectElement;
+    expect(freshSelect).toHaveValue("");
+    expect(freshSelect.selectedOptions[0]?.text).toBe("Todos los vídeos");
+    expect(screen.queryByText(/No hay segmentos para este vídeo/)).not.toBeInTheDocument();
+  });
+
+  // ─── T2: edit/delete coverage ───────────────────────────────────────
+
+  it("segment edit flow: PATCH /admin/video-segments/:id carries the new title", async () => {
+    const user = userEvent.setup();
+    render(<VideosPage />);
+    const row = (await screen.findByText("Introducción a la vitamina D")).closest(
+      "tr",
+    ) as HTMLElement;
+    await user.click(within(row).getByRole("button", { name: "Editar" }));
+
+    expect(await screen.findByText(/Editar segmento #7/)).toBeInTheDocument();
+    const titleInput = screen.getByLabelText("Título del segmento");
+    await user.clear(titleInput);
+    await user.type(titleInput, "Título editado");
+    await user.click(screen.getByRole("button", { name: "Guardar cambios" }));
+
+    await waitFor(() => {
+      const patch = mockFetch.mock.calls.find(
+        ([url, init]) =>
+          url === "/api/admin/video-segments/7" &&
+          (init as RequestInit | undefined)?.method === "PATCH",
+      );
+      expect(patch).toBeDefined();
+      expect(JSON.parse(String(patch![1].body))).toMatchObject({ title: "Título editado" });
+    });
+    // Reloaded list shows the new title
+    expect(await screen.findByText("Título editado")).toBeInTheDocument();
+  });
+
+  it("segment delete: DELETE /admin/video-segments/:id and the list reloads without it", async () => {
+    const user = userEvent.setup();
+    render(<VideosPage />);
+    const row = (await screen.findByText("Introducción a la vitamina D")).closest(
+      "tr",
+    ) as HTMLElement;
+    await user.click(within(row).getByRole("button", { name: "Eliminar" }));
+
+    expect(
+      mockFetch.mock.calls.some(
+        ([url, init]) =>
+          url === "/api/admin/video-segments/7" &&
+          (init as RequestInit | undefined)?.method === "DELETE",
+      ),
+    ).toBe(true);
+    // Reloaded segment list no longer contains the deleted segment
+    await waitFor(() => {
+      expect(screen.queryByText("Introducción a la vitamina D")).not.toBeInTheDocument();
+    });
+  });
+
+  it("video delete success: DELETE /admin/videos/:id and the row disappears after reload", async () => {
+    const user = userEvent.setup();
+    render(<VideosPage />);
+    await screen.findByText("Introducción a la vitamina D");
+
+    const row = screen.getAllByText("Vitamina D y huesos")[0].closest("tr") as HTMLElement;
+    await user.click(within(row).getByRole("button", { name: "Eliminar" }));
+
+    expect(
+      mockFetch.mock.calls.some(
+        ([url, init]) =>
+          url === "/api/admin/videos/1" && (init as RequestInit | undefined)?.method === "DELETE",
+      ),
+    ).toBe(true);
+    // Reloaded videos list (and filter options) no longer contain the video
+    await waitFor(() => {
+      expect(screen.queryByText("Vitamina D y huesos")).not.toBeInTheDocument();
+    });
+  });
+
+  // ─── T3: segment edit PATCH semantics ───────────────────────────────
+
+  it("segment edit PATCH: filled symptom field sends symptomId (no condition key) and empty clip sends clipYoutubeId: null", async () => {
+    const user = userEvent.setup();
+    render(<VideosPage />);
+    const row = (await screen.findByText("Introducción a la vitamina D")).closest(
+      "tr",
+    ) as HTMLElement;
+    await user.click(within(row).getByRole("button", { name: "Editar" }));
+    await screen.findByText(/Editar segmento #7/);
+
+    // Segment 7 arrives with condition "Dolor óseo", symptomId 12 and clip
+    // "clipA1". Fill a new symptom id and clear the clip: the patch must carry
+    // symptomId (numeric) with NO condition key, and clipYoutubeId: null
+    // explicitly (the condition text left in the form is ignored).
+    // Labels with hint <span>s match on their full label content; query by
+    // prefix regex like the existing /^Inicio \(s\)$/ lookups.
+    const symptomInput = screen.getByLabelText(/^ID síntoma/);
+    await user.clear(symptomInput);
+    await user.type(symptomInput, "15");
+    const clipInput = screen.getByLabelText(/^ID clip en YouTube/);
+    await user.clear(clipInput);
+    await user.click(screen.getByRole("button", { name: "Guardar cambios" }));
+
+    const patch = mockFetch.mock.calls.find(
+      ([url, init]) =>
+        url === "/api/admin/video-segments/7" &&
+        (init as RequestInit | undefined)?.method === "PATCH",
+    );
+    expect(patch).toBeDefined();
+    const body = JSON.parse(String(patch![1].body));
+    expect(body).toMatchObject({ symptomId: 15, clipYoutubeId: null });
+    expect("condition" in body).toBe(false);
+  });
+
+  it("segment edit PATCH: empty symptom field sends condition: \"\" (explicit clear) and no symptomId key", async () => {
+    const user = userEvent.setup();
+    render(<VideosPage />);
+    const row = (await screen.findByText("Introducción a la vitamina D")).closest(
+      "tr",
+    ) as HTMLElement;
+    await user.click(within(row).getByRole("button", { name: "Editar" }));
+    await screen.findByText(/Editar segmento #7/);
+
+    // Clear both the symptom id and the free-text condition: the patch must
+    // send the explicit clear condition: "" (backend nulls the condition) and
+    // no symptomId key at all.
+    await user.clear(screen.getByLabelText(/^ID síntoma/));
+    await user.clear(screen.getByLabelText(/^Condición \(texto libre\)/));
+    await user.click(screen.getByRole("button", { name: "Guardar cambios" }));
+
+    const patch = mockFetch.mock.calls.find(
+      ([url, init]) =>
+        url === "/api/admin/video-segments/7" &&
+        (init as RequestInit | undefined)?.method === "PATCH",
+    );
+    expect(patch).toBeDefined();
+    const body = JSON.parse(String(patch![1].body));
+    expect(body).toMatchObject({ condition: "", clipYoutubeId: "clipA1" });
+    expect("symptomId" in body).toBe(false);
   });
 });

@@ -134,6 +134,9 @@ export function VideosPage() {
     try {
       await api.deleteVideo(row.id);
       await load();
+      // El vídeo filtrado ya no existe: limpiar el filtro para no dejar una
+      // selección fantasma (el select y la cabecera «para este vídeo»).
+      if (selectedVideoId === row.id) setSelectedVideoId(null);
     } catch (err) {
       // El 409 (el vídeo aún tiene segmentos) se muestra tal cual, sin tragarse
       setError(err instanceof Error ? err.message : "Error al eliminar el vídeo");
