@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { Hono } from "hono";
+import { and, eq } from "drizzle-orm";
 import { createDatabase, type Db } from "../src/db/client.js";
 import { migrate } from "../src/db/migrate.js";
 import { createAssessmentRouter } from "../src/routes/assessment.js";
@@ -238,6 +239,75 @@ describe("Assessment API", () => {
     it("returns 404 for non-existent assessment", async () => {
       const res = await app.request("/assessment/non-existent-id");
       expect(res.status).toBe(404);
+    });
+
+    it("reconstructs matchedWeight/maxWeight from current mappings while score/status stay historical", async () => {
+      // Save with symptoms 3 (Ansiedad → B1 w=1, Magnesio w=1) and 11
+      // (Calambres → Magnesio w=2): at save time magnesio is 3/4 = 0.75 →
+      // urgent, B1 is 1/2 = 0.5 → urgent (pinned by the calculate tests).
+      const saveRes = await app.request("/assessment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          patientName: "Elena Ruiz",
+          patientSex: "F",
+          patientAge: 50,
+          responses: [
+            { symptomId: 3, answered: true },
+            { symptomId: 11, answered: true },
+          ],
+        }),
+      });
+      expect(saveRes.status).toBe(201);
+      const saved = await saveRes.json();
+
+      // Mapping change AFTER the save: Cabello seco (#9, unanswered) gains a
+      // Magnesio mapping (w=1). The read path must recompute matchedWeight /
+      // maxWeight from the CURRENT mappings...
+      db.insert(assessmentSymptomNutrients)
+        .values({ symptomId: 9, nutrientId: "magnesio", weight: 1 })
+        .run();
+
+      const getRes = await app.request(`/assessment/${saved.id}`);
+      expect(getRes.status).toBe(200);
+      const body = await getRes.json();
+      expect(body.results).toHaveLength(3);
+
+      const byId = (id: string) =>
+        body.results.find((r: any) => r.nutrientId === id);
+
+      // ...while score/status remain the persisted snapshot of the save.
+      // Magnesio: matched 3 (#3 w=1 + #11 w=2), max 5 (1+2+1(#40)+1(#9 new))
+      // but ratio stays 0.75 (3/4 at save time), not the recomputed 3/5 = 0.6.
+      const mag = byId("magnesio");
+      expect(mag.matchedWeight).toBe(3);
+      expect(mag.maxWeight).toBe(5);
+      expect(mag.ratio).toBe(0.75);
+      expect(mag.status).toBe("urgent");
+
+      // Vitamina B1: unaffected by the new mapping — 1/2 = 0.5 urgent (stored)
+      const b1 = byId("vitamina_b1");
+      expect(b1.matchedWeight).toBe(1);
+      expect(b1.maxWeight).toBe(2);
+      expect(b1.ratio).toBe(0.5);
+      expect(b1.status).toBe("urgent");
+
+      // Vitamina A: symptom #1 never answered — 0/1 = 0 OK (stored)
+      const a = byId("vitamina_a");
+      expect(a.matchedWeight).toBe(0);
+      expect(a.maxWeight).toBe(1);
+      expect(a.ratio).toBe(0);
+      expect(a.status).toBe("OK");
+
+      // Restore the seeded fixture so the shared in-memory db stays pristine
+      db.delete(assessmentSymptomNutrients)
+        .where(
+          and(
+            eq(assessmentSymptomNutrients.symptomId, 9),
+            eq(assessmentSymptomNutrients.nutrientId, "magnesio"),
+          ),
+        )
+        .run();
     });
   });
 });
