@@ -1,8 +1,13 @@
 // Dev-only CRM client for the /admin pages.
 //
 // Every request goes through the Vite dev proxy (`/api/*` → backend, prefix
-// stripped). The backend returns 403 outside NODE_ENV=development — the admin
-// UI surfaces that guard as a friendly message rather than assuming access.
+// stripped). The backend returns 401/403 outside NODE_ENV=development — the
+// admin UI surfaces that guard as a friendly message rather than assuming
+// access. In production the authCore JWT rides along as `Authorization:
+// Bearer` (the Vercel rewrite is same-origin, so the cookie would too — the
+// explicit header keeps the dev proxy honest).
+
+import { getToken, clearToken } from "../lib/auth";
 
 export interface Product {
   reference: string;
@@ -204,50 +209,26 @@ export class AdminError extends Error {
   }
 }
 
-// Basic-auth session for the /admin CRM in non-dev environments.
-// In development the backend is open; in production the browser stores the
-// credentials (sessionStorage only — never persisted) and sends them on every
-// admin request.
-let adminAuth: string | null = (() => {
-  try {
-    return sessionStorage.getItem("vr_admin_auth");
-  } catch {
-    return null;
-  }
-})();
-
-export function setAdminAuth(user: string, pass: string): void {
-  adminAuth = btoa(`${user}:${pass}`);
-  try {
-    sessionStorage.setItem("vr_admin_auth", adminAuth);
-  } catch {
-    /* storage unavailable */
-  }
-}
-
-export function clearAdminAuth(): void {
-  adminAuth = null;
-  try {
-    sessionStorage.removeItem("vr_admin_auth");
-  } catch {
-    /* storage unavailable */
-  }
-}
-
-export function hasAdminAuth(): boolean {
-  return adminAuth !== null;
-}
-
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = getToken();
   const res = await fetch(`/api/admin${path}`, {
     headers: {
       "Content-Type": "application/json",
-      ...(adminAuth ? { Authorization: `Basic ${adminAuth}` } : {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     ...init,
   });
   const body = (await res.json().catch(() => ({}))) as { error?: string };
   if (!res.ok) {
+    if (
+      res.status === 401 &&
+      (body.error === "token_requerido" || body.error === "token_invalido")
+    ) {
+      // Session expired or token rejected: drop the cookie and return to the
+      // login screen. 403 (role) is left to the caller — never a redirect loop.
+      clearToken();
+      window.location.assign("/admin/login");
+    }
     throw new AdminError(res.status, body.error ?? `HTTP ${res.status}`);
   }
   return body as unknown as T;

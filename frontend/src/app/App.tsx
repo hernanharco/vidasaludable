@@ -20,6 +20,8 @@ import { RecommendationsPage } from "./admin/RecommendationsPage";
 import { ReferrersPage } from "./admin/ReferrersPage";
 import { AssessmentAdminPage } from "./admin/AssessmentAdminPage";
 import { VideosPage } from "./admin/VideosPage";
+import { LoginScreen } from "./admin/LoginScreen";
+import { AuthCallback } from "./admin/AuthCallback";
 
 function Landing() {
   return (
@@ -42,6 +44,8 @@ export default function App() {
   return (
     <Routes>
       <Route path="/" element={<Landing />} />
+      <Route path="/admin/login" element={<LoginScreen />} />
+      <Route path="/auth/callback" element={<AuthCallback />} />
       <Route path="/admin" element={<AdminLayout />}>
         <Route index element={<Dashboard />} />
         <Route path="catalog" element={<CatalogPage />} />

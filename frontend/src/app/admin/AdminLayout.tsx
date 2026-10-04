@@ -11,12 +11,13 @@ import {
   ClipboardList,
   PanelLeftClose,
   PanelLeftOpen,
-  Lock,
   Key,
   Stethoscope,
   Clapperboard,
 } from "lucide-react";
-import { api, AdminError, setAdminAuth, clearAdminAuth } from "./api";
+import { api, AdminError } from "./api";
+import { getToken, clearToken } from "../lib/auth";
+import { LoginScreen } from "./LoginScreen";
 
 const sections = [
   { to: "/admin", label: "Dashboard", icon: LayoutDashboard, end: true },
@@ -32,7 +33,7 @@ const sections = [
 
 const STORAGE_KEY = "vr_admin_sidebar_collapsed";
 
-type AuthState = "checking" | "ok" | "login" | "error";
+type AuthState = "checking" | "ok" | "login" | "restricted" | "error";
 
 export function AdminLayout() {
   const [collapsed, setCollapsed] = useState(() => {
@@ -45,8 +46,6 @@ export function AdminLayout() {
 
   const [authState, setAuthState] = useState<AuthState>("checking");
   const [authMessage, setAuthMessage] = useState<string | null>(null);
-  const [user, setUser] = useState("");
-  const [pass, setPass] = useState("");
 
   const probe = async () => {
     try {
@@ -55,9 +54,12 @@ export function AdminLayout() {
       setAuthMessage(null);
     } catch (e) {
       if (e instanceof AdminError && e.status === 401) {
-        clearAdminAuth();
+        // request() already cleared the cookie and redirected to the login
+        clearToken();
         setAuthState("login");
-        setAuthMessage(null);
+      } else if (e instanceof AdminError && e.status === 403) {
+        // Valid token, wrong role — static message, never re-probe
+        setAuthState("restricted");
       } else {
         setAuthState("error");
         setAuthMessage(e instanceof Error ? e.message : "Error de red");
@@ -66,24 +68,31 @@ export function AdminLayout() {
   };
 
   useEffect(() => {
-    void probe();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user.trim() || !pass) {
-      setAuthMessage("Usuario y contraseña son obligatorios.");
+    if (getToken()) {
+      void probe();
       return;
     }
-    setAdminAuth(user.trim(), pass);
-    setAuthMessage("Verificando…");
-    await probe();
-    if (authState === "ok") {
-      setUser("");
-      setPass("");
-    }
-  };
+    // No cookie: probe ONCE without auth to tell an open dev backend
+    // (200 → enter the CRM with no ceremony, per the feature decision) from
+    // production's JWT guard (401 → Google login screen). Raw fetch on
+    // purpose — api.request would side-track the 401 into a redirect before
+    // this gate could decide.
+    void (async () => {
+      try {
+        const res = await fetch("/api/admin/catalog", {
+          headers: { "Content-Type": "application/json" },
+        });
+        if (res.ok) {
+          setAuthState("ok");
+          return;
+        }
+      } catch {
+        // Network error → fall through to the login screen
+      }
+      setAuthState("login");
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const toggleCollapsed = () => {
     setCollapsed((c) => {
@@ -96,6 +105,11 @@ export function AdminLayout() {
       return next;
     });
   };
+
+  // No token cookie → the whole layout is replaced by the Google login screen
+  if (authState === "login") {
+    return <LoginScreen />;
+  }
 
   return (
     <div className="h-screen bg-stone-50 text-stone-900 font-sans flex overflow-hidden">
@@ -140,8 +154,8 @@ export function AdminLayout() {
         <div className="border-t border-emerald-900/60 py-3 shrink-0">
           {!collapsed && (
             <p className="px-4 pb-2 text-[11px] text-stone-500">
-              {authState === "ok"
-                ? "Panel protegido · basic auth"
+              {getToken()
+                ? "Panel protegido · authCore (Google)"
                 : "Panel dev-only · sin autenticación"}
             </p>
           )}
@@ -182,44 +196,13 @@ export function AdminLayout() {
             <p className="text-stone-500">Comprobando acceso…</p>
           ) : authState === "ok" ? (
             <Outlet />
-          ) : authState === "login" ? (
-            <div className="max-w-md mx-auto mt-16 bg-white border border-stone-200 p-8">
-              <div className="flex items-center gap-2 text-emerald-900">
-                <Lock className="w-5 h-5" />
-                <h2 className="font-serif text-xl">Acceso al CRM</h2>
-              </div>
-              <p className="mt-2 text-sm text-stone-500">
-                El panel está protegido. Introduce las credenciales de administración.
+          ) : authState === "restricted" ? (
+            <div className="max-w-2xl p-6 bg-amber-50 border border-amber-300 text-amber-900">
+              <h2 className="font-serif text-xl">Acceso restringido</h2>
+              <p className="mt-2 text-sm">
+                Tu cuenta no tiene permisos de administración (se requiere rol
+                ADMIN o SUPERADMIN). Contacta con el administrador del panel.
               </p>
-              <form onSubmit={handleLogin} className="mt-6 space-y-4">
-                <label className="block text-xs text-stone-600">
-                  Usuario
-                  <input
-                    type="text"
-                    value={user}
-                    onChange={(e) => setUser(e.target.value)}
-                    autoComplete="username"
-                    className="mt-1 w-full px-3 py-2 bg-stone-100 border border-stone-200 rounded-lg text-sm text-stone-800 focus:outline-none focus:ring-1 focus:ring-emerald-900"
-                  />
-                </label>
-                <label className="block text-xs text-stone-600">
-                  Contraseña
-                  <input
-                    type="password"
-                    value={pass}
-                    onChange={(e) => setPass(e.target.value)}
-                    autoComplete="current-password"
-                    className="mt-1 w-full px-3 py-2 bg-stone-100 border border-stone-200 rounded-lg text-sm text-stone-800 focus:outline-none focus:ring-1 focus:ring-emerald-900"
-                  />
-                </label>
-                {authMessage && <p className="text-xs text-red-600">{authMessage}</p>}
-                <button
-                  type="submit"
-                  className="w-full py-2.5 bg-emerald-900 text-white text-sm font-medium rounded-lg hover:bg-emerald-800 transition-colors"
-                >
-                  Entrar
-                </button>
-              </form>
             </div>
           ) : (
             <div className="max-w-2xl p-6 bg-amber-50 border border-amber-300 text-amber-900">
