@@ -32,10 +32,10 @@ needs one confirmation · `accept` = informational, keep as-is.
 
 | # | Finding | Sev | Status | Notes |
 |---|---------|-----|--------|-------|
-| 3.1 | `R3-EDIT-DELETE-COVERAGE` VideosPage.test.tsx:145-311 (T9) | WARNING | open | Edit/delete flows lack test coverage. |
-| 3.2 | `R3-SEGMENT-EDIT-PATCH-SEMANTICS` VideosPage.tsx:204-209 (T9) | WARNING | open | Edit patch: symptomId-vs-condition priority + clip null semantics partially untested at the component level. |
-| 3.3 | `R3-STALE-SEGMENT-FILTER` VideosPage.tsx:135-136 (T9) | SUGGESTION | open | Segment filter can go stale after video delete. |
-| 3.4 | `R3-MissingBackendTests` assessmentService.ts:175 + `R3-ReadPathReconstruction` assessmentService.ts:216 (post-approval) | SUGGESTION | verify | Assessment suite has since grown to 195 tests incl. integration; read-path reconstruction is an intentional, commented design (score/status persisted, weights recomputed). Verify coverage, then close. |
+| 3.1 | `R3-EDIT-DELETE-COVERAGE` VideosPage.test.tsx:145-311 (T9) | WARNING | done | Edit/delete flows lack test coverage. Covered by 2d2e8df0. |
+| 3.2 | `R3-SEGMENT-EDIT-PATCH-SEMANTICS` VideosPage.tsx:204-209 (T9) | WARNING | done | Edit patch: symptomId-vs-condition priority + clip null semantics pinned at component level by 2d2e8df0. |
+| 3.3 | `R3-STALE-SEGMENT-FILTER` VideosPage.tsx:135-136 (T9) | SUGGESTION | done | Real bug: filter went stale after video delete. Fixed + RED→GREEN test in 2d2e8df0. |
+| 3.4 | `R3-MissingBackendTests` assessmentService.ts:175 + `R3-ReadPathReconstruction` assessmentService.ts:216 (post-approval) | SUGGESTION | done | Reconstruction contract pinned in bd31df8b (recomputed weights vs historical score/status); suite at 200 tests. |
 
 ## Deferred — Pipeline CLI robustness (T5, 17 findings)
 
@@ -78,6 +78,8 @@ two with real failure-mode value.
   fix/backend-quick-wins; see odd/tasks/backend-quick-wins.md)
 - [x] Batch 2 (2.1-2.3) — commits 642c8628 · 5d52406f · 1906c09c (branch
   fix/chat-card-ux; see odd/tasks/chat-card-ux.md)
+- [x] Batch 3 (3.1-3.4) — commits 2d2e8df0 · bd31df8b (branch
+  fix/admin-videos-tests; see odd/tasks/admin-videos-tests.md)
 - [ ] Batch 2 (2.1-2.3)
 - [ ] Batch 3 (3.1-3.4)
 - [ ] Deferred pipeline batch
