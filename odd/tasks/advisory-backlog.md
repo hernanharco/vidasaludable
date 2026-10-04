@@ -74,7 +74,8 @@ two with real failure-mode value.
 
 ## Progress
 
-- [ ] Batch 1 (1.1-1.4)
+- [x] Batch 1 (1.1-1.4) — commits 85cd8f41 · 3868f3a5 · 763884f0 (branch
+  fix/backend-quick-wins; see odd/tasks/backend-quick-wins.md)
 - [ ] Batch 2 (2.1-2.3)
 - [ ] Batch 3 (3.1-3.4)
 - [ ] Deferred pipeline batch
