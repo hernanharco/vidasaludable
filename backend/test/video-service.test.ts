@@ -155,6 +155,32 @@ describe("videoService", () => {
     ).toThrow();
   });
 
+  it("T2: duplicate createVideo throws the raw UNIQUE constraint error from the driver", () => {
+    // Contract for POST /videos (admin.ts): when the TOCTOU pre-check misses a
+    // duplicate (a row inserted between getVideoByYoutubeId and createVideo),
+    // this driver error is the signal the route must map to 409 with the same
+    // body as the pre-check ("youtubeId already exists").
+    //
+    // The true mid-request race cannot be simulated deterministically from the
+    // route level without mocking: better-sqlite3 is synchronous on one
+    // connection and the handler section between the pre-check and the insert
+    // contains no await, so nothing can interleave (Node is single-threaded).
+    // Therefore we pin the raw error shape here — message + `code` — that the
+    // route's catch keys on, instead of mocking the service.
+    const svc = createVideoService(db);
+    svc.createVideo({ speaker: "s", youtubeId: "t2-race-dup", url: "u", title: "first" });
+    let thrown: unknown;
+    try {
+      svc.createVideo({ speaker: "s", youtubeId: "t2-race-dup", url: "u", title: "second" });
+    } catch (err) {
+      thrown = err;
+    }
+    expect(thrown).toBeInstanceOf(Error);
+    const e = thrown as Error & { code?: string };
+    expect(e.message).toContain("UNIQUE constraint failed");
+    expect(String(e.code)).toMatch(/^SQLITE_CONSTRAINT/);
+  });
+
   it("listVideos returns every video", () => {
     const svc = createVideoService(db);
     const before = svc.listVideos().length;
@@ -207,6 +233,35 @@ describe("videoService", () => {
     expect(svc.removeVideo(row.id)).toBe(true);
     expect(svc.getVideoByYoutubeId("rm-video-1")).toBeNull();
     expect(svc.removeVideo(99999)).toBe(false);
+  });
+
+  it("T3: removeVideo on a video with segments throws the raw FK constraint error", () => {
+    // Contract for DELETE /videos/:id (admin.ts): the pre-count is the friendly
+    // fast path, but a segment inserted between the count and removeVideo would
+    // make removeVideo throw (foreign_keys is ON — see client.ts). The route's
+    // catch keys on this exact message to re-emit the 409 "video has segments"
+    // with a fresh count. As with T2, the mid-request race itself cannot be
+    // simulated deterministically without mocking (synchronous,
+    // single-connection service; the handler section has no await), so we pin
+    // the raw error shape here instead of mocking the service.
+    const svc = createVideoService(db);
+    const video = svc.createVideo({
+      speaker: "s",
+      youtubeId: "t3-fk-video",
+      url: "u",
+      title: "t",
+    });
+    svc.createSegment({ videoId: video.id, startS: 0, endS: 10, title: "seg" });
+    let thrown: unknown;
+    try {
+      svc.removeVideo(video.id);
+    } catch (err) {
+      thrown = err;
+    }
+    expect(thrown).toBeInstanceOf(Error);
+    expect((thrown as Error).message).toContain("FOREIGN KEY constraint failed");
+    // The failed DELETE rolled back — the video survives.
+    expect(svc.getVideoByYoutubeId("t3-fk-video")).not.toBeNull();
   });
 
   it("createSegment defaults enabled=0 and summary='' with ISO-8601 timestamps", () => {

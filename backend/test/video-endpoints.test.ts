@@ -284,6 +284,32 @@ describe("video endpoints (T7)", () => {
       expect(data.error).toBe("youtubeId already exists");
     });
 
+    it("T2: concurrent duplicate POSTs resolve to one 201 and one 409 (never a 500)", async () => {
+      // Triangulation for the TOCTOU catch in POST /videos. Both requests pass
+      // the friendly pre-check only if they interleave before either insert;
+      // SQLite's UNIQUE then decides the loser. With better-sqlite3 (one
+      // synchronous connection) the interleaving cannot happen — the first
+      // request's pre-check→insert section is atomic — so this deterministically
+      // lands on the pre-check path today (409, same body). If the service ever
+      // became async mid-request, the loser would surface via the UNIQUE catch
+      // (409, same body) instead of a 500 — this test catches that regression.
+      const [a, b] = await Promise.all([
+        send("POST", "/admin/videos", {
+          speaker: "Luis Collantes",
+          url: "https://www.youtube.com/watch?v=vidRACE01",
+          title: "Carrera A",
+        }),
+        send("POST", "/admin/videos", {
+          speaker: "Luis Collantes",
+          url: "https://youtu.be/vidRACE01",
+          title: "Carrera B",
+        }),
+      ]);
+      expect([a.status, b.status].sort()).toEqual([201, 409]);
+      const loser = a.status === 409 ? a : b;
+      expect(((await loser.json()) as { error: string }).error).toBe("youtubeId already exists");
+    });
+
     it("rejects missing fields, bad status and bad durationS with 400", async () => {
       const noTitle = await send("POST", "/admin/videos", {
         speaker: "Luis Collantes",

@@ -331,7 +331,24 @@ export function createAdminRouter(db: Db): Hono {
       }
       input.status = status;
     }
-    return c.json({ video: videoService.createVideo(input) }, 201);
+    // Carrera TOCTOU: el pre-check de arriba es el camino rápido y amable,
+    // pero entre el check y el insert puede insertarse otro video con el mismo
+    // youtubeId (p. ej. dos requests concurrentes). SQLite lo resuelve con la
+    // UNIQUE (solo una fila sobrevive); aquí solo se mapea el error del driver
+    // al mismo 409 del pre-check en vez de dejar un 500. Cualquier otro error
+    // se propaga igual que antes.
+    try {
+      return c.json({ video: videoService.createVideo(input) }, 201);
+    } catch (err) {
+      const e = err as { message?: string; code?: string };
+      const uniqueViolation =
+        (typeof e?.message === "string" && e.message.includes("UNIQUE constraint failed")) ||
+        (typeof e?.code === "string" && e.code.startsWith("SQLITE_CONSTRAINT"));
+      if (uniqueViolation) {
+        return c.json({ error: "youtubeId already exists" }, 409);
+      }
+      throw err;
+    }
   });
 
   app.patch("/videos/:id", async (c) => {
@@ -393,7 +410,25 @@ export function createAdminRouter(db: Db): Hono {
     if (row && row.cnt > 0) {
       return c.json({ error: "video has segments", count: row.cnt }, 409);
     }
-    const removed = videoService.removeVideo(id);
+    let removed: boolean;
+    try {
+      removed = videoService.removeVideo(id);
+    } catch (err) {
+      // Carrera FK: un segmento insertado entre el conteo y el delete haría
+      // fallar el DELETE (foreign_keys está ON) con un 500. Se devuelve el
+      // mismo 409 del pre-check, re-contando para `count` (consulta puntual
+      // sobre el índice por video_id). Cualquier otro error se propaga.
+      const e = err as { message?: string };
+      if (typeof e?.message === "string" && e.message.includes("FOREIGN KEY constraint failed")) {
+        const [again] = db
+          .select({ cnt: count() })
+          .from(videoSegments)
+          .where(eq(videoSegments.videoId, id))
+          .all();
+        return c.json({ error: "video has segments", count: again?.cnt ?? 0 }, 409);
+      }
+      throw err;
+    }
     if (!removed) return c.json({ error: "video not found" }, 404);
     return c.body(null, 204);
   });
