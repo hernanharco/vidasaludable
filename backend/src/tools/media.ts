@@ -173,11 +173,13 @@ export function createYtdlpClient(runner: CommandRunner = execCommandRunner): Yt
 
 /**
  * Exact ffmpeg argument array for a frame-accurate re-encode cut
- * (`-ss`/`-to` before `-i`, libx264 + aac). Pure — asserted verbatim by
+ * (`-y` overwrite first — re-cuts never prompt/fail on an existing clip —
+ * then `-ss`/`-to` before `-i`, libx264 + aac). Pure — asserted verbatim by
  * backend/test/video-pipeline.test.ts.
  */
 export function buildFfmpegArgs(input: string, output: string, startS: number, endS: number): string[] {
   return [
+    "-y",
     "-ss",
     String(startS),
     "-to",

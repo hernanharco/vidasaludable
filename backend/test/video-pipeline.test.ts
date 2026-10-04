@@ -306,8 +306,9 @@ describe("parseGeminiSegments", () => {
 });
 
 describe("buildFfmpegArgs", () => {
-  it("devuelve el array exacto de ffmpeg (re-encode frame-accurate)", () => {
+  it("devuelve el array exacto de ffmpeg (re-encode frame-accurate, -y primero)", () => {
     expect(buildFfmpegArgs("/in.mp4", "/out.mp4", 5, 40)).toEqual([
+      "-y",
       "-ss",
       "5",
       "-to",
@@ -642,7 +643,7 @@ describe("createFfmpegClient (con runner falso, sin subprocess)", () => {
       expect(calls[0]!.cmd).toBe("ffmpeg");
       expect(calls[0]!.args).toEqual(buildFfmpegArgs("/cache/0RYeUT3Yl0Q.mp4", output, 5, 40));
       expect(calls[0]!.args).toEqual([
-        "-ss", "5", "-to", "40", "-i", "/cache/0RYeUT3Yl0Q.mp4",
+        "-y", "-ss", "5", "-to", "40", "-i", "/cache/0RYeUT3Yl0Q.mp4",
         "-c:v", "libx264", "-preset", "veryfast", "-c:a", "aac", output,
       ]);
     } finally {
