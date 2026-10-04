@@ -20,13 +20,17 @@ const BENEFITS_MAX = 180;
  * exists purely to make the recommendation visible instead of literal
  * bracket text. Rendered inside agent bubbles wherever a persisted `[REF]`
  * citation resolves to a known catalog product; unknown refs keep their
- * literal `[12345]` text and render no card.
+ * literal `[12345]` text and render no card. Carries a muted disclaimer line
+ * whenever the API serves one (content honesty: show what exists).
  */
 export function ProductCard({ product }: { product: ProductCardInfo }) {
   const benefits =
     product.benefits.length > BENEFITS_MAX
       ? `${product.benefits.slice(0, BENEFITS_MAX).trimEnd()}…`
       : product.benefits;
+  // Disclaimer (feature doc Decisions): render only when non-empty after
+  // trim — old rows / curation gaps must not break the card.
+  const disclaimer = typeof product.disclaimer === "string" ? product.disclaimer.trim() : "";
   return (
     <div className="mt-2 mb-1 flex items-start gap-2 rounded-xl border border-stone-200 bg-stone-50 p-2.5 text-left">
       <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-900 text-white">
@@ -47,6 +51,9 @@ export function ProductCard({ product }: { product: ProductCardInfo }) {
         </span>
         {benefits ? (
           <span className="mt-1 block text-[11px] leading-relaxed text-stone-600">{benefits}</span>
+        ) : null}
+        {disclaimer ? (
+          <span className="mt-0.5 block text-[10px] leading-snug text-stone-400">{disclaimer}</span>
         ) : null}
       </span>
     </div>

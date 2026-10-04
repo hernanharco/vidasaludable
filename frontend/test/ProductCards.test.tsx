@@ -135,6 +135,60 @@ describe("ChatMessages product cards", () => {
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
   });
 
+  it("renders the product disclaimer as a muted line when present", () => {
+    renderMessages("Prueba [110606] hoy con aviso.");
+
+    // The disclaimer already rides along in ProductCardInfo and the API
+    // serves it — it must show under the benefits line.
+    expect(screen.getByText(PRODUCTS[0].disclaimer)).toBeInTheDocument();
+  });
+
+  it("renders no disclaimer line when it is empty, blank, or missing (old rows must not break)", () => {
+    const gaps: ProductCardInfo[] = [
+      { ...PRODUCTS[1], disclaimer: "" },
+      { ...PRODUCTS[1], reference: "111111", disclaimer: "   " },
+      // Runtime gap: older API rows may not carry the field at all.
+      { ...PRODUCTS[1], reference: "222222", disclaimer: undefined as unknown as string },
+    ];
+    renderMessages("Prueba [121576] [111111] [222222] sin drama.", "agent", productMap(gaps));
+
+    // Cards still render fine…
+    expect(screen.getAllByText(/Nutrilite™ Double X/)).toHaveLength(3);
+    // …and a blank/missing disclaimer produces no line at all.
+    expect(screen.queryByText(/Complemento alimenticio/)).not.toBeInTheDocument();
+  });
+
+  it("renders the ProductCard only for the FIRST occurrence of a repeated ref (per message)", () => {
+    renderMessages("Prueba Nutrilite™ Double X [121576] y otra vez Double X [121576].");
+
+    // Exactly one card…
+    expect(screen.getAllByText("Nutrilite™ Double X")).toHaveLength(1);
+    expect(screen.getAllByText(priceOf(PRODUCTS[1]))).toHaveLength(1);
+    // …and BOTH token occurrences stay visible in the text (append-only
+    // contract): one as the card's ref chip, one as literal text.
+    const bubble = screen.getByText(/Prueba/) as HTMLElement;
+    expect(bubble.textContent?.match(/\[121576\]/g) ?? []).toHaveLength(2);
+    expect(bubble.textContent).toContain("y otra vez Double X [121576].");
+  });
+
+  it("dedupes per message only: each message still renders its own card", () => {
+    render(
+      <ChatMessages
+        messages={[
+          { sender: "agent", text: "Primero [110606]." },
+          { sender: "agent", text: "Segundo [110606]." },
+        ]}
+        sending={false}
+        chatError={null}
+        scrollRef={{ current: null } as React.RefObject<HTMLDivElement>}
+        videos={videoMap()}
+        products={productMap()}
+      />,
+    );
+
+    expect(screen.getAllByText("Nutrilite™ Cal Mag D Plus")).toHaveLength(2);
+  });
+
   it("truncates long benefits at ~180 chars with an ellipsis", () => {
     const { container } = renderMessages("Prueba [110606] hoy mismo.");
 
