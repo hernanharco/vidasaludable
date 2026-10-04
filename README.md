@@ -30,9 +30,7 @@ cd backend && pnpm install && pnpm dev
 | VERCEL_TOKEN | ✅ Configurado | Token sin expiración (dashboard) |
 | VERCEL_ORG_ID | ✅ `team_0iXBDap6vHdalM0fEFusXlzy` | |
 | VERCEL_PROJECT_ID | ✅ `prj_OpeTmO5Bs2V5DGfdH4NiThlzdTdD` | Proyecto `vidasaludable` (el id viejo `prj_4vAW…` era el proyecto `doctoraandrea`) |
-| HETZNER_HOST | ⚠️ Legacy | `100.111.99.61` (Tailscale) — sin uso desde que se quitó el job SSH |
-| HETZNER_USER | ⚠️ Legacy | sin uso |
-| HETZNER_SSH_KEY | ⚠️ Legacy | sin uso |
+| HETZNER_HOST / USER / SSH_KEY | 🗑️ Eliminados | Sin uso desde que se quitó el job SSH (2026-10-04); borrados de GitHub |
 
 **⚠️ Nota:** El token VERCEL_TOKEN debe ser creado desde https://vercel.com/account/tokens con **No expiration**. No usar el token del CLI.
 

@@ -47,6 +47,12 @@ change, same session pattern as previous docs commits).
     race artifacts; no new ones after the PATCH.
   - Prod: home **200**, `/api/health` `{"ok":true,"env":"production"}`,
     bundle `index-De29tEXk.js`.
+- Follow-up (advisory closure): HETZNER_HOST/USER/SSH_KEY **deleted from
+  GitHub** (gh secret list → only VERCEL_* remain); `Build Backend` exercised
+  once via workflow_dispatch (run 37221056811, **success**) closing
+  R4-UNVERIFIED-WORKFLOW; README secrets table updated to 🗑️ Eliminados.
+- Remaining advisory: R4-SINGLE-DEPLOY-PATH (backend depends solely on the
+  webhook — no fallback) — accepted as informational, documented here.
 
 ## Decisions
 
