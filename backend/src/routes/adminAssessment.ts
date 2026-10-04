@@ -1,5 +1,4 @@
 import { Hono } from "hono";
-import { basicAuth } from "hono/basic-auth";
 import type { Db } from "../db/client.js";
 import {
   assessmentSymptoms,
@@ -14,6 +13,10 @@ import { eq, and, sql } from "drizzle-orm";
 /**
  * Admin assessment management routes.
  *
+ * - Access control: handled by the ONE central guard in src/index.ts
+ *   (app.use("/admin/*")) — authCore JWT (Bearer or cookie), role
+ *   ADMIN/SUPERADMIN, dev open / prod fail-closed. This router has no guard
+ *   of its own.
  * - Symptoms:    CRUD with referential check before delete.
  * - Nutrients:   CRUD with referential check before delete.
  * - Mappings:    CRUD on the composite key (symptomId + nutrientId).
@@ -21,18 +24,6 @@ import { eq, and, sql } from "drizzle-orm";
  */
 export function createAdminAssessmentRouter(db: Db): Hono {
   const app = new Hono();
-
-  // Guard: same policy as main admin router
-  app.use("*", async (c, next) => {
-    const env = process.env.NODE_ENV ?? "development";
-    if (env === "development") return next();
-    const user = process.env.ADMIN_USER;
-    const pass = process.env.ADMIN_PASS;
-    if (!user || !pass) {
-      return c.json({ error: "admin_no_configurado" }, 503);
-    }
-    return basicAuth({ username: user, password: pass })(c, next);
-  });
 
   // ─── Symptoms ──────────────────────────────────────────────────────
 

@@ -1,5 +1,4 @@
 import { Hono } from "hono";
-import { basicAuth } from "hono/basic-auth";
 import type { Db } from "../db/client.js";
 import { createCatalogService } from "../services/catalogService.js";
 import type { CatalogService } from "../services/catalogService.js";
@@ -27,11 +26,10 @@ function isVideoStatus(value: string): value is VideoStatus {
 /**
  * CRM routes under /admin.
  *
- * - Development (NODE_ENV=development): open access (local prototype).
- * - Any other environment (production): HTTP **basic auth** via
- *   ADMIN_USER / ADMIN_PASS. If those are not configured, admin fails closed
- *   with 503 — PII (names, emails, phones) and health/purchase data must never
- *   be exposed on a public host (LOPD/GDPR deploy blocker, see design Risks).
+ * - Access control: handled by the ONE central guard in src/index.ts
+ *   (app.use("/admin/*")) — authCore JWT (Bearer or cookie), role
+ *   ADMIN/SUPERADMIN, dev open / prod fail-closed. This router has no guard
+ *   of its own.
  * - `recommendations` is GET-only: the audit log is append-only, so no
  *   POST/PUT/DELETE is exposed here or anywhere (see design ADR + audit spec).
  * - Catalog edits never DELETE: products referenced by purchases or past
@@ -41,20 +39,6 @@ function isVideoStatus(value: string): value is VideoStatus {
  */
 export function createAdminRouter(db: Db): Hono {
   const app = new Hono();
-
-  // Guard: open in dev; basic auth + fail-closed in any non-dev environment.
-  app.use("*", async (c, next) => {
-    const env = process.env.NODE_ENV ?? "development";
-    if (env === "development") {
-      return next();
-    }
-    const user = process.env.ADMIN_USER;
-    const pass = process.env.ADMIN_PASS;
-    if (!user || !pass) {
-      return c.json({ error: "admin_no_configurado" }, 503);
-    }
-    return basicAuth({ username: user, password: pass })(c, next);
-  });
 
   const catalog = createCatalogService(db);
   const recommendations = createRecommendationService(db);

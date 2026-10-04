@@ -6,6 +6,11 @@ import { eq, sql } from "drizzle-orm";
 /**
  * Admin referrer management routes.
  *
+ * - Access control: previously UNGUARDED (SECURITY GAP — these PII routes
+ *   were public in production); protection now comes from the ONE central
+ *   guard in src/index.ts (app.use("/admin/*") — authCore JWT, role
+ *   ADMIN/SUPERADMIN). No guard exists in this router on purpose.
+ *
  * - GET    /admin/referrers       → list all with customer counts
  * - POST   /admin/referrers       → create new referrer
  * - PUT    /admin/referrers/:id   → update referrer

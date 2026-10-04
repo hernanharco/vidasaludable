@@ -249,9 +249,8 @@ describe("register + ask (integration: purchase injection, history, append-only)
     const before = db.select().from(recommendations).all().length;
 
     // Attempt a DELETE via the API — no route exists and admin is GET-only
-    // (and gated to NODE_ENV=development; outside dev it requires basic auth
-    // and fails closed with 503 when ADMIN_USER/PASS are unset), so it must be
-    // non-2xx and must not remove rows.
+    // (and gated: outside dev the central /admin/* guard requires an authCore
+    // JWT — 401 without one), so it must be non-2xx and must not remove rows.
     const del = await app.request("/admin/recommendations", { method: "DELETE" });
     expect(del.status).toBeGreaterThanOrEqual(400);
 
