@@ -33,6 +33,8 @@ interface ChatMessagesProps {
  * keeps unknown refs as literal `[12345]` text (backward compatible — unlike
  * video markers, where unknown ids are stripped). `[VIDEO:id]` contains
  * letters, so PRODUCT_REF never matches it; videos are split out first.
+ * Repeated refs within ONE message render a single card (first occurrence
+ * wins); later occurrences stay as literal `[ref]` text.
  */
 function ProductRefs({
   text,
@@ -41,6 +43,11 @@ function ProductRefs({
   text: string;
   products: Map<string, ProductCardInfo>;
 }) {
+  // Dedupe within a single message (render only): the FIRST occurrence of a
+  // known ref renders the card; later occurrences keep the literal `[ref]`
+  // text. The persisted message keeps every token untouched (append-only
+  // conversation contract — mirrors the VIDEO marker rule).
+  const seen = new Set<string>();
   // split with a capture group → [chunk, ref, chunk, ref, ..., chunk]
   const parts = text.split(PRODUCT_REF);
   return (
@@ -50,8 +57,12 @@ function ProductRefs({
           return part ? <React.Fragment key={i}>{part}</React.Fragment> : null;
         }
         const product = products.get(part);
-        if (product) return <ProductCard key={i} product={product} />;
-        // Unknown ref: keep the literal token in the text (backward compatible).
+        if (product && !seen.has(part)) {
+          seen.add(part);
+          return <ProductCard key={i} product={product} />;
+        }
+        // Unknown ref, or a repeat of one already rendered above: keep the
+        // literal token in the text (backward compatible / append-only).
         return <React.Fragment key={i}>[{part}]</React.Fragment>;
       })}
     </>
