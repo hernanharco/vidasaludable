@@ -150,6 +150,46 @@ describe("ChatMessages video cards", () => {
   });
 });
 
+describe("VideoCard scheme guard", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const EVIL: VideoCardInfo = {
+    id: 13,
+    title: "XSS de prueba",
+    condition: null,
+    summary: "Segmento con URL hostil (defensa en profundidad).",
+    url: "javascript:alert(1)",
+    speaker: "Luis Collantes",
+  };
+
+  it("renders no href for a non-https url (javascript: stays inert)", () => {
+    const { container } = renderMessages(
+      "Mira esto [VIDEO:13] con cuidado.",
+      "agent",
+      videoMap([...VIDEOS, EVIL]),
+    );
+
+    // The card layout still renders…
+    expect(screen.getByText("XSS de prueba")).toBeInTheDocument();
+    // …but nothing anchors to a javascript: URL and no link role appears.
+    expect(container.querySelector('a[href^="javascript:"]')).toBeNull();
+    expect(screen.queryByRole("link", { name: /XSS de prueba/i })).not.toBeInTheDocument();
+    // Surrounding text intact, marker token stripped like any other card.
+    const bubble = screen.getByText(/Mira esto/) as HTMLElement;
+    expect(bubble.textContent).toContain("con cuidado.");
+    expect(bubble.textContent).not.toContain("[VIDEO");
+  });
+
+  it("keeps the href for normal https urls", () => {
+    renderMessages("Mira [VIDEO:12] para dormir mejor.", "agent", videoMap());
+
+    const link = screen.getByRole("link", { name: /Magnesio y sueño/i });
+    expect(link).toHaveAttribute("href", VIDEOS[1].url);
+  });
+});
+
 describe("ChatWidget video map boot", () => {
   beforeEach(() => {
     vi.clearAllMocks();
