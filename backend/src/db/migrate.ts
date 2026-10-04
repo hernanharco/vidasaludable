@@ -173,6 +173,9 @@ CREATE TABLE IF NOT EXISTS video_segments (
 );
 CREATE INDEX IF NOT EXISTS video_segments_enabled_idx ON video_segments (enabled);
 CREATE INDEX IF NOT EXISTS video_segments_condition_idx ON video_segments (condition);
+-- R3-002: segment lookups by video (assistant cards, admin lists, the DELETE
+-- FK pre-check) had no index and scanned the whole table.
+CREATE INDEX IF NOT EXISTS video_segments_video_id_idx ON video_segments (video_id);
 `;
 
 /**
