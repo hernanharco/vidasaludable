@@ -15,7 +15,7 @@ Need to track who refers each person to the site. Before using the chat or asses
 | Column | Type | Notes |
 |--------|------|-------|
 | id | INTEGER PK | Auto-increment |
-| code | TEXT UNIQUE | The access code (e.g., "190643239") |
+| code | TEXT UNIQUE | The access code (e.g., "1906432239") |
 | name | TEXT | Referrer's full name |
 | phone | TEXT | Optional |
 | email | TEXT | Optional |

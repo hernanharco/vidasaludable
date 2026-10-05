@@ -132,7 +132,7 @@ export function ReferrersPage() {
               <Input
                 value={newCode}
                 onChange={(e) => setNewCode(e.target.value)}
-                placeholder="Ej: 190643239"
+                placeholder="Ej: 1906432239"
                 required
               />
             </label>

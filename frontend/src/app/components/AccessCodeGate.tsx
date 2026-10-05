@@ -109,7 +109,7 @@ export function AccessCodeGate({ onValidated }: AccessCodeGateProps) {
                   setError(null);
                 }}
                 className={`${inputCls} pl-9`}
-                placeholder="Ej: 190643239"
+                placeholder="Ej: 1906432239"
                 autoFocus
                 disabled={loading}
               />
