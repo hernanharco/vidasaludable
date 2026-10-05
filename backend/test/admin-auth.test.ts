@@ -33,8 +33,8 @@ const jwk = { ...publicKey.export({ format: "jwk" }), kid: "test-key-1" };
 const b64url = (value: string | Buffer): string => Buffer.from(value).toString("base64url");
 
 /** Build a compact JWT signed with `signingKey` (base64url header.payload.sig). */
-function signJwt(payload: Record<string, unknown>, signingKey: KeyObject): string {
-  const header = b64url(JSON.stringify({ alg: "RS256", typ: "JWT", kid: "test-key-1" }));
+function signJwt(payload: Record<string, unknown>, signingKey: KeyObject, kid = "test-key-1"): string {
+  const header = b64url(JSON.stringify({ alg: "RS256", typ: "JWT", kid }));
   const body = b64url(JSON.stringify(payload));
   const signed = `${header}.${body}`;
   const signature = nodeSign("RSA-SHA256", Buffer.from(signed), signingKey);
@@ -128,6 +128,39 @@ describe("verifyJwt (services/auth.ts)", () => {
     try {
       expect(await verifyJwt(adminToken())).toBeNull();
     } finally {
+      __setJwkForTest(jwk as JsonWebKey);
+    }
+  });
+});
+
+// ── R4 correction: JWKS cache must survive hub key rotation ─────────────────
+
+describe("JWKS cache rotation (R4-jwks-cache-no-invalidation)", () => {
+  const { publicKey: rotatedPub, privateKey: rotatedPriv } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const rotatedJwk = { ...rotatedPub.export({ format: "jwk" }), kid: "test-key-2" };
+
+  it("recovers after hub key rotation via kid selection + invalidate-on-failure", async () => {
+    const realFetch = globalThis.fetch;
+    __setJwkForTest(jwk as JsonWebKey); // cache holds the OLD key (kid test-key-1)
+    // Hub rotates: JWKS now serves ONLY the new key.
+    globalThis.fetch = (async () => ({
+      ok: true,
+      json: async () => ({ keys: [rotatedJwk] }),
+    })) as typeof fetch;
+    try {
+      // Cached old key still verifies tokens it signed (stale window).
+      expect(await verifyJwt(adminToken())).not.toBeNull();
+      // Rotated token (header kid test-key-2): kid mismatch must refetch, not reject.
+      const rotatedToken = signJwt(
+        { sub: "user-1", email: "admin@example.com", role: "ADMIN", exp: now() + 3600 },
+        rotatedPriv,
+        "test-key-2",
+      );
+      expect(await verifyJwt(rotatedToken)).not.toBeNull();
+      // Cache was replaced by the rotated key → pre-rotation token rejected.
+      expect(await verifyJwt(adminToken())).toBeNull();
+    } finally {
+      globalThis.fetch = realFetch;
       __setJwkForTest(jwk as JsonWebKey);
     }
   });
