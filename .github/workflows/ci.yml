@@ -1,12 +1,24 @@
-# Quality gate — runs the test suites and type checks on every push and PR.
+# Quality gate — runs the test suites, type checks and the production build.
 # The existing frontend-deploy.yml / backend-deploy.yml stay deploy-only; this
 # workflow is the only place that decides whether the code is *correct*.
+#
+# `push` is scoped to main on purpose: a feature branch pushed with an open PR
+# would otherwise fire both the `push` and the `pull_request` events and run
+# every job twice for the same change. PRs are covered by `pull_request`;
+# direct pushes to main are covered by `push`.
 name: CI
 
 on:
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
+
+# Supersede stale runs of the same ref (e.g. a PR that gets two quick pushes):
+# only the newest commit is tested, older ones are cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   backend:
@@ -37,7 +49,7 @@ jobs:
         run: pnpm build
 
   frontend:
-    name: Frontend (test + typecheck)
+    name: Frontend (test + typecheck + build)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -62,3 +74,9 @@ jobs:
 
       - name: Type check
         run: pnpm typecheck
+
+      # The gate must catch bundle-level breakage (Vite/Rollup resolution,
+      # asset imports) that tsc and vitest both accept — otherwise it only
+      # surfaces as a deploy-time failure on Vercel.
+      - name: Production build
+        run: pnpm build
