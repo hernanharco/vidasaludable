@@ -90,6 +90,20 @@ Key facts discovered in exploration:
     `vr_admin_auth` strings.
   - NOT automated: the actual Google click-through (needs human Google
     session) — manual E2E left to the owner as the final confirmation.
+  - Review `review-06eedfb06268db54` (tier high, `hot_path auth` → 4 lenses):
+    **correction_required** on CRITICAL `R4-jwks-cache-no-invalidation`
+    (JWKS cached forever: no TTL/kid/invalidation → hub key rotation =
+    total admin lockout). Correction plan 160 lines → implemented in
+    **142/160** (commit `c9c6b309`: 10-min TTL, kid-based key selection,
+    stale-mark-not-wipe on signature failure + one refetch retry, stale
+    serve only on kid match) with a rotation test (RED → GREEN).
+    Targeted validator re-ran → **APPROVED**, authority burned.
+    Advisory (12, informational): 4×R1 (token in URL query, http cookie on
+    https, cookie parse, index cookie split), 4×R2 (magic number, cookie
+    parsing divergence, cross-layer error strings, hardcoded probe URL),
+    2×R3 (JWKS cache no background refresh, restricted dead-end state),
+    2×R4 (cookie token truncation, JWKS fetch no timeout) — inventoried
+    here as follow-ups, none blocking.
 
 ## Decisions
 
