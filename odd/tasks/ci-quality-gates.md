@@ -25,6 +25,7 @@ tsconfig changes (backend already type-checks clean).
 | T3 | Add frontend `test` script (`vitest run`) so the 7 suites are reachable via `pnpm test` | `frontend/package.json` | `pnpm test` → 71/71 |
 | T4 | Add `.github/workflows/ci.yml`: on push/PR, backend `pnpm test` + `pnpm build`, frontend `pnpm test` + `pnpm typecheck`, as a job gate (not deploy) | `.github/workflows/ci.yml` | YAML valid (`actionlint` or `gh workflow view`), steps mirror verified local commands |
 | T5 | Full verification + work-unit commit(s) | — | backend 217/217 + frontend 71/71 + frontend typecheck 0 errors + backend tsc clean |
+| T6 | Act on the 2 advisory findings the resilience lens admitted: scope `push` to `main` + `concurrency`/`cancel-in-progress` (R4-duplicate-triggers); add a `Production build` step (R4-no-build-gate) | `.github/workflows/ci.yml`, `odd/tasks/ci-quality-gates.md` | js-yaml parses · frontend 71/71 · typecheck 0 · **`pnpm build` exit 0** (the new gate) |
 
 ## Progress
 
@@ -54,6 +55,15 @@ tsconfig changes (backend already type-checks clean).
 - [x] T5 — Full verification by an independent verifier: backend **217/217**
       + `pnpm build` exit 0; frontend **71/71** + `pnpm typecheck` **0 errors**;
       working tree clean after the four commits below.
+- [x] T6 — Both advisory findings fixed in one unit. `ci.yml` now scopes
+      `push` to `branches: [main]` (PRs covered by `pull_request`, so a
+      same-repo PR no longer runs every job twice), adds
+      `concurrency: ${{ github.workflow }}-${{ github.ref }}` with
+      `cancel-in-progress: true`, and adds a `Production build` step
+      (`pnpm build`, the exact command Vercel runs) to the frontend job.
+      Verified independently: js-yaml parses (7 frontend steps / 6 backend),
+      frontend 71/71, typecheck 0, `pnpm build` exit 0 (2703 modules, only
+      the pre-existing 920 kB chunk warning).
 
 ## Evidence (commits per task)
 
@@ -62,6 +72,8 @@ tsconfig changes (backend already type-checks clean).
 - T3: script landed in `88214570` (same package.json edit as T1); run recorded above
 - T4: `fc286257` ci: run tests and typecheck on every push and PR
 - T5: `c5d0ca1b` docs(odd): record ci-quality-gates feature (T1-T5)
+- T6: `67bf530a` ci: scope push to main, add concurrency and a production build gate
+- T6 doc: this commit
 
 ## Native review
 
@@ -77,6 +89,10 @@ tsconfig changes (backend already type-checks clean).
 - Result: state **approved** → `native-approved-acknowledgement-completed`,
   authority **burned**, `consumed_revision sha256:f136d747…`.
 - Delivery stays under ordinary repository policy: nothing pushed, no PR.
+- Third lineage `review-aecb15940df82f39` covered the T6 fix as an uncommitted
+  `current-changes` candidate (1 path / 22 lines, correction budget 11):
+  **approved**, authority burned (`consumed_revision sha256:73d39021…`),
+  4/4 reviewers admitted with no refusals.
 
 ## Incident (recorded, resolved)
 
@@ -98,9 +114,12 @@ work units above (content byte-identical, only grouping and messages changed).
 - **No ESLint in this unit**: the project has never had one; introducing a
   linter would surface hundreds of stylistic findings and swamp review. Own
   unit if wanted.
-- **Frontend `build` is not in CI** — `frontend/package.json` `build` re-runs
-  `pnpm install --frozen-lockfile` and the Vercel deploy already builds. CI
-  owns test + typecheck; deploy owns the bundle.
+- **Frontend `build` IS in CI since T6** — the T4 decision below recorded it
+  as deliberately out (deploy builds it); the resilience lens flagged that as
+  a candidate-introduced gap (`R4-no-build-gate`), so a `Production build`
+  step now runs the same `pnpm build` Vercel executes. The redundancy with
+  the deploy build is the point: a bundle regression must fail the gate, not
+  the deploy.
 - **`vitest.config.ts` `configFile: false`** kept with a cast: the worker read
   it may be a no-op (Vite loads exactly one config file, `vitest.config.ts`
   wins over `vite.config.ts`) but could not prove it, and deleting runtime
