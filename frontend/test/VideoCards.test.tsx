@@ -76,7 +76,7 @@ describe("ChatMessages video cards", () => {
     renderMessages("Mira este video [VIDEO:7] para saber más.", "agent", videoMap());
 
     const card = screen.getByRole("link", { name: /Vitamina D y huesos/i });
-    expect(card).toHaveAttribute("href", VIDEOS[0].url);
+    expect(card).toHaveAttribute("href", VIDEOS[0]!.url);
     expect(card).toHaveAttribute("target", "_blank");
     expect(card.getAttribute("rel")).toContain("noopener");
     expect(card.getAttribute("rel")).toContain("noreferrer");
@@ -96,13 +96,13 @@ describe("ChatMessages video cards", () => {
 
     const links = screen.getAllByRole("link");
     expect(links).toHaveLength(2);
-    expect(links[0]).toHaveAttribute("href", VIDEOS[0].url);
-    expect(links[1]).toHaveAttribute("href", VIDEOS[1].url);
+    expect(links[0]).toHaveAttribute("href", VIDEOS[0]!.url);
+    expect(links[1]).toHaveAttribute("href", VIDEOS[1]!.url);
     // Card without a condition renders title + speaker only (no crash)
     expect(links[1]).toHaveTextContent("Magnesio y sueño");
     expect(links[1]).toHaveTextContent("Luis Collantes");
     // Absent startS/endS → no time chip, no crash (only card 1 carries times).
-    expect(links[1].textContent).not.toMatch(/\d+:\d+/);
+    expect(links[1]!.textContent).not.toMatch(/\d+:\d+/);
     expect(screen.queryByText("1:30 – 3:00")).toBeInTheDocument();
     expect(screen.queryAllByText(/–/)).toHaveLength(1);
 
@@ -186,7 +186,7 @@ describe("VideoCard scheme guard", () => {
     renderMessages("Mira [VIDEO:12] para dormir mejor.", "agent", videoMap());
 
     const link = screen.getByRole("link", { name: /Magnesio y sueño/i });
-    expect(link).toHaveAttribute("href", VIDEOS[1].url);
+    expect(link).toHaveAttribute("href", VIDEOS[1]!.url);
   });
 });
 

@@ -121,7 +121,7 @@ describe("ChatMessages product cards", () => {
     // Card carries name, category chip, exact es-ES formatted price, ref chip.
     expect(screen.getByText("Nutrilite™ Cal Mag D Plus")).toBeInTheDocument();
     expect(screen.getByText("Nutrición")).toBeInTheDocument();
-    expect(screen.getByText(priceOf(PRODUCTS[0]))).toBeInTheDocument();
+    expect(screen.getByText(priceOf(PRODUCTS[0]!))).toBeInTheDocument();
     expect(screen.getByText("[110606]")).toBeInTheDocument();
 
     // The citation token is replaced by the card: surrounding reply text
@@ -140,15 +140,15 @@ describe("ChatMessages product cards", () => {
 
     // The disclaimer already rides along in ProductCardInfo and the API
     // serves it — it must show under the benefits line.
-    expect(screen.getByText(PRODUCTS[0].disclaimer)).toBeInTheDocument();
+    expect(screen.getByText(PRODUCTS[0]!.disclaimer)).toBeInTheDocument();
   });
 
   it("renders no disclaimer line when it is empty, blank, or missing (old rows must not break)", () => {
     const gaps: ProductCardInfo[] = [
-      { ...PRODUCTS[1], disclaimer: "" },
-      { ...PRODUCTS[1], reference: "111111", disclaimer: "   " },
+      { ...PRODUCTS[1]!, disclaimer: "" },
+      { ...PRODUCTS[1]!, reference: "111111", disclaimer: "   " },
       // Runtime gap: older API rows may not carry the field at all.
-      { ...PRODUCTS[1], reference: "222222", disclaimer: undefined as unknown as string },
+      { ...PRODUCTS[1]!, reference: "222222", disclaimer: undefined as unknown as string },
     ];
     renderMessages("Prueba [121576] [111111] [222222] sin drama.", "agent", productMap(gaps));
 
@@ -163,7 +163,7 @@ describe("ChatMessages product cards", () => {
 
     // Exactly one card…
     expect(screen.getAllByText("Nutrilite™ Double X")).toHaveLength(1);
-    expect(screen.getAllByText(priceOf(PRODUCTS[1]))).toHaveLength(1);
+    expect(screen.getAllByText(priceOf(PRODUCTS[1]!))).toHaveLength(1);
     // …and BOTH token occurrences stay visible in the text (append-only
     // contract): one as the card's ref chip, one as literal text.
     const bubble = screen.getByText(/Prueba/) as HTMLElement;
@@ -206,7 +206,7 @@ describe("ChatMessages product cards", () => {
     expect(bubble.textContent).toContain("cuando quieras.");
     // No card rendered for the unknown ref.
     expect(screen.queryByText("Nutrilite™ Cal Mag D Plus")).not.toBeInTheDocument();
-    expect(screen.queryByText(priceOf(PRODUCTS[0]))).not.toBeInTheDocument();
+    expect(screen.queryByText(priceOf(PRODUCTS[0]!))).not.toBeInTheDocument();
   });
 
   it("renders a video card and product cards in ONE message ([VIDEO:id] ≠ product ref)", () => {
@@ -216,12 +216,12 @@ describe("ChatMessages product cards", () => {
 
     // Video marker resolves to its link card…
     const link = screen.getByRole("link", { name: /Vitamina D y huesos/i });
-    expect(link).toHaveAttribute("href", VIDEOS[0].url);
+    expect(link).toHaveAttribute("href", VIDEOS[0]!.url);
     // …and both product refs render as info cards in the same bubble.
     expect(screen.getByText("Nutrilite™ Cal Mag D Plus")).toBeInTheDocument();
     expect(screen.getByText("Nutrilite™ Double X")).toBeInTheDocument();
-    expect(screen.getByText(priceOf(PRODUCTS[0]))).toBeInTheDocument();
-    expect(screen.getByText(priceOf(PRODUCTS[1]))).toBeInTheDocument();
+    expect(screen.getByText(priceOf(PRODUCTS[0]!))).toBeInTheDocument();
+    expect(screen.getByText(priceOf(PRODUCTS[1]!))).toBeInTheDocument();
 
     // `[VIDEO:7]` contains letters — it must NOT be mistaken for a product ref.
     const bubble = screen.getByText(/Mira/) as HTMLElement;
@@ -250,7 +250,7 @@ describe("ChatMessages product cards", () => {
     // No cards of either kind.
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
     expect(screen.queryByText("Nutrilite™ Cal Mag D Plus")).not.toBeInTheDocument();
-    expect(screen.queryByText(priceOf(PRODUCTS[0]))).not.toBeInTheDocument();
+    expect(screen.queryByText(priceOf(PRODUCTS[0]!))).not.toBeInTheDocument();
   });
 
   it("degrades to literal text when the product map is empty", () => {
@@ -356,7 +356,7 @@ describe("ChatWidget product map boot", () => {
 
     // The boot-fetched map resolves the reply citation into a ProductCard.
     expect(await screen.findByText("Nutrilite™ Cal Mag D Plus")).toBeInTheDocument();
-    expect(screen.getByText(priceOf(PRODUCTS[0]))).toBeInTheDocument();
+    expect(screen.getByText(priceOf(PRODUCTS[0]!))).toBeInTheDocument();
     expect(screen.getByText("[110606]")).toBeInTheDocument();
   });
 });
