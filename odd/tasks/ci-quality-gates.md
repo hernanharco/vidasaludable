@@ -61,7 +61,22 @@ tsconfig changes (backend already type-checks clean).
 - T2: `689e3273` fix(frontend): clear the 26 errors surfaced by the first typecheck
 - T3: script landed in `88214570` (same package.json edit as T1); run recorded above
 - T4: `fc286257` ci: run tests and typecheck on every push and PR
-- T5: `8a53e0a9` docs(odd): record ci-quality-gates feature
+- T5: `c5d0ca1b` docs(odd): record ci-quality-gates feature (T1-T5)
+
+## Native review
+
+- Lineage `review-8f7bea06132e94ea` · target `sha256:878edd5c…` · base
+  `b0427a1c` committed-only · 12 paths / 1258 changed lines · tier **high**
+  (risk reasons: `process_boundary` in `frontend/package.json`, `shell_source`
+  in `.github/workflows/ci.yml`) · correction budget 200.
+- Lenses: risk → resilience → readability → reliability (4 model runs via
+  `pi_host_relay`). Forecast relayed before authorization.
+- The first group capture ended in `pi-host-relay-transport-failure`
+  (`mutation_outcome: partial`, 3/4 admitted). Bound STATUS re-offered exactly
+  the remaining `review-reliability` slot; capturing it closed the review.
+- Result: state **approved** → `native-approved-acknowledgement-completed`,
+  authority **burned**, `consumed_revision sha256:f136d747…`.
+- Delivery stays under ordinary repository policy: nothing pushed, no PR.
 
 ## Incident (recorded, resolved)
 
@@ -77,15 +92,12 @@ work units above (content byte-identical, only grouping and messages changed).
 
 - **Typecheck is a gate, not a deploy step**: `ci.yml` runs on push/PR for all
   branches; the existing deploy workflows keep their deploy-only semantics.
-- **Path-scoped jobs**: backend job only required when `backend/**` changes,
-  frontend when `frontend/**` or the workflow itself changes — mirrors how the
-  deploy workflows already scope with `paths:`.
-- **No ESLint in this unit**: the project has never had one; introducing a
-  linter would surface hundreds of stylistic findings and swamp review. Own
-  unit if wanted.
 - **Both jobs always run** (initially planned as path-scoped): with 2 suites
   totalling < 1 min, a `paths-filter` dependency and its edge cases cost more
   than the compute it saves. Revisit if CI time ever hurts.
+- **No ESLint in this unit**: the project has never had one; introducing a
+  linter would surface hundreds of stylistic findings and swamp review. Own
+  unit if wanted.
 - **Frontend `build` is not in CI** — `frontend/package.json` `build` re-runs
   `pnpm install --frozen-lockfile` and the Vercel deploy already builds. CI
   owns test + typecheck; deploy owns the bundle.
