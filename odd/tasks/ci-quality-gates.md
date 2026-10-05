@@ -88,7 +88,22 @@ tsconfig changes (backend already type-checks clean).
   the remaining `review-reliability` slot; capturing it closed the review.
 - Result: state **approved** → `native-approved-acknowledgement-completed`,
   authority **burned**, `consumed_revision sha256:f136d747…`.
-- Delivery stays under ordinary repository policy: nothing pushed, no PR.
+- Delivery stays under ordinary repository policy.
+
+## Delivery (2026-10-05)
+
+- Labels `status:approved` and `type:chore` created on the target repo (it
+  had none beyond GitHub's defaults).
+- Issue **#6** created from repository evidence, duplicate-searched first
+  (the repo had never had an issue), read back and confirmed, then labelled
+  `status:approved`.
+- Branch pushed: `origin/feat/ci-quality-gates` = `22b5af5b` (7 commits).
+- PR **#7** opened against `main` with `Closes #6` and exactly one
+  `type:*` label (`type:chore`).
+- CI on the PR ran **once** (the `push`-scoped-to-`main` fix working as
+  intended) and went green: `Backend (test + typecheck)` pass 29s,
+  `Frontend (test + typecheck + build)` pass 45s, run `success`.
+- Merge is the user's decision.
 - Third lineage `review-aecb15940df82f39` covered the T6 fix as an uncommitted
   `current-changes` candidate (1 path / 22 lines, correction budget 11):
   **approved**, authority burned (`consumed_revision sha256:73d39021…`),
