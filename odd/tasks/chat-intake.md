@@ -104,6 +104,19 @@ Un solo `POST /api/assistant/profile` al final. Determinista: sin alucinaciones.
   único verificado en App.tsx; suites finales 9/86 frontend + 18/230 backend,
   tsc limpio en ambos, build 7.21s
 
+## Review
+
+La revisión nativa de Gentle AI NO pudo completarse por un defecto del
+entorno (no del candidato): cada `review start` devuelve un consent binding
+YA expirado (`consent-binding-expired`, TTL 10 min) sin importar cuán rápido
+se responda — 4 intentos (3 START + 1 answer-consent), siempre
+`lineage_created: false`, `native_invocation_attempted: false`, sin mutación.
+El verificador independiente R1-R4 (review-readability/risk/reliability/
+resilience) está gatingado por el mismo linaje ausente (`no current
+controller-owned candidate view lineage binding`), así que el fallback tampoco
+puede correr. Estado por contrato: review `unknown` (nunca `closed`).
+Reintentar en otra sesión; el trabajo queda verde y commiteado.
+
 ## Evidence (commits per task)
 
 Nota: los archivos `backend/src/routes/assistant.ts` (T1+T2) y
