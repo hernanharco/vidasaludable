@@ -29,6 +29,21 @@ CREATE UNIQUE INDEX IF NOT EXISTS customers_email_unique ON customers (email);
 CREATE UNIQUE INDEX IF NOT EXISTS customers_phone_unique ON customers (phone);
 CREATE INDEX IF NOT EXISTS customers_referrer_phone_idx ON customers (referrer_phone);
 
+-- T1 chat-intake: the 5-step chat questionnaire, 1:1 with customers
+-- (customer_id is the PRIMARY KEY, so exactly one row per customer).
+CREATE TABLE IF NOT EXISTS customer_profile (
+  customer_id INTEGER PRIMARY KEY REFERENCES customers(id),
+  sex TEXT,
+  age INTEGER,
+  goal TEXT,
+  diet TEXT,
+  activity TEXT,
+  sleep TEXT,
+  stress TEXT,
+  open_note TEXT,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS products (
   reference TEXT PRIMARY KEY,
   name TEXT NOT NULL,

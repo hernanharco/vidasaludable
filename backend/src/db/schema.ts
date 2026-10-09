@@ -35,6 +35,38 @@ export const customers = sqliteTable(
   ],
 );
 
+/**
+ * Per-customer intake profile (T1 of chat-intake): the short 5-step chat
+ * questionnaire (age/sex, goal, habits, sleep/stress, open note), 1:1 with
+ * `customers` — `customerId` is the PRIMARY KEY, so a customer has at most
+ * one row. Consumed later by the assistant prompt (`profileBlock`) and by the
+ * widget boot check (GET /assistant/profile decides whether to show intake).
+ * `sex` is 'M' | 'F' | '' (empty until answered); no other hard validation —
+ * the frontend sends chips values.
+ */
+export const customerProfile = sqliteTable(
+  "customer_profile",
+  {
+    customerId: integer("customer_id")
+      .primaryKey()
+      .references(() => customers.id),
+    sex: text("sex"), // 'M' | 'F' | ''
+    age: integer("age"),
+    goal: text("goal"),
+    diet: text("diet"),
+    activity: text("activity"),
+    sleep: text("sleep"),
+    stress: text("stress"),
+    openNote: text("open_note"), // free-text answer (step 5)
+    updatedAt: text("updated_at")
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+);
+
+export type CustomerProfile = typeof customerProfile.$inferSelect;
+export type NewCustomerProfile = typeof customerProfile.$inferInsert;
+
 /** Structured Nutrilite catalog — single source of truth for product data. */
 export const products = sqliteTable(
   "products",
