@@ -12,6 +12,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "migrate": "tsx src/db/migrate.ts",
+    "db:pull-prod": "bash scripts/pull-prod.sh",
     "seed:products": "tsx src/seed/seedProducts.ts",
     "seed:purchases": "tsx src/seed/seedPurchases.ts",
     "seed:guidance": "tsx src/seed/seedGuidance.ts",
