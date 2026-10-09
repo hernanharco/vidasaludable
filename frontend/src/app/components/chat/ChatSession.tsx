@@ -1,7 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { motion, AnimatePresence } from "motion/react";
-import { MessageCircle, X } from "lucide-react";
-import { COUNTRY_CODES, DEFAULT_COUNTRY_CODE, formatPhone } from "../../lib/countryCodes";
+import { DEFAULT_COUNTRY_CODE, formatPhone } from "../../lib/countryCodes";
 
 import { ChatHeader } from "./ChatHeader";
 import { ChatMessages, ChatMessage } from "./ChatMessages";
@@ -27,9 +25,11 @@ import { ChatIntake } from "./ChatIntake";
  * chat works without it (the card renders disabled).
  */
 
-interface ChatWidgetProps {
+interface ChatSessionProps {
   /** T4 — Opens the prevention wizard from the `[ASSESSMENT]` card. */
   onOpenAssessment?: () => void;
+  /** Closes the host surface — wired by ChatPage to navigate back to the landing. */
+  onClose?: () => void;
 }
 
 const GREETING = "¡Hola! ¿En qué te puedo ayudar hoy con tu bienestar?";
@@ -81,8 +81,7 @@ function readStoredConsentVersion(): number | null {
   return Number.isInteger(n) ? n : null;
 }
 
-export function ChatWidget({ onOpenAssessment }: ChatWidgetProps) {
-  const [isOpen, setIsOpen] = useState(false);
+export function ChatSession({ onOpenAssessment, onClose }: ChatSessionProps) {
   const [phase, setPhase] = useState<Phase>("boot");
   const [consent, setConsent] = useState<ConsentInfo | null>(null);
   const [consentLoading, setConsentLoading] = useState(false);
@@ -248,9 +247,9 @@ export function ChatWidget({ onOpenAssessment }: ChatWidgetProps) {
     }
   }, [customerId, conversationId]);
 
-  // On first open: decide flow
+  // On first mount (the host shows the session): decide flow
   useEffect(() => {
-    if (!isOpen || phase !== "boot") return;
+    if (phase !== "boot") return;
     if (customerId == null) {
       // New user: show access code gate first
       setConsentReentry(false);
@@ -279,7 +278,7 @@ export function ChatWidget({ onOpenAssessment }: ChatWidgetProps) {
     return () => {
       cancelled = true;
     };
-  }, [isOpen, phase, customerId, conversationId, loadHistory]);
+  }, [phase, customerId, conversationId, loadHistory]);
 
   const scrollToBottom = useCallback(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -480,81 +479,60 @@ export function ChatWidget({ onOpenAssessment }: ChatWidgetProps) {
   };
 
   return (
-    <div className="fixed bottom-6 right-6 z-50">
-      <AnimatePresence>
-        {isOpen && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.9, y: 20 }}
-            transition={{ duration: 0.2 }}
-            className="absolute bottom-16 right-0 w-80 sm:w-96 bg-white rounded-2xl shadow-2xl overflow-hidden border border-stone-200 flex flex-col h-[440px]"
-          >
-            <ChatHeader onClose={() => setIsOpen(false)} />
+    <div className="flex flex-col h-full overflow-hidden">
+      <ChatHeader onClose={() => onClose?.()} />
 
-            {phase === "access_code" && (
-              <AccessCodeGate onValidated={handleAccessCodeValidated} />
-            )}
+      {phase === "access_code" && (
+        <AccessCodeGate onValidated={handleAccessCodeValidated} />
+      )}
 
-            {phase === "gate" && (
-              <RegistrationGate
-                consent={consent}
-                consentLoading={consentLoading}
-                consentError={consentError}
-                consentReentry={consentReentry}
-                name={name}
-                email={email}
-                phone={phone}
-                phoneCode={phoneCode}
-                referrerPhone={referrerPhone}
-                referrerCode={referrerCode}
-                agreed={agreed}
-                onNameChange={setName}
-                onEmailChange={setEmail}
-                onPhoneChange={setPhone}
-                onPhoneCodeChange={setPhoneCode}
-                onReferrerPhoneChange={setReferrerPhone}
-                onReferrerCodeChange={setReferrerCode}
-                onAgreedChange={setAgreed}
-                onSubmit={handleConsentSubmit}
-              />
-            )}
+      {phase === "gate" && (
+        <RegistrationGate
+          consent={consent}
+          consentLoading={consentLoading}
+          consentError={consentError}
+          consentReentry={consentReentry}
+          name={name}
+          email={email}
+          phone={phone}
+          phoneCode={phoneCode}
+          referrerPhone={referrerPhone}
+          referrerCode={referrerCode}
+          agreed={agreed}
+          onNameChange={setName}
+          onEmailChange={setEmail}
+          onPhoneChange={setPhone}
+          onPhoneCodeChange={setPhoneCode}
+          onReferrerPhoneChange={setReferrerPhone}
+          onReferrerCodeChange={setReferrerCode}
+          onAgreedChange={setAgreed}
+          onSubmit={handleConsentSubmit}
+        />
+      )}
 
-            {phase === "intake" && (
-              <ChatIntake profile={profile} onChange={setProfile} onComplete={handleIntakeComplete} />
-            )}
+      {phase === "intake" && (
+        <ChatIntake profile={profile} onChange={setProfile} onComplete={handleIntakeComplete} />
+      )}
 
-            {phase === "chat" && (
-              <>
-                <ChatMessages
-                  messages={messages}
-                  sending={sending}
-                  chatError={chatError}
-                  scrollRef={scrollRef}
-                  videos={videos}
-                  products={products}
-                  onOpenAssessment={onOpenAssessment}
-                />
-                <ChatInput
-                  inputValue={inputValue}
-                  sending={sending}
-                  onInputChange={setInputValue}
-                  onSend={handleSend}
-                />
-              </>
-            )}
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <motion.button
-        whileHover={{ scale: 1.05 }}
-        whileTap={{ scale: 0.95 }}
-        onClick={() => setIsOpen(!isOpen)}
-        className="w-14 h-14 bg-emerald-900 text-white rounded-full shadow-lg flex items-center justify-center hover:bg-emerald-800 transition-colors focus:outline-none focus:ring-4 focus:ring-emerald-900/30"
-      >
-        {isOpen ? <X className="w-6 h-6" /> : <MessageCircle className="w-6 h-6" />}
-      </motion.button>
+      {phase === "chat" && (
+        <>
+          <ChatMessages
+            messages={messages}
+            sending={sending}
+            chatError={chatError}
+            scrollRef={scrollRef}
+            videos={videos}
+            products={products}
+            onOpenAssessment={onOpenAssessment}
+          />
+          <ChatInput
+            inputValue={inputValue}
+            sending={sending}
+            onInputChange={setInputValue}
+            onSend={handleSend}
+          />
+        </>
+      )}
     </div>
   );
 }

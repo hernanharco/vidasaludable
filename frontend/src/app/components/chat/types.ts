@@ -12,7 +12,7 @@ export type Phase = "boot" | "access_code" | "gate" | "intake" | "chat";
 
 /**
  * Client-side shape of the 5-step intake answers (camelCase). The wire
- * contract of `POST /api/assistant/profile` is snake_case — ChatWidget does
+ * contract of `POST /api/assistant/profile` is snake_case — ChatSession does
  * the translation in one place.
  */
 export interface IntakeProfile {

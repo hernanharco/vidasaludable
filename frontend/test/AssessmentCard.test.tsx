@@ -3,7 +3,7 @@ import React, { useState } from "react";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ChatMessages } from "../src/app/components/chat/ChatMessages";
-import { ChatWidget } from "../src/app/components/chat";
+import { ChatSession } from "../src/app/components/chat";
 import { AssessmentWidget } from "../src/app/components/assessment/AssessmentWidget";
 
 // Mock fetch
@@ -12,7 +12,7 @@ global.fetch = mockFetch;
 
 function installMemoryLocalStorage() {
   // jsdom 30 under vitest runs with an opaque origin (about:blank), where
-  // jsdom refuses to expose localStorage. ChatWidget reads it at render time,
+  // jsdom refuses to expose localStorage. ChatSession reads it at render time,
   // so the widget-level tests install a tiny in-memory stand-in.
   const store = new Map<string, string>();
   const impl = {
@@ -110,13 +110,16 @@ describe("ChatMessages assessment card", () => {
   });
 });
 
-// Widget-level wiring: the Landing page owns `assessmentOpen` and hands
-// `onOpenAssessment` to ChatWidget while controlling AssessmentWidget.
+// Surface-level wiring: the /chat page owns `assessmentOpen` and hands
+// `onOpenAssessment` to ChatSession while controlling AssessmentWidget.
+// T3 removed the popup ChatWidget, so this harness mounts ChatSession and
+// AssessmentWidget directly — the same panel ↔ modal interplay (open/close
+// + stacking), without the popup shell.
 function AssessmentHarness() {
   const [assessmentOpen, setAssessmentOpen] = useState(false);
   return (
     <>
-      <ChatWidget onOpenAssessment={() => setAssessmentOpen(true)} />
+      <ChatSession onOpenAssessment={() => setAssessmentOpen(true)} />
       <AssessmentWidget open={assessmentOpen} onClose={() => setAssessmentOpen(false)} />
     </>
   );
@@ -174,8 +177,9 @@ describe("Assessment card → wizard wiring", () => {
 
     render(<AssessmentHarness />);
 
-    // Open the chat (the only floating button — no standalone "Prevenición")
-    await user.click(screen.getByRole("button"));
+    // The chat is mounted directly (no popup launcher) and there is no
+    // standalone "Prevenición" floating entry — the landing only has the
+    // launcher, and this harness is the /chat surface.
     expect(screen.queryByText("Prevenición")).not.toBeInTheDocument();
 
     // History restored → the [ASSESSMENT] message renders the card
@@ -186,9 +190,9 @@ describe("Assessment card → wizard wiring", () => {
     await user.click(card);
     expect(await screen.findByText("Evaluación de Prevención")).toBeInTheDocument();
 
-    // Z-stack: chat panel and assessment modal are both z-50, but
-    // AssessmentWidget renders AFTER ChatWidget in App, so the modal paints
-    // above the open chat. jsdom has no layout, so we assert the observable
+    // Z-stack: chat surface and assessment modal are both z-50, but
+    // AssessmentWidget renders AFTER ChatSession in ChatPage, so the modal
+    // paints above the open chat. jsdom has no layout, so we assert the observable
     // contract instead: both stay mounted, and closing the modal (X) leaves
     // the chat open underneath.
     await user.click(screen.getByRole("button", { name: "Cerrar evaluación" }));
