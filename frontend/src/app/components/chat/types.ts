@@ -8,7 +8,23 @@ export interface ChatMessage {
   text: string;
 }
 
-export type Phase = "boot" | "access_code" | "gate" | "chat";
+export type Phase = "boot" | "access_code" | "gate" | "intake" | "chat";
+
+/**
+ * Client-side shape of the 5-step intake answers (camelCase). The wire
+ * contract of `POST /api/assistant/profile` is snake_case — ChatWidget does
+ * the translation in one place.
+ */
+export interface IntakeProfile {
+  sex: "M" | "F" | "";
+  age: string;
+  goal: string;
+  diet: string;
+  activity: string;
+  sleep: string;
+  stress: string;
+  openNote: string;
+}
 
 /**
  * Resolved card data for an ENABLED video segment, as served by

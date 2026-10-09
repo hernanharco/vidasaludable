@@ -6,6 +6,7 @@ import { createRecommendationService } from "../services/recommendationService.j
 import { createCatalogService } from "../services/catalogService.js";
 import { createGuidanceService } from "../services/guidanceService.js";
 import { createVideoService, parseSegmentProductList } from "../services/videoService.js";
+import { createProfileService } from "../services/profileService.js";
 import { createGeminiClient } from "../agent/gemini.js";
 import { buildSystemPrompt, buildHistoryMessages, extractProductRefs, extractVideoRefs, pairSegmentProducts } from "../agent/prompt.js";
 import { guardReply } from "../agent/guard.js";
@@ -26,6 +27,11 @@ import type { Product } from "../db/schema.js";
  *   public card fields only — the widget boot-fetches it to resolve the
  *   `[REF]` citations the agent writes, extract convention \[\d{4,6}\],
  *   same as extractProductRefs; T6).
+ * - POST /assistant/profile → 5-step chat intake upsert (T1 chat-intake):
+ *   {customer_id, sex?, age?, goal?, diet?, activity?, sleep?, stress?,
+ *   open_note?} → {ok:true}; one row per customer (re-submits update).
+ * - GET  /assistant/profile?customer_id=N → {profile: null | {...}} — the
+ *   widget boot check that skips the intake when a profile already exists.
  *
  * Product not-found is internal, never a 404 to the client: only valid catalog
  * refs are injected, so the agent never invents details.
@@ -38,6 +44,7 @@ export function createAssistantRouter(db: Db): Hono {
   const catalog = createCatalogService(db);
   const guidance = createGuidanceService(db);
   const videos = createVideoService(db);
+  const profiles = createProfileService(db);
   const gemini = createGeminiClient();
 
   app.get("/consent", (c) => {
@@ -100,6 +107,67 @@ export function createAssistantRouter(db: Db): Hono {
     return c.json({ messages: conversations.loadHistory(conversationId) });
   });
 
+  // T1 chat-intake — per-customer intake profile (the 5-step questionnaire).
+  // Customer-scoped with the same checks as /history and /ask: 400 on an
+  // invalid customer_id, 404 when the customer does not exist. The write is a
+  // deterministic UPSERT (no LLM): exactly one row per customer.
+  app.post("/profile", async (c) => {
+    let body: Record<string, unknown>;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "cuerpo inválido" }, 400);
+    }
+
+    const customerId = Number(body.customer_id);
+    if (!Number.isInteger(customerId) || customerId <= 0) {
+      return c.json({ error: "customer_id inválido" }, 400);
+    }
+    if (!customers.getById(customerId)) {
+      return c.json({ error: "customer no encontrado" }, 404);
+    }
+
+    profiles.upsert(customerId, {
+      sex: typeof body.sex === "string" ? body.sex : undefined,
+      age: readAge(body.age),
+      goal: typeof body.goal === "string" ? body.goal : undefined,
+      diet: typeof body.diet === "string" ? body.diet : undefined,
+      activity: typeof body.activity === "string" ? body.activity : undefined,
+      sleep: typeof body.sleep === "string" ? body.sleep : undefined,
+      stress: typeof body.stress === "string" ? body.stress : undefined,
+      openNote: typeof body.open_note === "string" ? body.open_note : undefined,
+    });
+    return c.json({ ok: true });
+  });
+
+  app.get("/profile", (c) => {
+    const customerId = Number(c.req.query("customer_id"));
+    if (!Number.isInteger(customerId) || customerId <= 0) {
+      return c.json({ error: "customer_id inválido" }, 400);
+    }
+    if (!customers.getById(customerId)) {
+      return c.json({ error: "customer no encontrado" }, 404);
+    }
+
+    const profile = profiles.getByCustomer(customerId);
+    return c.json({
+      profile: profile
+        ? {
+            customer_id: profile.customerId,
+            sex: profile.sex,
+            age: profile.age,
+            goal: profile.goal,
+            diet: profile.diet,
+            activity: profile.activity,
+            sleep: profile.sleep,
+            stress: profile.stress,
+            open_note: profile.openNote,
+            updated_at: profile.updatedAt,
+          }
+        : null,
+    });
+  });
+
   app.post("/ask", async (c) => {
     let body: Record<string, unknown>;
     try {
@@ -154,6 +222,9 @@ export function createAssistantRouter(db: Db): Hono {
     // to validate the `[VIDEO:id]` markers the agent cites (defensive filter,
     // same pattern as product refs + catalog.lookup).
     const enabledSegments = videos.listEnabledSegments();
+    // T2 chat-intake: the customer's intake profile (T1) personalizes the
+    // prompt — absent row or all-empty fields ⇒ no profile block injected.
+    const profile = profiles.getByCustomer(customerId) ?? null;
     const systemPrompt = buildSystemPrompt(
       { products: catalogProducts },
       { refs: purchaseRefs },
@@ -183,6 +254,7 @@ export function createAssistantRouter(db: Db): Hono {
           ),
         })),
       },
+      profile,
     );
 
     let rawReply: string;
@@ -245,6 +317,17 @@ function resolveSegmentUrl(card: {
     return `https://www.youtube.com/watch?v=${card.clipYoutubeId}`;
   }
   return `https://www.youtube.com/watch?v=${card.youtubeId}&t=${card.startS}`;
+}
+
+/**
+ * Coerces the intake `age` field to a finite number. Missing or non-numeric
+ * input is dropped (undefined) so the INTEGER column never stores garbage —
+ * no hard validation beyond that (frontend sends chips values).
+ */
+function readAge(raw: unknown): number | undefined {
+  if (raw == null || raw === "") return undefined;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : undefined;
 }
 
 /**

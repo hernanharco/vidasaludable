@@ -42,6 +42,22 @@ export interface VideoSegmentsContext {
   }>;
 }
 
+/**
+ * T2 chat-intake — the customer's intake profile (T1's `customer_profile`
+ * row) as prompt context. All fields optional: a missing/empty field is
+ * simply not rendered (never an "undefined" label in the prompt).
+ */
+export interface ProfileContext {
+  sex?: string | number | null;
+  age?: string | number | null;
+  goal?: string | number | null;
+  diet?: string | number | null;
+  activity?: string | number | null;
+  sleep?: string | number | null;
+  stress?: string | number | null;
+  openNote?: string | number | null;
+}
+
 export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
@@ -72,6 +88,73 @@ const HARD_LIMIT = `ERES UN ASISTENTE PREVENTIVO DE NUTRILITE™. LÍMITE DURO E
    tema, NUNCA como diagnóstico, tratamiento ni prescripción de la condición del
    usuario. Si ningún video coincide con el tema del usuario, simplemente no
    cites ninguno.`;
+
+/**
+ * T2 chat-intake — guided flow over the injected profile. Always present in
+ * the prompt (legal HARD_LIMIT rules above stay untouched); its steps apply
+ * only when the "PERFIL DEL USUARIO" block is actually injected. The
+ * [ASSESSMENT] marker must be written literally, once, on its own line —
+ * the frontend matches it to render the 95-symptom check as a button.
+ */
+const GUIDED_FLOW = `FLUJO GUIADO CON EL PERFIL INICIAL DEL USUARIO (aplica solo cuando se inyecte el bloque de perfil inicial a continuación):
+1. ABRE tu respuesta con 2-3 preguntas cortas y abiertas de seguimiento basadas
+   en el perfil (p. ej. su rutina, sus horarios o sus preferencias). NO vuelvas a
+   preguntar datos que el perfil ya responde.
+2. DESPUÉS da tus recomendaciones preventivas personalizadas con el perfil,
+   citando las referencias [REF] y los videos [VIDEO:id] con las mismas reglas
+   de siempre.
+3. AL FINAL de tu primera recomendación completa, ofrece de forma OPCIONAL el
+   chequeo completo de 95 síntomas escribiendo el marcador exacto [ASSESSMENT]
+   en una línea propia (el frontend lo renderiza como botón). Escríbelo
+   exactamente así, una sola vez, sin texto adicional en esa línea.
+Cuando NO haya bloque de perfil, omite este flujo guiado y responde directamente.`;
+
+/**
+ * Normalizes a profile field for display: null/undefined/blank-string all
+ * degrade to null so empty intake answers never render a label.
+ */
+function presentProfileField(value: string | number | null | undefined): string | null {
+  if (value === null || value === undefined) return null;
+  const text = String(value).trim();
+  return text.length > 0 ? text : null;
+}
+
+/**
+ * T2 chat-intake — human-readable Spanish block with the customer's intake
+ * profile, so Gemini personalizes every recommendation. Same convention as
+ * guidanceBlock/videoSegmentsBlock: null OR an all-empty profile returns ""
+ * (no stale header). Only lines with at least one present field are rendered.
+ */
+export function profileBlock(profile: ProfileContext | null): string {
+  if (!profile) return "";
+  const sex = presentProfileField(profile.sex);
+  const age = presentProfileField(profile.age);
+  const goal = presentProfileField(profile.goal);
+  const diet = presentProfileField(profile.diet);
+  const activity = presentProfileField(profile.activity);
+  const sleep = presentProfileField(profile.sleep);
+  const stress = presentProfileField(profile.stress);
+  const openNote = presentProfileField(profile.openNote);
+
+  const lines: string[] = [];
+  const identity = [age ? `Edad: ${age}` : null, sex ? `Sexo: ${sex}` : null].filter(
+    (part): part is string => part !== null,
+  );
+  if (identity.length > 0) lines.push(`- ${identity.join(" · ")}`);
+  if (goal) lines.push(`- Objetivo: ${goal}`);
+  const habits = [diet ? `dieta ${diet}` : null, activity ? `actividad ${activity}` : null].filter(
+    (part): part is string => part !== null,
+  );
+  if (habits.length > 0) lines.push(`- Hábitos: ${habits.join(", ")}`);
+  const recovery = [sleep ? `Sueño: ${sleep}` : null, stress ? `Estrés: ${stress}` : null].filter(
+    (part): part is string => part !== null,
+  );
+  if (recovery.length > 0) lines.push(`- ${recovery.join(" · ")}`);
+  if (openNote) lines.push(`- Me contó: "${openNote}"`);
+
+  if (lines.length === 0) return "";
+  return `PERFIL DEL USUARIO (datos de su ficha inicial — personaliza siempre tus recomendaciones con ellos):\n${lines.join("\n")}`;
+}
 
 function catalogBlock(ctx: CatalogContext): string {
   if (ctx.products.length === 0) {
@@ -255,11 +338,16 @@ export function buildSystemPrompt(
   purchases: PurchaseContext | null,
   guidance: GuidanceContext,
   video: VideoSegmentsContext,
+  // T2 chat-intake: optional (backwards-compatible) so existing 4-arg calls
+  // keep working; null/undefined ⇒ no profile block injected.
+  profile?: ProfileContext | null,
 ): string {
   const blocks = [
     HARD_LIMIT,
+    GUIDED_FLOW,
     "",
     "CONTEXTO DE ESTA CONVERSACIÓN:",
+    profileBlock(profile ?? null),
     purchasesBlock(purchases),
     "",
     catalogBlock(ctx),
