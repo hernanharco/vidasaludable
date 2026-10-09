@@ -117,6 +117,21 @@ controller-owned candidate view lineage binding`), así que el fallback tampoco
 puede correr. Estado por contrato: review `unknown` (nunca `closed`).
 Reintentar en otra sesión; el trabajo queda verde y commiteado.
 
+## Delivery (2026-10-09)
+
+- Issue **#8** (`status:approved`) → PR **#10** `feat/chat-intake` → `main`,
+  CI verde (Backend + Frontend + GitGuardian), **MERGED** `c29728bb`.
+- Stacked sobre el PR **#7** (ci-quality-gates, mergeado primero como
+  `0caee7c8` para traer el workflow de CI a `main`).
+- **Deploy verificado en producción**: contenedor Hetzner recreado,
+  `listening on :8091 (production)`, healthcheck `healthy`,
+  `customer_profile` creada por `migrate()` sobre la BD real, `integrity_check`
+  `ok`, datos intactos (1 referrer, 2 customers). Flujo real de usuario vía
+  Vercel → túnel → Hetzner: `POST /api/referrer/validate` con el código real
+  `1906432239` → `{valid:true, Hernan Arango Cortes}`.
+- Commits: `f3937e11` (backend intake), `dfbd3e0b` (frontend intake),
+  `ca3365f9` + `b3682473` (docs), `c71c9666` (db:pull-prod).
+
 ## Evidence (commits per task)
 
 Nota: los archivos `backend/src/routes/assistant.ts` (T1+T2) y

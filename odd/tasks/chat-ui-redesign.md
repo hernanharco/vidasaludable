@@ -121,6 +121,21 @@ completa en desktop, (3) `/chat` en un celu real (safe-area, header sticky,
 input no tapado por el home indicator), (4) el intake de 5 pasos y (5) el
 wizard `[ASSESSMENT]` desde el chat.
 
+## Delivery (2026-10-09)
+
+- Issue **#9** (`status:approved`) → PR **#11** `feat/chat-ui-redesign` →
+  `main` (stacked sobre #10; la base se re-pointed a `main` tras el merge de
+  #10 para que el diff mostrara solo sus 2 commits), CI verde, **MERGED**
+  `d75d0f1d`.
+- Solo toca `frontend/` → disparó únicamente `Deploy Frontend` (Vercel), no
+  el backend de Hetzner.
+- **Deploy verificado**: `https://vidasaludable.rincom.es/` → 200 y
+  `https://vidasaludable.rincom.es/chat` → **200**.
+- Commits: `0d7d4bcb` (feat), `a6735b08` (docs).
+- **Pendiente de humano**: smoke visual en navegador — jsdom no calcula
+  layout, así que el fullscreen, el safe-area y el header sticky siguen sin
+  verse en un celu real.
+
 ## Evidence (commits per task)
 
 ## Decisions
