@@ -1,12 +1,11 @@
-import React, { useState } from "react";
+import React from "react";
 import { Routes, Route } from "react-router";
 import { Navbar } from "./components/Navbar";
 import { Hero } from "./components/Hero";
 import { About } from "./components/About";
 import { Services } from "./components/Services";
 import { Booking } from "./components/Booking";
-import { ChatWidget } from "./components/chat";
-import { AssessmentWidget } from "./components/assessment";
+import { ChatLauncher, ChatPage } from "./components/chat";
 import { Footer } from "./components/Footer";
 import { AdminLayout } from "./admin/AdminLayout";
 import { Dashboard } from "./admin/dashboard";
@@ -24,9 +23,6 @@ import { LoginScreen } from "./admin/LoginScreen";
 import { AuthCallback } from "./admin/AuthCallback";
 
 function Landing() {
-  // T4 — single button UX: the chat owns the only floating entry point and
-  // opens the prevention wizard through the `[ASSESSMENT]` card.
-  const [assessmentOpen, setAssessmentOpen] = useState(false);
   return (
     <div className="font-sans text-stone-900 bg-stone-50 min-h-screen selection:bg-emerald-600 selection:text-white scroll-smooth">
       <Navbar />
@@ -37,12 +33,10 @@ function Landing() {
         <Booking />
       </main>
       <Footer />
-      {/* Z-stack: chat panel and assessment modal/backdrop are both z-50, but
-          AssessmentWidget renders AFTER ChatWidget in this DOM order, so the
-          modal paints above the open chat (equal z-index → later sibling wins).
-          Closing the modal reveals the chat, still open (both stay mounted). */}
-      <ChatWidget onOpenAssessment={() => setAssessmentOpen(true)} />
-      <AssessmentWidget open={assessmentOpen} onClose={() => setAssessmentOpen(false)} />
+      {/* T3 — single entry point: the launcher navigates to the /chat route,
+          where the 95-symptom check opens from the `[ASSESSMENT]` card. The
+          landing no longer hosts the assessment widget directly. */}
+      <ChatLauncher />
     </div>
   );
 }
@@ -51,6 +45,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/" element={<Landing />} />
+      <Route path="/chat" element={<ChatPage />} />
       <Route path="/admin/login" element={<LoginScreen />} />
       <Route path="/auth/callback" element={<AuthCallback />} />
       <Route path="/admin" element={<AdminLayout />}>

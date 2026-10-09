@@ -3,7 +3,7 @@ import React from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ChatMessages } from "../src/app/components/chat/ChatMessages";
-import { ChatWidget } from "../src/app/components/chat";
+import { ChatSession } from "../src/app/components/chat";
 import type { ProductCardInfo, VideoCardInfo } from "../src/app/components/chat/types";
 
 // Mock fetch
@@ -96,7 +96,7 @@ function renderMessages(
 
 function installMemoryLocalStorage() {
   // jsdom 30 under vitest runs with an opaque origin (about:blank), where
-  // jsdom refuses to expose localStorage. ChatWidget reads it at render time,
+  // jsdom refuses to expose localStorage. ChatSession reads it at render time,
   // so the widget-level tests install a tiny in-memory stand-in.
   const store = new Map<string, string>();
   const impl = {
@@ -262,7 +262,7 @@ describe("ChatMessages product cards", () => {
   });
 });
 
-describe("ChatWidget product map boot", () => {
+describe("ChatSession product map boot", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     window.localStorage.clear();
@@ -279,14 +279,13 @@ describe("ChatWidget product map boot", () => {
       return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({}) });
     });
 
-    render(<ChatWidget />);
+    render(<ChatSession />);
     await waitFor(() => {
       expect(mockFetch).toHaveBeenCalledWith("/api/assistant/products");
     });
   });
 
   it("still opens the widget when the products fetch fails", async () => {
-    const user = userEvent.setup();
     mockFetch.mockImplementation((url: string) => {
       if (url.includes("/api/assistant/products")) {
         return Promise.reject(new Error("network down"));
@@ -294,15 +293,13 @@ describe("ChatWidget product map boot", () => {
       return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({}) });
     });
 
-    render(<ChatWidget />);
-    await user.click(screen.getByRole("button"));
+    render(<ChatSession />);
 
     // Chat flow is not blocked by the products failure: access-code gate shows.
     expect(await screen.findByText("Código de acceso")).toBeInTheDocument();
   });
 
   it("still opens the widget when the products response is not an array", async () => {
-    const user = userEvent.setup();
     mockFetch.mockImplementation((url: string) => {
       if (url.includes("/api/assistant/products")) {
         return Promise.resolve({
@@ -313,8 +310,7 @@ describe("ChatWidget product map boot", () => {
       return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({}) });
     });
 
-    render(<ChatWidget />);
-    await user.click(screen.getByRole("button"));
+    render(<ChatSession />);
     expect(await screen.findByText("Código de acceso")).toBeInTheDocument();
   });
 
@@ -347,10 +343,9 @@ describe("ChatWidget product map boot", () => {
       return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({}) });
     });
 
-    render(<ChatWidget />);
-    await user.click(screen.getByRole("button"));
+    render(<ChatSession />);
 
-    const input = screen.getByPlaceholderText("Escribe un mensaje...");
+    const input = await screen.findByPlaceholderText("Escribe un mensaje...");
     await user.type(input, "me duelen los huesos");
     await user.keyboard("{Enter}");
 

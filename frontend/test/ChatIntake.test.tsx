@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import React, { useState } from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { ChatIntake, ChatWidget } from "../src/app/components/chat";
+import { ChatIntake, ChatSession } from "../src/app/components/chat";
 import type { IntakeProfile } from "../src/app/components/chat/types";
 
 // Mock fetch
@@ -11,7 +11,7 @@ global.fetch = mockFetch;
 
 function installMemoryLocalStorage() {
   // jsdom 30 under vitest runs with an opaque origin (about:blank), where
-  // jsdom refuses to expose localStorage. ChatWidget reads it at render time,
+  // jsdom refuses to expose localStorage. ChatSession reads it at render time,
   // so the widget-level tests install a tiny in-memory stand-in.
   const store = new Map<string, string>();
   const impl = {
@@ -74,8 +74,7 @@ function profilePostCalls(): Array<[string, RequestInit]> {
 }
 
 async function openWidget(user: ReturnType<typeof userEvent.setup>) {
-  render(<ChatWidget />);
-  await user.click(screen.getByRole("button"));
+  render(<ChatSession />);
 }
 
 const AGE_PLACEHOLDER = "Ej: 34";
@@ -105,7 +104,7 @@ async function fillSteps2to4(user: ReturnType<typeof userEvent.setup>) {
   expect(await screen.findByText("Paso 5 de 5")).toBeInTheDocument();
 }
 
-describe("ChatWidget intake flow", () => {
+describe("ChatSession intake flow", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     window.localStorage.clear();

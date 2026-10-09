@@ -1,9 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import React from "react";
 import { render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { ChatMessages } from "../src/app/components/chat/ChatMessages";
-import { ChatWidget } from "../src/app/components/chat";
+import { ChatSession } from "../src/app/components/chat";
 import type { VideoCardInfo } from "../src/app/components/chat/types";
 
 // Mock fetch
@@ -53,7 +52,7 @@ function renderMessages(
 
 function installMemoryLocalStorage() {
   // jsdom 30 under vitest runs with an opaque origin (about:blank), where
-  // jsdom refuses to expose localStorage. ChatWidget reads it at render time,
+  // jsdom refuses to expose localStorage. ChatSession reads it at render time,
   // so the widget-level tests install a tiny in-memory stand-in.
   const store = new Map<string, string>();
   const impl = {
@@ -190,7 +189,7 @@ describe("VideoCard scheme guard", () => {
   });
 });
 
-describe("ChatWidget video map boot", () => {
+describe("ChatSession video map boot", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     window.localStorage.clear();
@@ -207,14 +206,13 @@ describe("ChatWidget video map boot", () => {
       return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({}) });
     });
 
-    render(<ChatWidget />);
+    render(<ChatSession />);
     await waitFor(() => {
       expect(mockFetch).toHaveBeenCalledWith("/api/assistant/videos");
     });
   });
 
   it("still opens the widget when the videos fetch fails", async () => {
-    const user = userEvent.setup();
     mockFetch.mockImplementation((url: string) => {
       if (url.includes("/api/assistant/videos")) {
         return Promise.reject(new Error("network down"));
@@ -222,15 +220,13 @@ describe("ChatWidget video map boot", () => {
       return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({}) });
     });
 
-    render(<ChatWidget />);
-    await user.click(screen.getByRole("button"));
+    render(<ChatSession />);
 
     // Chat flow is not blocked by the videos failure: access-code gate shows.
     expect(await screen.findByText("Código de acceso")).toBeInTheDocument();
   });
 
   it("still opens the widget when the videos response is not an array", async () => {
-    const user = userEvent.setup();
     mockFetch.mockImplementation((url: string) => {
       if (url.includes("/api/assistant/videos")) {
         return Promise.resolve({
@@ -241,8 +237,7 @@ describe("ChatWidget video map boot", () => {
       return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({}) });
     });
 
-    render(<ChatWidget />);
-    await user.click(screen.getByRole("button"));
+    render(<ChatSession />);
     expect(await screen.findByText("Código de acceso")).toBeInTheDocument();
   });
 });
