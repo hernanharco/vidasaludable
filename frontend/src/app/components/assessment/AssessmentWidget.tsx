@@ -13,7 +13,12 @@ import { AccessCodeGate } from "../AccessCodeGate";
 import { QuestionnaireData, CalculateResponse, AssessmentSaved, SYMPTOMS_PER_STEP } from "./types";
 
 /**
- * Prevention Assessment Widget — floating button + wizard modal.
+ * Prevention Assessment Widget — controlled wizard modal.
+ *
+ * T4: the widget no longer owns an `isOpen` state nor renders the floating
+ * "Prevenición" button (single-button UX — the chat owns the entry point).
+ * The parent passes `open` and receives `onClose`; when `open === false`
+ * nothing is rendered.
  *
  * Flow:
  * 0. Access code gate (referrer tracking)
@@ -22,8 +27,14 @@ import { QuestionnaireData, CalculateResponse, AssessmentSaved, SYMPTOMS_PER_STE
  * 3. Results: nutrient scores + recommendations + PDF/email
  */
 
-export function AssessmentWidget() {
-  const [isOpen, setIsOpen] = useState(false);
+export interface AssessmentWidgetProps {
+  /** Whether the wizard modal is visible. */
+  open: boolean;
+  /** Requested by the X button and the backdrop click. */
+  onClose: () => void;
+}
+
+export function AssessmentWidget({ open, onClose }: AssessmentWidgetProps) {
   const [phase, setPhase] = useState<"access_code" | "loading" | "welcome" | "symptoms" | "calculating" | "results">("access_code");
   const [questionnaire, setQuestionnaire] = useState<QuestionnaireData | null>(null);
 
@@ -145,21 +156,15 @@ export function AssessmentWidget() {
     }
   }, [savedId, email]);
 
-  if (!isOpen) {
-    return (
-      <button
-        onClick={() => setIsOpen(true)}
-        className="fixed bottom-20 right-6 z-50 flex items-center gap-2 bg-emerald-600 text-white px-4 py-3 rounded-full shadow-lg hover:bg-emerald-700 transition-colors"
-      >
-        <ClipboardCheck size={20} />
-        <span className="font-medium hidden sm:inline">Prevenición</span>
-      </button>
-    );
+  // T4 — controlled: closed means no DOM at all (the parent owns the open
+  // state; the standalone floating button was removed).
+  if (!open) {
+    return null;
   }
 
   return (
     <AnimatePresence>
-      {isOpen && (
+      {open && (
         <>
           {/* Backdrop */}
           <motion.div
@@ -167,7 +172,7 @@ export function AssessmentWidget() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 bg-black/50 z-50"
-            onClick={() => setIsOpen(false)}
+            onClick={onClose}
           />
 
           {/* Modal */}
@@ -184,7 +189,8 @@ export function AssessmentWidget() {
                 <h2 className="font-semibold text-lg">Evaluación de Prevención</h2>
               </div>
               <button
-                onClick={() => setIsOpen(false)}
+                onClick={onClose}
+                aria-label="Cerrar evaluación"
                 className="p-1 rounded-full hover:bg-stone-100"
               >
                 <X size={20} />

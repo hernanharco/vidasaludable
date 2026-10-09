@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { Routes, Route } from "react-router";
 import { Navbar } from "./components/Navbar";
 import { Hero } from "./components/Hero";
@@ -24,6 +24,9 @@ import { LoginScreen } from "./admin/LoginScreen";
 import { AuthCallback } from "./admin/AuthCallback";
 
 function Landing() {
+  // T4 — single button UX: the chat owns the only floating entry point and
+  // opens the prevention wizard through the `[ASSESSMENT]` card.
+  const [assessmentOpen, setAssessmentOpen] = useState(false);
   return (
     <div className="font-sans text-stone-900 bg-stone-50 min-h-screen selection:bg-emerald-600 selection:text-white scroll-smooth">
       <Navbar />
@@ -34,8 +37,12 @@ function Landing() {
         <Booking />
       </main>
       <Footer />
-      <ChatWidget />
-          <AssessmentWidget />
+      {/* Z-stack: chat panel and assessment modal/backdrop are both z-50, but
+          AssessmentWidget renders AFTER ChatWidget in this DOM order, so the
+          modal paints above the open chat (equal z-index → later sibling wins).
+          Closing the modal reveals the chat, still open (both stay mounted). */}
+      <ChatWidget onOpenAssessment={() => setAssessmentOpen(true)} />
+      <AssessmentWidget open={assessmentOpen} onClose={() => setAssessmentOpen(false)} />
     </div>
   );
 }

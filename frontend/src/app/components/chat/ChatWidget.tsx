@@ -8,7 +8,8 @@ import { ChatMessages, ChatMessage } from "./ChatMessages";
 import { ChatInput } from "./ChatInput";
 import { RegistrationGate } from "./RegistrationGate";
 import { AccessCodeGate } from "../AccessCodeGate";
-import { ConsentInfo, Phase, ProductCardInfo, VideoCardInfo } from "./types";
+import { ConsentInfo, IntakeProfile, Phase, ProductCardInfo, VideoCardInfo } from "./types";
+import { ChatIntake } from "./ChatIntake";
 
 /**
  * Preventive vitamin recommender — real client.
@@ -16,7 +17,50 @@ import { ConsentInfo, Phase, ProductCardInfo, VideoCardInfo } from "./types";
  * First use shows an access code gate, then registration + informed-consent gate.
  * Once registered, chat goes through POST /assistant/ask; returning customers
  * reload their persisted conversation via GET /assistant/history.
+ *
+ * T3 chat-intake: a first-time customer (or a returning one without a saved
+ * profile) runs the 5-step `intake` questionnaire before chat. The decision is
+ * made from the server (GET /assistant/profile), never from localStorage.
+ *
+ * T4: `onOpenAssessment` is forwarded to ChatMessages so the `[ASSESSMENT]`
+ * button-card in an agent reply opens the prevention wizard. Optional — the
+ * chat works without it (the card renders disabled).
  */
+
+interface ChatWidgetProps {
+  /** T4 — Opens the prevention wizard from the `[ASSESSMENT]` card. */
+  onOpenAssessment?: () => void;
+}
+
+const GREETING = "¡Hola! ¿En qué te puedo ayudar hoy con tu bienestar?";
+
+const EMPTY_PROFILE: IntakeProfile = {
+  sex: "",
+  age: "",
+  goal: "",
+  diet: "",
+  activity: "",
+  sleep: "",
+  stress: "",
+  openNote: "",
+};
+
+/**
+ * Asks the server whether the customer already has an intake profile.
+ * Returns `true` (profile exists), `false` (server explicitly answered
+ * `{profile: null}`) or `null` when the answer is unknown (network error or
+ * unexpected status).
+ */
+async function fetchProfileExists(customerId: number): Promise<boolean | null> {
+  try {
+    const res = await fetch(`/api/assistant/profile?customer_id=${customerId}`);
+    if (!res.ok) return null;
+    const data = (await res.json()) as { profile?: unknown };
+    return data.profile != null;
+  } catch {
+    return null;
+  }
+}
 
 const STORAGE = {
   customerId: "vr_customer_id",
@@ -37,7 +81,7 @@ function readStoredConsentVersion(): number | null {
   return Number.isInteger(n) ? n : null;
 }
 
-export function ChatWidget() {
+export function ChatWidget({ onOpenAssessment }: ChatWidgetProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [phase, setPhase] = useState<Phase>("boot");
   const [consent, setConsent] = useState<ConsentInfo | null>(null);
@@ -69,6 +113,9 @@ export function ChatWidget() {
   const [inputValue, setInputValue] = useState("");
   const [sending, setSending] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
+
+  // T3 chat-intake — the 5-step questionnaire answers (client-side shape).
+  const [profile, setProfile] = useState<IntakeProfile>(EMPTY_PROFILE);
 
   // ENABLED video segments for `[VIDEO:<id>]` cards — fetched at boot.
   const [videos, setVideos] = useState<Map<number, VideoCardInfo>>(() => new Map());
@@ -208,12 +255,30 @@ export function ChatWidget() {
       // New user: show access code gate first
       setConsentReentry(false);
       setPhase("access_code");
-    } else {
-      // Returning user: go straight to chat
-      setPhase("chat");
-      setMessages([{ sender: "agent", text: "¡Hola! ¿En qué te puedo ayudar hoy con tu bienestar?" }]);
-      if (conversationId != null) void loadHistory();
+      return;
     }
+
+    // Returning user: the persisted profile decides the next phase —
+    // no profile yet → run the intake; profile present → chat as before.
+    let cancelled = false;
+    (async () => {
+      const exists = await fetchProfileExists(customerId);
+      if (cancelled) return;
+      // Only an explicit "no profile" answer routes to the intake. A failed /
+      // errored fetch (`exists === null`) degrades to today's behavior (chat)
+      // so a flaky server never blocks a returning customer — the profile is
+      // only a prompt enrichment, never a gate.
+      if (exists === false) {
+        setPhase("intake");
+        return;
+      }
+      setPhase("chat");
+      setMessages([{ sender: "agent", text: GREETING }]);
+      if (conversationId != null) void loadHistory();
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [isOpen, phase, customerId, conversationId, loadHistory]);
 
   const scrollToBottom = useCallback(() => {
@@ -280,10 +345,15 @@ export function ChatWidget() {
         const keepConv = consentReentry && conversationId != null ? conversationId : null;
         persistIdentity(data.customer_id, keepConv);
         if (keepConv == null) {
-          setMessages([{ sender: "agent", text: "¡Hola! ¿En qué te puedo ayudar hoy con tu bienestar?" }]);
+          setMessages([{ sender: "agent", text: GREETING }]);
         }
         setChatError(null);
-        setPhase("chat");
+        // A freshly registered customer has no intake profile yet, so the
+        // questionnaire runs next; only a confirmed profile skips it. If the
+        // check fails we still run the intake: a new registration cannot have
+        // a profile and re-submitting one is a harmless upsert.
+        const hasProfile = await fetchProfileExists(data.customer_id);
+        setPhase(hasProfile === true ? "chat" : "intake");
       } else if (res.status === 409) {
         setConsentError(
           "Ya existe una cuenta con ese correo o teléfono y el consentimiento no pudo renovarse automáticamente. Contáctanos para actualizar tus datos o inténtalo con otro correo.",
@@ -301,6 +371,42 @@ export function ChatWidget() {
   };
 
   const appendMessage = (msg: ChatMessage) => setMessages((prev) => [...prev, msg]);
+
+  /**
+   * T3 — persists the completed intake (snake_case wire shape) and only then
+   * opens the chat. On failure it resolves `false`: we must NOT enter chat
+   * with an unsaved profile, because the answers would be lost and every
+   * reply would be generated without the PERFIL DEL USUARIO prompt block.
+   */
+  const handleIntakeComplete = async (next: IntakeProfile): Promise<boolean> => {
+    if (customerId == null) return false;
+    try {
+      const res = await fetch("/api/assistant/profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customer_id: customerId,
+          sex: next.sex,
+          age: next.age === "" ? null : Number(next.age),
+          goal: next.goal,
+          diet: next.diet,
+          activity: next.activity,
+          sleep: next.sleep,
+          stress: next.stress,
+          open_note: next.openNote,
+        }),
+      });
+      if (!res.ok) return false;
+    } catch {
+      return false;
+    }
+    setProfile(next);
+    setChatError(null);
+    // Keep an already-restored conversation; otherwise seed the greeting.
+    setMessages((prev) => (prev.length > 0 ? prev : [{ sender: "agent", text: GREETING }]));
+    setPhase("chat");
+    return true;
+  };
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -414,6 +520,10 @@ export function ChatWidget() {
               />
             )}
 
+            {phase === "intake" && (
+              <ChatIntake profile={profile} onChange={setProfile} onComplete={handleIntakeComplete} />
+            )}
+
             {phase === "chat" && (
               <>
                 <ChatMessages
@@ -423,6 +533,7 @@ export function ChatWidget() {
                   scrollRef={scrollRef}
                   videos={videos}
                   products={products}
+                  onOpenAssessment={onOpenAssessment}
                 />
                 <ChatInput
                   inputValue={inputValue}

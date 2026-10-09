@@ -65,6 +65,17 @@ async function waitForLoadingToFinish() {
 }
 
 /**
+ * Controlled widget: T4 removed the internal `isOpen` state and the floating
+ * "Prevenición" button — the parent decides when the wizard is open.
+ * Returns the onClose spy so tests can assert the close contract.
+ */
+function renderWidget() {
+  const onClose = vi.fn();
+  const result = render(<AssessmentWidget open={true} onClose={onClose} />);
+  return { ...result, onClose };
+}
+
+/**
  * Traverse the access-code gate (AssessmentWidget starts in phase "access_code").
  * Types a code, submits POST /api/referrer/validate (mocked in setupDefaultMocks),
  * confirms via "Continuar", and waits for the questionnaire to load (phase
@@ -88,38 +99,52 @@ describe("AssessmentWidget", () => {
     setupDefaultMocks();
   });
 
-  it("renders the floating button", async () => {
-    render(<AssessmentWidget />);
-    expect(screen.getByText("Prevenición")).toBeInTheDocument();
+  it("renders nothing when closed", () => {
+    const { container } = render(<AssessmentWidget open={false} onClose={vi.fn()} />);
+    expect(container).toBeEmptyDOMElement();
+    expect(screen.queryByText("Evaluación de Prevención")).not.toBeInTheDocument();
+    // The standalone floating button is gone for good (single-button chat)
+    expect(screen.queryByText("Prevenición")).not.toBeInTheDocument();
   });
 
-  it("opens the modal when clicked", async () => {
-    const user = userEvent.setup();
-    render(<AssessmentWidget />);
-    await user.click(screen.getByText("Prevenición"));
+  it("renders the modal when open", () => {
+    renderWidget();
     expect(screen.getByText("Evaluación de Prevención")).toBeInTheDocument();
+  });
+
+  it("calls onClose when the X button is clicked", async () => {
+    const user = userEvent.setup();
+    const { onClose } = renderWidget();
+    await user.click(screen.getByRole("button", { name: "Cerrar evaluación" }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("calls onClose when the backdrop is clicked", async () => {
+    const user = userEvent.setup();
+    const { container, onClose } = renderWidget();
+    const backdrop = container.querySelector("div.fixed.inset-0");
+    expect(backdrop).not.toBeNull();
+    await user.click(backdrop as Element);
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 
   it("shows patient form after loading", async () => {
     const user = userEvent.setup();
-    render(<AssessmentWidget />);
-    await user.click(screen.getByText("Prevenición"));
+    renderWidget();
     await enterAccessCode(user);
     expect(screen.getByLabelText("Nombre")).toBeInTheDocument();
   });
 
   it("disables start button when form is incomplete", async () => {
     const user = userEvent.setup();
-    render(<AssessmentWidget />);
-    await user.click(screen.getByText("Prevenición"));
+    renderWidget();
     await enterAccessCode(user);
     expect(screen.getByText("Comenzar Evaluación")).toBeDisabled();
   });
 
   it("enables start button when form is complete", async () => {
     const user = userEvent.setup();
-    render(<AssessmentWidget />);
-    await user.click(screen.getByText("Prevenición"));
+    renderWidget();
     await enterAccessCode(user);
     await user.type(screen.getByLabelText("Nombre"), "María");
     await user.click(screen.getByText("Femenino"));
@@ -129,8 +154,7 @@ describe("AssessmentWidget", () => {
 
   it("shows symptoms after clicking start", async () => {
     const user = userEvent.setup();
-    render(<AssessmentWidget />);
-    await user.click(screen.getByText("Prevenición"));
+    renderWidget();
     await enterAccessCode(user);
     await user.type(screen.getByLabelText("Nombre"), "María");
     await user.click(screen.getByText("Femenino"));
@@ -144,8 +168,7 @@ describe("AssessmentWidget", () => {
 
   it("navigates between steps", async () => {
     const user = userEvent.setup();
-    render(<AssessmentWidget />);
-    await user.click(screen.getByText("Prevenición"));
+    renderWidget();
     await enterAccessCode(user);
     await user.type(screen.getByLabelText("Nombre"), "María");
     await user.click(screen.getByText("Femenino"));
@@ -162,8 +185,7 @@ describe("AssessmentWidget", () => {
 
   it("shows results after calculation", async () => {
     const user = userEvent.setup();
-    render(<AssessmentWidget />);
-    await user.click(screen.getByText("Prevenición"));
+    renderWidget();
     await enterAccessCode(user);
     await user.type(screen.getByLabelText("Nombre"), "María");
     await user.click(screen.getByText("Femenino"));
@@ -181,8 +203,7 @@ describe("AssessmentWidget", () => {
 
   it("shows summary cards", async () => {
     const user = userEvent.setup();
-    render(<AssessmentWidget />);
-    await user.click(screen.getByText("Prevenición"));
+    renderWidget();
     await enterAccessCode(user);
     await user.type(screen.getByLabelText("Nombre"), "María");
     await user.click(screen.getByText("Femenino"));
