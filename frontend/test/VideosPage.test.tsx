@@ -261,7 +261,7 @@ describe("VideosPage admin CRM", () => {
       );
       expect(segmentPosts).toHaveLength(1);
     });
-    expect(JSON.parse(String(segmentPosts[0][1].body))).toMatchObject({
+    expect(JSON.parse(String(segmentPosts[0]![1].body))).toMatchObject({
       videoId: 1,
       startS: 10,
       endS: 25,
@@ -302,7 +302,7 @@ describe("VideosPage admin CRM", () => {
       expect(videoPosts).toHaveLength(1);
     });
     expect(
-      JSON.parse(String(videoPosts[0][1].body)),
+      JSON.parse(String(videoPosts[0]![1].body)),
     ).toMatchObject({
       speaker: "Luis Collantes",
       url: "https://www.youtube.com/watch?v=new99",
@@ -319,7 +319,7 @@ describe("VideosPage admin CRM", () => {
     render(<VideosPage />);
     await screen.findByText("Introducción a la vitamina D");
 
-    const row = screen.getAllByText("Magnesio y sueño")[0].closest("tr") as HTMLElement;
+    const row = screen.getAllByText("Magnesio y sueño")[0]!.closest("tr") as HTMLElement;
     await user.click(within(row).getByRole("button", { name: "Eliminar" }));
 
     expect(await screen.findByText("video has segments")).toBeInTheDocument();
@@ -340,7 +340,7 @@ describe("VideosPage admin CRM", () => {
     expect(screen.queryByText("Magnesio antes de dormir")).not.toBeInTheDocument();
 
     // Delete the filtered video (confirm mocked true; mock DELETE succeeds)
-    const row = screen.getAllByText("Vitamina D y huesos")[0].closest("tr") as HTMLElement;
+    const row = screen.getAllByText("Vitamina D y huesos")[0]!.closest("tr") as HTMLElement;
     await user.click(within(row).getByRole("button", { name: "Eliminar" }));
 
     // The filter must not stay pointed at the deleted video: the select shows
@@ -409,7 +409,7 @@ describe("VideosPage admin CRM", () => {
     render(<VideosPage />);
     await screen.findByText("Introducción a la vitamina D");
 
-    const row = screen.getAllByText("Vitamina D y huesos")[0].closest("tr") as HTMLElement;
+    const row = screen.getAllByText("Vitamina D y huesos")[0]!.closest("tr") as HTMLElement;
     await user.click(within(row).getByRole("button", { name: "Eliminar" }));
 
     expect(
