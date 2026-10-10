@@ -100,6 +100,8 @@ user → chat directo". **Siempre** `setPhase("access_code")`.
   always-requested access code
 - T2: `df779e69` feat(chat): request the access code on every visit
   (access-code-always)
+- T3: `fa2d3dc2` docs(odd): record T2 evidence and T3 status
+- Delivery: issue #12 (status:approved) · PR #13 → main · branch pushed
 
 ## Decisions
 
