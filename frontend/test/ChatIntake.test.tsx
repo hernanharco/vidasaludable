@@ -4,6 +4,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ChatIntake, ChatSession } from "../src/app/components/chat";
 import type { IntakeProfile } from "../src/app/components/chat/types";
+import { accessCodeFetch, passAccessCodeGate } from "./helpers/accessCode";
 
 // Mock fetch
 const mockFetch = vi.fn();
@@ -50,6 +51,9 @@ interface FetchOptions {
 function installFetch(options: FetchOptions) {
   mockFetch.mockImplementation((url: string, init?: RequestInit) => {
     const u = String(url);
+    // access-code-always: the gate validates + attributes before intake/chat
+    const gate = accessCodeFetch(u);
+    if (gate) return Promise.resolve(gate);
     if (u.includes("/api/assistant/profile")) {
       if (init?.method === "POST") {
         return options.postProfileOk
@@ -75,6 +79,8 @@ function profilePostCalls(): Array<[string, RequestInit]> {
 
 async function openWidget(user: ReturnType<typeof userEvent.setup>) {
   render(<ChatSession />);
+  // access-code-always: every boot passes the access-code gate first.
+  await passAccessCodeGate(user);
 }
 
 const AGE_PLACEHOLDER = "Ej: 34";
@@ -221,7 +227,7 @@ describe("ChatSession intake flow", () => {
     });
   });
 
-  it("boots straight into chat when the profile already exists", async () => {
+  it("opens chat without intake when the profile already exists", async () => {
     const user = userEvent.setup();
     window.localStorage.setItem("vr_customer_id", String(CUSTOMER_ID));
     installFetch({ profile: SERVER_PROFILE, postProfileOk: true });

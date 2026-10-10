@@ -16,6 +16,11 @@ import { ChatIntake } from "./ChatIntake";
  * Once registered, chat goes through POST /assistant/ask; returning customers
  * reload their persisted conversation via GET /assistant/history.
  *
+ * T access-code-always: the access code is requested on EVERY visit — a
+ * returning customer with a stored identity also boots into the gate and, on
+ * validation, records last-touch attribution via POST /assistant/attribution
+ * before the profile check routes intake vs chat.
+ *
  * T3 chat-intake: a first-time customer (or a returning one without a saved
  * profile) runs the 5-step `intake` questionnaire before chat. The decision is
  * made from the server (GET /assistant/profile), never from localStorage.
@@ -247,38 +252,17 @@ export function ChatSession({ onOpenAssessment, onClose }: ChatSessionProps) {
     }
   }, [customerId, conversationId]);
 
-  // On first mount (the host shows the session): decide flow
+  // On first mount (the host shows the session): access-code-always.
+  // The access code is requested on EVERY visit — including returning
+  // customers with a stored identity — so boot always lands on the access
+  // code gate. The returning-user routing (attribution → profile check →
+  // intake|chat) happens in handleAccessCodeValidated after the code is
+  // validated.
   useEffect(() => {
     if (phase !== "boot") return;
-    if (customerId == null) {
-      // New user: show access code gate first
-      setConsentReentry(false);
-      setPhase("access_code");
-      return;
-    }
-
-    // Returning user: the persisted profile decides the next phase —
-    // no profile yet → run the intake; profile present → chat as before.
-    let cancelled = false;
-    (async () => {
-      const exists = await fetchProfileExists(customerId);
-      if (cancelled) return;
-      // Only an explicit "no profile" answer routes to the intake. A failed /
-      // errored fetch (`exists === null`) degrades to today's behavior (chat)
-      // so a flaky server never blocks a returning customer — the profile is
-      // only a prompt enrichment, never a gate.
-      if (exists === false) {
-        setPhase("intake");
-        return;
-      }
-      setPhase("chat");
-      setMessages([{ sender: "agent", text: GREETING }]);
-      if (conversationId != null) void loadHistory();
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [phase, customerId, conversationId, loadHistory]);
+    setConsentReentry(false);
+    setPhase("access_code");
+  }, [phase]);
 
   const scrollToBottom = useCallback(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -300,10 +284,92 @@ export function ChatSession({ onOpenAssessment, onClose }: ChatSessionProps) {
     }
   };
 
-  // Access code validated → move to registration
-  const handleAccessCodeValidated = (id: number, name: string) => {
+  // Drops the persisted identity — used when the server proves it is
+  // corrupt/unknown (attribution 400/404), so the full registration gate
+  // starts from a clean slate.
+  const clearIdentity = () => {
+    window.localStorage.removeItem(STORAGE.customerId);
+    window.localStorage.removeItem(STORAGE.conversationId);
+    setCustomerId(null);
+    setConversationId(null);
+  };
+
+  /**
+   * Access code validated (access-code-always).
+   *
+   * - Fresh visitor (no customer_id): full registration gate, unchanged.
+   * - Returning visitor: POST /assistant/attribution (last-touch). Branches:
+   *   200 → consent is current and the referrer was recorded → profile
+   *   check decides `intake` vs `chat` (same degraded rule as before: only
+   *   an explicit "no profile" routes to intake, an errored check keeps
+   *   chat so a flaky server never blocks a returning customer);
+   *   401 → CONSENT_REQUIRED → re-consent gate, identity KEPT (stale
+   *   consent is not a corrupt identity);
+   *   400/404 → corrupt identity → clear localStorage → full gate;
+   *   network error → the code was asked and entered, but recording it is
+   *   best-effort: degrade to the profile check instead of blocking (same
+   *   philosophy as the profile/history fetches) — decision recorded in
+   *   odd/tasks/access-code-always.md.
+   */
+  const handleAccessCodeValidated = async (id: number, name: string) => {
+    // Last-touch: the freshly validated referrer REPLACES the previous one.
     setReferrerId(id);
     setReferrerName(name);
+
+    if (customerId == null) {
+      setConsentReentry(false);
+      setPhase("gate");
+      void loadConsent();
+      return;
+    }
+
+    let res: Response;
+    try {
+      res = await fetch("/api/assistant/attribution", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ customer_id: customerId, referrer_id: id }),
+      });
+    } catch {
+      // Network error: attribution is best-effort for this visit; never
+      // block a returning customer over it (see docblock above).
+      const exists = await fetchProfileExists(customerId);
+      if (exists === false) {
+        setPhase("intake");
+        return;
+      }
+      setPhase("chat");
+      setMessages([{ sender: "agent", text: GREETING }]);
+      if (conversationId != null) void loadHistory();
+      return;
+    }
+
+    if (res.ok) {
+      const exists = await fetchProfileExists(customerId);
+      if (exists === false) {
+        setPhase("intake");
+        return;
+      }
+      setPhase("chat");
+      setMessages([{ sender: "agent", text: GREETING }]);
+      if (conversationId != null) void loadHistory();
+      return;
+    }
+
+    if (res.status === 401) {
+      // Stale consent → re-consent before any attribution is written.
+      // The identity stays: the customer exists, only the consent text
+      // moved on.
+      setConsentReentry(true);
+      setPhase("gate");
+      void loadConsent();
+      return;
+    }
+
+    // 400 (invalid customer_id) / 404 (unknown customer): the stored
+    // identity is corrupt — clear it and start the full registration.
+    clearIdentity();
+    setConsentReentry(false);
     setPhase("gate");
     void loadConsent();
   };

@@ -4,6 +4,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Routes, Route } from "react-router";
 import { ChatPage } from "../src/app/components/chat";
+import { accessCodeFetch, passAccessCodeGate } from "./helpers/accessCode";
 
 // Mock fetch
 const mockFetch = vi.fn();
@@ -51,6 +52,9 @@ interface FetchOptions {
 function installFetch(options: FetchOptions) {
   mockFetch.mockImplementation((url: string) => {
     const u = String(url);
+    // access-code-always: the gate validates + attributes before any phase
+    const gate = accessCodeFetch(u);
+    if (gate) return Promise.resolve(gate);
     if (u.includes("/api/assistant/profile")) {
       return Promise.resolve({
         ok: true,
@@ -97,14 +101,15 @@ describe("ChatPage (/chat fullscreen route)", () => {
     expect(screen.queryByPlaceholderText("Escribe un mensaje...")).not.toBeInTheDocument();
   });
 
-  it("boots a registered customer straight into the chat with the message input", async () => {
+  it("boots a registered customer into the access-code gate (access-code-always), not into chat", async () => {
     window.localStorage.setItem("vr_customer_id", String(CUSTOMER_ID));
     installFetch({ profile: SERVER_PROFILE, history: [] });
 
     renderChatPage();
 
-    expect(await screen.findByPlaceholderText("Escribe un mensaje...")).toBeInTheDocument();
-    expect(screen.queryByText("Código de acceso")).not.toBeInTheDocument();
+    // The code is requested on EVERY visit — even with a stored identity.
+    expect(await screen.findByText("Código de acceso")).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("Escribe un mensaje...")).not.toBeInTheDocument();
   });
 
   it("uses a 100dvh-family height and safe-area padding on the outer container", async () => {
@@ -135,6 +140,7 @@ describe("ChatPage (/chat fullscreen route)", () => {
 
     const user = userEvent.setup();
     renderChatPage();
+    await passAccessCodeGate(user);
 
     // The persisted history renders the AssessmentCard (marker is never leaked)
     const card = await screen.findByRole("button", { name: /Chequeo completo de síntomas/ });

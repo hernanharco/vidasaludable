@@ -32,6 +32,13 @@ import type { Product } from "../db/schema.js";
  *   open_note?} → {ok:true}; one row per customer (re-submits update).
  * - GET  /assistant/profile?customer_id=N → {profile: null | {...}} — the
  *   widget boot check that skips the intake when a profile already exists.
+ * - POST /assistant/attribution → last-touch attribution for the ALWAYS
+ *   requested access code (access-code-always): {customer_id, referrer_id}
+ *   → {ok:true}; updates ONLY `referrer_id` (name/email/phone/registeredAt
+ *   and consent untouched). Same customer checks as /profile and /ask: 400
+ *   invalid customer_id or referrer_id (an unknown referrer_id is 400 — an
+ *   invalid input value — not a 404), 404 unknown customer, 401 stale consent
+ *   (CONSENT_REQUIRED + consent, same shape as /ask).
  *
  * Product not-found is internal, never a 404 to the client: only valid catalog
  * refs are injected, so the agent never invents details.
@@ -138,6 +145,42 @@ export function createAssistantRouter(db: Db): Hono {
       openNote: typeof body.open_note === "string" ? body.open_note : undefined,
     });
     return c.json({ ok: true });
+  });
+
+  // T1 access-code-always — last-touch attribution for a returning visitor.
+  // The code is requested on EVERY visit, so this endpoint only swaps
+  // `referrer_id`; it deliberately does NOT re-consent (consent must already
+  // be current) and never touches identity/registration columns. Mirrors the
+  // customer checks of /profile (400/404) and /ask (401 CONSENT_REQUIRED).
+  app.post("/attribution", async (c) => {
+    let body: Record<string, unknown>;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "cuerpo inválido" }, 400);
+    }
+
+    const customerId = Number(body.customer_id);
+    const referrerId = Number(body.referrer_id);
+    if (!Number.isInteger(customerId) || customerId <= 0) {
+      return c.json({ error: "customer_id inválido" }, 400);
+    }
+    if (!Number.isInteger(referrerId) || referrerId <= 0) {
+      return c.json({ error: "referrer_id inválido" }, 400);
+    }
+
+    const result = customers.attribution({ customerId, referrerId });
+    switch (result.status) {
+      case "ok":
+        return c.json({ ok: true });
+      case "not_found":
+        return c.json({ error: "customer no encontrado" }, 404);
+      case "consent_required":
+        return c.json({ error: "CONSENT_REQUIRED", consent: getCurrentConsent() }, 401);
+      case "invalid":
+        // Unknown referrer_id (the id format was validated above).
+        return c.json({ error: result.reason }, 400);
+    }
   });
 
   app.get("/profile", (c) => {
