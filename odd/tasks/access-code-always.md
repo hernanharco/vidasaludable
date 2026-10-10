@@ -90,12 +90,16 @@ user → chat directo". **Siempre** `setPhase("access_code")`.
   (10 tests existentes actualizados al nuevo boot: ChatIntake 6,
   ChatPage 2, AssessmentCard 1, ProductCards 1, con helper compartido
   `test/helpers/accessCode.ts`); `tsc --noEmit` clean
-- [ ] T3
+- [ ] T3 — suites verdes (backend 236/236, frontend 101/101), builds OK
+  (backend `tsc -p`, frontend `vite build`); **pendiente**: push + PR y
+  smoke contra producción (decisión del usuario)
 
 ## Evidence (commits per task)
 
 - T1: `37aed5be` feat(assistant): last-touch attribution endpoint for
   always-requested access code
+- T2: `df779e69` feat(chat): request the access code on every visit
+  (access-code-always)
 
 ## Decisions
 
