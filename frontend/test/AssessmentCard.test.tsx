@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { ChatMessages } from "../src/app/components/chat/ChatMessages";
 import { ChatSession } from "../src/app/components/chat";
 import { AssessmentWidget } from "../src/app/components/assessment/AssessmentWidget";
+import { accessCodeFetch, passAccessCodeGate } from "./helpers/accessCode";
 
 // Mock fetch
 const mockFetch = vi.fn();
@@ -128,6 +129,9 @@ function AssessmentHarness() {
 function installChatFetch() {
   mockFetch.mockImplementation((url: string) => {
     const u = String(url);
+    // access-code-always: the gate validates + attributes before chat
+    const gate = accessCodeFetch(u);
+    if (gate) return Promise.resolve(gate);
     if (u.includes("/api/assistant/profile")) {
       // Returning customer WITH a saved intake profile → straight to chat
       return Promise.resolve({
@@ -176,6 +180,7 @@ describe("Assessment card → wizard wiring", () => {
     installChatFetch();
 
     render(<AssessmentHarness />);
+    await passAccessCodeGate(user);
 
     // The chat is mounted directly (no popup launcher) and there is no
     // standalone "Prevenición" floating entry — the landing only has the

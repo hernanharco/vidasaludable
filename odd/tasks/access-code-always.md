@@ -85,11 +85,17 @@ user → chat directo". **Siempre** `setPhase("access_code")`.
 
 ## Progress
 
-- [ ] T1
-- [ ] T2
+- [x] T1 — GREEN: 6/6 attribution tests, suite 236/236, `tsc --noEmit` clean
+- [x] T2 — GREEN: 7/7 AccessCodeAlways tests; suite frontend 101/101
+  (10 tests existentes actualizados al nuevo boot: ChatIntake 6,
+  ChatPage 2, AssessmentCard 1, ProductCards 1, con helper compartido
+  `test/helpers/accessCode.ts`); `tsc --noEmit` clean
 - [ ] T3
 
 ## Evidence (commits per task)
+
+- T1: `37aed5be` feat(assistant): last-touch attribution endpoint for
+  always-requested access code
 
 ## Decisions
 
@@ -100,3 +106,12 @@ user → chat directo". **Siempre** `setPhase("access_code")`.
   más chico y no ensancha el contrato de registro.
 - **El código se pide en cada visita**, no se persiste. Si se persistiera, se
   volvería al problema actual.
+- **Error de red en la atribución (T2)**: el POST a `/assistant/attribution`
+  falla por red → la atribución de esta visita es best-effort y se degrada al
+  profile check (intake|chat) SIN bloquear al usuario, siguiendo la filosofía
+  existente (un servidor inestable nunca bloquea al customer recurrente). No
+  se limpia la identidad (un fallo de red no prueba identidad corrupta).
+- **Tests existentes que asumían el boot viejo**: se actualizaron al nuevo
+  comportamiento (pasar por el gate) en lugar de marcarse como obsolete — el
+  cambio de boot ES el requerimiento; el helper `test/helpers/accessCode.ts`
+  centraliza la interacción del gate.

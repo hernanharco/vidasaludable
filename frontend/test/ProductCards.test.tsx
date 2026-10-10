@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { ChatMessages } from "../src/app/components/chat/ChatMessages";
 import { ChatSession } from "../src/app/components/chat";
 import type { ProductCardInfo, VideoCardInfo } from "../src/app/components/chat/types";
+import { accessCodeFetch, passAccessCodeGate } from "./helpers/accessCode";
 
 // Mock fetch
 const mockFetch = vi.fn();
@@ -316,11 +317,13 @@ describe("ChatSession product map boot", () => {
 
   it("renders a ProductCard end-to-end when an agent reply cites a known ref", async () => {
     const user = userEvent.setup();
-    // Returning customer → straight to chat (no gates).
+    // Returning customer → access-code gate first (access-code-always), then chat.
     window.localStorage.setItem("vr_customer_id", "7");
     window.localStorage.setItem("vr_conversation_id", "3");
 
     mockFetch.mockImplementation((url: string) => {
+      const gate = accessCodeFetch(url);
+      if (gate) return Promise.resolve(gate);
       if (url.includes("/api/assistant/products")) {
         return Promise.resolve({ ok: true, json: () => Promise.resolve({ products: PRODUCTS }) });
       }
@@ -344,6 +347,7 @@ describe("ChatSession product map boot", () => {
     });
 
     render(<ChatSession />);
+    await passAccessCodeGate(user);
 
     const input = await screen.findByPlaceholderText("Escribe un mensaje...");
     await user.type(input, "me duelen los huesos");
