@@ -11,7 +11,7 @@ import { parseVideoId } from "../tools/parsers.js";
 import { createRecommendationService } from "../services/recommendationService.js";
 import { createConversationService } from "../services/conversationService.js";
 import { createCustomerService } from "../services/customerService.js";
-import { customers, conversations, messages, products, purchases, videos, videoSegments } from "../db/schema.js";
+import { customers, conversations, messages, products, purchases, videos, videoSegments, recommendations as recommendationsTable } from "../db/schema.js";
 import { assessmentSymptoms } from "../db/assessmentSchema.js";
 import type { NewGuidance, NewVideo } from "../db/schema.js";
 import { eq, count } from "drizzle-orm";
@@ -166,8 +166,16 @@ export function createAdminRouter(db: Db): Hono {
     if (!Number.isInteger(id)) return c.json({ error: "invalid id" }, 400);
     const existing = db.select().from(conversations).where(eq(conversations.id, id)).get();
     if (!existing) return c.json({ error: "conversation not found" }, 404);
-    db.delete(messages).where(eq(messages.conversationId, id)).all();
-    db.delete(conversations).where(eq(conversations.id, id)).all();
+    // `messages` AND `recommendations` reference `conversations.id`, neither
+    // with ON DELETE CASCADE. Deleting only messages and then the conversation
+    // threw FOREIGN KEY constraint failed as soon as the conversation had
+    // produced a recommendation, surfacing as a bare HTTP 500 on the admin
+    // Conversaciones page. Remove every dependent first, atomically.
+    db.transaction((tx) => {
+      tx.delete(recommendationsTable).where(eq(recommendationsTable.conversationId, id)).run();
+      tx.delete(messages).where(eq(messages.conversationId, id)).run();
+      tx.delete(conversations).where(eq(conversations.id, id)).run();
+    });
     return c.body(null, 204);
   });
   app.get("/conversations/:id/messages", (c) => {

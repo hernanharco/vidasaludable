@@ -57,6 +57,12 @@ import type { Hono } from "hono";
  *     leaves the row (previous attribution included) untouched. The referrer
  *     is validated BEFORE the consent renewal so no partial side effect is
  *     left behind a 400 that reports no customer_id.
+ *  6. CONVERSATION DELETE — `messages` AND `recommendations` reference
+ *     `conversations.id` with no cascade, but the endpoint only deleted
+ *     messages. A conversation that had produced a recommendation therefore
+ *     threw FOREIGN KEY constraint failed and the admin Conversaciones page
+ *     showed a bare HTTP 500. The endpoint now removes both dependents in one
+ *     transaction and leaves the customer intact.
  *
  * The cascade assertions also pin what must SURVIVE it: the shared catalog
  * product is still there and an unrelated customer is untouched.
@@ -305,5 +311,57 @@ describe("customer lifecycle (register attribution + safe delete)", () => {
     // Unknown id stays a clean 404.
     const missing = await app.request(`/admin/customers/${customerId}`, { method: "DELETE" });
     expect(missing.status).toBe(404);
+  });
+
+  it("DELETE /admin/conversations/:id removes a conversation that has recommendations", async () => {
+    const res = await post("/assistant/register", {
+      name: "Con Recomendación",
+      email: "con-reco@example.com",
+      phone: "+34600000005",
+      consent_version: 1,
+      referrer_id: referrerA.id,
+    });
+    expect(res.status).toBe(200);
+    const customerId = ((await res.json()) as { customer_id: number }).customer_id;
+
+    const conversation = db.insert(conversations).values({ customerId }).returning().get();
+    db.insert(messages).values({ conversationId: conversation.id, role: "user", content: "hola" }).run();
+    db.insert(recommendations).values({
+      conversationId: conversation.id,
+      customerId,
+      symptom: "fatiga",
+      productReferences: JSON.stringify([]),
+      rationale: "test",
+      consentVersion: 1,
+    }).run();
+
+    // Before the fix: recommendations referenced the conversation, so this
+    // returned 500 and the admin page rendered "Acceso restringido".
+    const del = await app.request(`/admin/conversations/${conversation.id}`, { method: "DELETE" });
+    expect(del.status).toBe(204);
+
+    const conversationsLeft = db
+      .select()
+      .from(conversations)
+      .where(eq(conversations.id, conversation.id))
+      .all();
+    expect(conversationsLeft).toHaveLength(0);
+
+    const messagesLeft = db
+      .select()
+      .from(messages)
+      .where(eq(messages.conversationId, conversation.id))
+      .all();
+    expect(messagesLeft).toHaveLength(0);
+
+    const recommendationsLeft = db
+      .select()
+      .from(recommendations)
+      .where(eq(recommendations.conversationId, conversation.id))
+      .all();
+    expect(recommendationsLeft).toHaveLength(0);
+
+    // The customer survives a conversation delete.
+    expect(getCustomer(customerId)).toBeDefined();
   });
 });
