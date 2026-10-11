@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { Db } from "../db/client.js";
 import { referrers, customers } from "../db/schema.js";
-import { eq, sql } from "drizzle-orm";
+import { eq, count, isNotNull } from "drizzle-orm";
 
 /**
  * Admin referrer management routes.
@@ -19,8 +19,26 @@ import { eq, sql } from "drizzle-orm";
 export function createAdminReferrerRouter(db: Db): Hono {
   const app = new Hono();
 
-  // List all referrers with customer count + related customers
+  // List all referrers with customer count + related customers.
+  //
+  // BUGFIX: the count used to be a raw correlated subquery
+  //   (SELECT COUNT(*) FROM customers WHERE customers.referrer_id = referrers.id)
+  // interpolated through Drizzle's `sql` template, which renders COLUMNS
+  // WITHOUT table qualifiers ("referrer_id" = "id"), so SQLite resolved both
+  // names INSIDE the subquery (customers comparing against itself) and
+  // returned 0 whenever the customer id differed from the referrer id.
+  // The expanded list uses eq() (properly qualified), which is why the panel
+  // showed the customer while the badge said 0.
+  // Now the count comes from a groupBy over customers — no raw SQL.
   app.get("/", (c) => {
+    const counts = db
+      .select({ referrerId: customers.referrerId, total: count() })
+      .from(customers)
+      .where(isNotNull(customers.referrerId))
+      .groupBy(customers.referrerId)
+      .all();
+    const countByReferrer = new Map(counts.map((row) => [row.referrerId, row.total]));
+
     const all = db
       .select({
         id: referrers.id,
@@ -30,7 +48,6 @@ export function createAdminReferrerRouter(db: Db): Hono {
         email: referrers.email,
         active: referrers.active,
         createdAt: referrers.createdAt,
-        customerCount: sql<number>`(SELECT COUNT(*) FROM ${customers} WHERE ${customers.referrerId} = ${referrers.id})`,
       })
       .from(referrers)
       .all();
@@ -47,7 +64,7 @@ export function createAdminReferrerRouter(db: Db): Hono {
         .from(customers)
         .where(eq(customers.referrerId, r.id))
         .all();
-      return { ...r, customers: customerRows };
+      return { ...r, customerCount: countByReferrer.get(r.id) ?? 0, customers: customerRows };
     });
 
     return c.json({ referrers: withCustomers });
