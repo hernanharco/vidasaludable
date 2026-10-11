@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Key, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
 
 const inputCls =
-  "w-full px-3 py-2 bg-stone-100 border border-stone-200 rounded-lg text-sm text-stone-800 placeholder:text-stone-400 focus:outline-none focus:ring-1 focus:ring-emerald-900 transition-shadow";
+  "w-full px-3 py-2 bg-stone-100 border border-stone-200 rounded-lg text-base md:text-sm text-stone-800 placeholder:text-stone-400 focus:outline-none focus:ring-1 focus:ring-emerald-900 transition-shadow";
 
 interface AccessCodeGateProps {
   onValidated: (referrerId: number, referrerName: string) => void;
@@ -110,7 +110,6 @@ export function AccessCodeGate({ onValidated }: AccessCodeGateProps) {
                 }}
                 className={`${inputCls} pl-9`}
                 placeholder="Ej: 1906432239"
-                autoFocus
                 disabled={loading}
               />
             </div>

@@ -26,10 +26,10 @@ interface RegistrationGateProps {
 }
 
 const inputCls =
-  "w-full px-3 py-2 bg-stone-100 border border-stone-200 rounded-lg text-sm text-stone-800 placeholder:text-stone-400 focus:outline-none focus:ring-1 focus:ring-emerald-900 transition-shadow";
+  "w-full px-3 py-2 bg-stone-100 border border-stone-200 rounded-lg text-base md:text-sm text-stone-800 placeholder:text-stone-400 focus:outline-none focus:ring-1 focus:ring-emerald-900 transition-shadow";
 
 const codeSelectCls =
-  "w-[112px] shrink-0 px-2 py-2 bg-stone-100 border border-stone-200 rounded-lg text-sm text-stone-800 focus:outline-none focus:ring-1 focus:ring-emerald-900 transition-shadow";
+  "w-[112px] shrink-0 px-2 py-2 bg-stone-100 border border-stone-200 rounded-lg text-base md:text-sm text-stone-800 focus:outline-none focus:ring-1 focus:ring-emerald-900 transition-shadow";
 
 export function RegistrationGate({
   consent,

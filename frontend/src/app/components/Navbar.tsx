@@ -62,7 +62,7 @@ export function Navbar() {
 
         {/* Mobile Toggle */}
         <button
-          className={`md:hidden ${isScrolled ? "text-stone-800" : "text-white"}`}
+          className={`md:hidden p-2.5 ${isScrolled ? "text-stone-800" : "text-white"}`}
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
         >
           {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
@@ -82,7 +82,7 @@ export function Navbar() {
               <li key={link.name}>
                 <a
                   href={link.href}
-                  className="block hover:text-emerald-900 transition-colors"
+                  className="block py-2.5 min-h-11 hover:text-emerald-900 transition-colors"
                   onClick={() => setMobileMenuOpen(false)}
                 >
                   {link.name}

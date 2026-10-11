@@ -59,7 +59,7 @@ export function Hero() {
           </div>
 
           {/* Stats */}
-          <div className="flex gap-8 mt-12 pt-8 border-t border-white/20">
+          <div className="flex flex-col gap-4 sm:flex-row sm:gap-8 mt-12 pt-8 border-t border-white/20">
             <div>
               <p className="text-3xl font-bold text-white">100%</p>
               <p className="text-xs text-emerald-200/70 uppercase tracking-wider">Enfoque preventivo</p>
