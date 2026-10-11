@@ -51,8 +51,8 @@ Required: the inline `text-sm` is removed so the base `text-base md:text-sm` app
 
 | ID | Spec | Route | Commit |
 |----|------|-------|--------|
-| T1 | S4-S7 | writer (web components) | _pending_ |
-| T2 | S8-S11 | writer (admin) | _pending_ |
+| T1 | S4-S7 | writer (web components) + inline completion of the AccessCodeGate surface gap | `6e4a1f83` |
+| T2 | S8-S11 | writer (admin) | `3d943571` |
 
 ## Log
 
@@ -67,3 +67,22 @@ Required: the inline `text-sm` is removed so the base `text-base md:text-sm` app
 **L4** User admin strategy decision: **(a)** scroll + collapsible sidebar, one implementation, no duplicate card layouts, no desktop-only notice.
 
 **L5** Test policy: these are pure Tailwind class changes. jsdom does not compute CSS, so a RED test would only assert a className substring — brittle and low value. Verification is therefore proportionate structural verification (grep the resulting classes) plus the existing 102-test suite and `tsc`/`vite build`, per the non-testable-change path.
+
+**L6** T1 stopped on a genuine spec defect rather than guessing: S4 named the target as `chat/AccessCodeGate.tsx`, but that path does not exist. The real file is `frontend/src/app/components/AccessCodeGate.tsx` (one level up, outside the delegated `chat/**` surface); its `inputCls` (:5) and `autoFocus` (:113) matched the spec exactly, so the intent was unambiguous. The parent extended the surface and completed the two edits inline instead of paying a full worker round-trip. **Correction to S4**: the correct path is `frontend/src/app/components/AccessCodeGate.tsx`.
+
+**L7** Deliberate non-actions: the writer did not adopt `ui/sheet.tsx` for the admin drawer — Sheet portals into a dialog with its own focus management, which would duplicate the nav DOM instead of simplifying it. Escape-key close / focus trap / scroll lock for the drawer are P2 polish and stay out of scope (L3). The other 8 admin tables already scroll and were left alone.
+
+**L8** Evidence — structural verification of every spec:
+- S4: `text-base md:text-sm` present at all 5 input sites (`AccessCodeGate.tsx:5`, `ChatInput.tsx:20`, `ChatIntake.tsx:34`, `RegistrationGate.tsx:29,32`); `autoFocus` count in AccessCodeGate is 0.
+- S5: `Navbar.tsx` hamburger `p-2.5`, mobile links `py-2.5 min-h-11`.
+- S6: `ChatHeader.tsx:22` → `p-3 rounded-full flex items-center justify-center`, `onClick` preserved.
+- S7: `Hero.tsx:62` → `flex flex-col gap-4 sm:flex-row sm:gap-8`.
+- S8: `AdminLayout.tsx` backdrop `fixed inset-0 z-30 … md:hidden` (:122), aside `fixed inset-y-0 left-0 z-40 … md:static` (:132), hamburger `md:hidden p-2` (:210), padding `px-4 sm:px-8` (:204, :225).
+- S9: `AssessmentAdminPage.tsx` 4× `overflow-x-auto` + 4× `min-w-[640px]`; `ReferrersPage.tsx` 2× `overflow-x-auto` + 2× `min-w-[720px]` (incl. the nested table).
+- S10: `dashboard/Dashboard.tsx:202` → `flex flex-wrap items-center justify-between gap-3`.
+- S11: `ReferrersPage.tsx` has 0 remaining `className="text-sm"` overrides.
+- Verification: `npx vitest run` 102/102, `npx tsc --noEmit` clean, `npx vite build` OK.
+
+**L9** A11y gap noted by the writer, not fixed (out of scope): `ChatHeader.tsx`'s close button had no `aria-label` before or after this change. The task said "preserve its aria-label" and there was none to preserve. Worth a follow-up.
+
+**L10** Deferred P2 pool, still untracked and available on request: chat bubble `break-words` (`ChatMessages.tsx:198`), safe-area insets (`index.html` lacks `viewport-fit=cover`, so all `env(safe-area-inset-*)` resolve to 0), `loading="lazy"` + responsive heights on `About.tsx` images, `p-6 sm:p-10` on `Services.tsx:41`, `min-h-11` on secondary buttons (`ui/button.tsx:24` is `h-9`), `PurchasesChart.tsx:43-47` tick overlap at 360px, and `min-w-`/truncation on the 8 admin tables that already scroll.
