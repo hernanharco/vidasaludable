@@ -188,7 +188,9 @@ export function ReferrersPage() {
           </p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-stone-200 overflow-x-auto">
+        <>
+        {/* Desktop: table (md and up) */}
+        <div className="hidden md:block bg-white rounded-xl border border-stone-200 overflow-x-auto">
           <table className="w-full min-w-[720px] text-sm">
             <thead>
               <tr className="border-b border-stone-200 bg-stone-50">
@@ -322,6 +324,92 @@ export function ReferrersPage() {
             </tbody>
           </table>
         </div>
+
+        {/* Mobile: cards (below md) — one referrer per card, no horizontal scroll */}
+        <div className="md:hidden space-y-3">
+          {referrers.map((r) => (
+            <div key={r.id} className="bg-white rounded-xl border border-stone-200 p-4 space-y-3">
+              {editingId === r.id ? (
+                <div className="space-y-2">
+                  <Input value={editName} onChange={(e) => setEditName(e.target.value)} aria-label="Nombre" />
+                  <Input value={editPhone} onChange={(e) => setEditPhone(e.target.value)} placeholder="Teléfono" aria-label="Teléfono" />
+                  <Input value={editEmail} onChange={(e) => setEditEmail(e.target.value)} placeholder="Email" aria-label="Email" />
+                  <div className="flex gap-2">
+                    <Button size="sm" onClick={() => handleSaveEdit(r.id)} className="bg-emerald-600 hover:bg-emerald-700 flex-1">
+                      Guardar
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => setEditingId(null)} className="flex-1">
+                      Cancelar
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-medium text-stone-900 break-words">{r.name}</p>
+                      <p className="text-xs font-mono text-stone-500 mt-0.5">🔑 {r.code}</p>
+                    </div>
+                    <span
+                      className={`shrink-0 inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
+                        r.active ? "bg-green-100 text-green-700" : "bg-stone-100 text-stone-500"
+                      }`}
+                    >
+                      {r.active ? "Activo" : "Inactivo"}
+                    </span>
+                  </div>
+
+                  <div className="text-xs text-stone-500 space-y-0.5">
+                    <p>Teléfono: {r.phone ?? "—"}</p>
+                    <p>Email: {r.email ?? "—"}</p>
+                  </div>
+
+                  <button
+                    onClick={() => setExpandedId(expandedId === r.id ? null : r.id)}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700 text-xs font-medium hover:bg-emerald-200"
+                  >
+                    👥 {r.customerCount} {r.customerCount === 1 ? "cliente" : "clientes"}
+                  </button>
+
+                  {expandedId === r.id && (
+                    <div className="border-t border-stone-100 pt-2 space-y-2">
+                      {r.customers.length === 0 ? (
+                        <p className="text-xs text-stone-500">Sin clientes asociados.</p>
+                      ) : (
+                        r.customers.map((cu) => (
+                          <div key={cu.id} className="text-xs bg-stone-50 rounded-lg p-2 space-y-0.5">
+                            <p className="font-medium text-stone-800">{cu.name}</p>
+                            <p className="text-stone-500">{cu.email}</p>
+                            <p className="text-stone-500">{cu.phone}</p>
+                            <p className="text-stone-400">Registrado: {new Date(cu.registeredAt).toLocaleDateString()}</p>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+
+                  <div className="flex gap-2 pt-1">
+                    <Button size="sm" variant="outline" onClick={() => startEdit(r)} className="flex-1">
+                      Editar
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => handleToggle(r.id, r.active)} className="flex-1">
+                      {r.active ? "Desactivar" : "Activar"}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleDelete(r.id)}
+                      className="flex-1 text-red-500 hover:text-red-700 hover:border-red-300"
+                    >
+                      Eliminar
+                    </Button>
+                  </div>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+        </>
       )}
     </div>
   );
