@@ -188,8 +188,8 @@ export function ReferrersPage() {
           </p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-stone-200 overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="bg-white rounded-xl border border-stone-200 overflow-x-auto">
+          <table className="w-full min-w-[720px] text-sm">
             <thead>
               <tr className="border-b border-stone-200 bg-stone-50">
                 <th className="text-left px-4 py-3 font-medium text-stone-600">Código</th>
@@ -209,13 +209,13 @@ export function ReferrersPage() {
                   {editingId === r.id ? (
                     <>
                       <td className="px-4 py-3">
-                        <Input value={editName} onChange={(e) => setEditName(e.target.value)} className="text-sm" />
+                        <Input value={editName} onChange={(e) => setEditName(e.target.value)} />
                       </td>
                       <td className="px-4 py-3">
-                        <Input value={editPhone} onChange={(e) => setEditPhone(e.target.value)} placeholder="Teléfono" className="text-sm" />
+                        <Input value={editPhone} onChange={(e) => setEditPhone(e.target.value)} placeholder="Teléfono" />
                       </td>
                       <td className="px-4 py-3">
-                        <Input value={editEmail} onChange={(e) => setEditEmail(e.target.value)} placeholder="Email" className="text-sm" />
+                        <Input value={editEmail} onChange={(e) => setEditEmail(e.target.value)} placeholder="Email" />
                       </td>
                     </>
                   ) : (
@@ -291,26 +291,28 @@ export function ReferrersPage() {
                       {r.customers.length === 0 ? (
                         <p className="text-xs text-stone-500">Sin clientes asociados.</p>
                       ) : (
-                        <table className="w-full text-xs">
-                          <thead>
-                            <tr className="text-stone-500">
-                              <th className="text-left py-1">Nombre</th>
-                              <th className="text-left py-1">Email</th>
-                              <th className="text-left py-1">Teléfono</th>
-                              <th className="text-left py-1">Registrado</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {r.customers.map((cu) => (
-                              <tr key={cu.id} className="border-t border-stone-200">
-                                <td className="py-1">{cu.name}</td>
-                                <td className="py-1 text-stone-500">{cu.email}</td>
-                                <td className="py-1 text-stone-500">{cu.phone}</td>
-                                <td className="py-1 text-stone-500">{new Date(cu.registeredAt).toLocaleDateString()}</td>
+                        <div className="overflow-x-auto">
+                          <table className="w-full min-w-[720px] text-xs">
+                            <thead>
+                              <tr className="text-stone-500">
+                                <th className="text-left py-1">Nombre</th>
+                                <th className="text-left py-1">Email</th>
+                                <th className="text-left py-1">Teléfono</th>
+                                <th className="text-left py-1">Registrado</th>
                               </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                            </thead>
+                            <tbody>
+                              {r.customers.map((cu) => (
+                                <tr key={cu.id} className="border-t border-stone-200">
+                                  <td className="py-1">{cu.name}</td>
+                                  <td className="py-1 text-stone-500">{cu.email}</td>
+                                  <td className="py-1 text-stone-500">{cu.phone}</td>
+                                  <td className="py-1 text-stone-500">{new Date(cu.registeredAt).toLocaleDateString()}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
                       )}
                     </td>
                   </tr>

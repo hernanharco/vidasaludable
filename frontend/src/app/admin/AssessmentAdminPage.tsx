@@ -428,8 +428,8 @@ export function AssessmentAdminPage() {
           {symptoms.length === 0 ? (
             <p className="text-stone-500 text-sm">No hay síntomas cargados.</p>
           ) : (
-            <div className="bg-white rounded-xl border border-stone-200 overflow-hidden">
-              <table className="w-full text-sm">
+            <div className="bg-white rounded-xl border border-stone-200 overflow-x-auto">
+              <table className="w-full min-w-[640px] text-sm">
                 <thead>
                   <tr className="border-b border-stone-200 bg-stone-50">
                     <SortableTh label="ID" sortKey="id" activeKey={symSort.sortKey} activeDir={symSort.sortDir} onSort={symSort.toggleSort} />
@@ -536,8 +536,8 @@ export function AssessmentAdminPage() {
           {nutrients.length === 0 ? (
             <p className="text-stone-500 text-sm">No hay nutrientes cargados.</p>
           ) : (
-            <div className="bg-white rounded-xl border border-stone-200 overflow-hidden">
-              <table className="w-full text-sm">
+            <div className="bg-white rounded-xl border border-stone-200 overflow-x-auto">
+              <table className="w-full min-w-[640px] text-sm">
                 <thead>
                   <tr className="border-b border-stone-200 bg-stone-50">
                     <SortableTh label="ID" sortKey="id" activeKey={nutSort.sortKey} activeDir={nutSort.sortDir} onSort={nutSort.toggleSort} />
@@ -644,8 +644,8 @@ export function AssessmentAdminPage() {
           {mappings.length === 0 ? (
             <p className="text-stone-500 text-sm">No hay mapeos cargados.</p>
           ) : (
-            <div className="bg-white rounded-xl border border-stone-200 overflow-hidden">
-              <table className="w-full text-sm">
+            <div className="bg-white rounded-xl border border-stone-200 overflow-x-auto">
+              <table className="w-full min-w-[640px] text-sm">
                 <thead>
                   <tr className="border-b border-stone-200 bg-stone-50">
                     <SortableTh label="Síntoma" sortKey="symptomName" activeKey={mapSort.sortKey} activeDir={mapSort.sortDir} onSort={mapSort.toggleSort} />
@@ -746,8 +746,8 @@ export function AssessmentAdminPage() {
               <p className="text-stone-500">No hay evaluaciones completadas todavía.</p>
             </div>
           ) : (
-            <div className="bg-white rounded-xl border border-stone-200 overflow-hidden">
-              <table className="w-full text-sm">
+            <div className="bg-white rounded-xl border border-stone-200 overflow-x-auto">
+              <table className="w-full min-w-[640px] text-sm">
                 <thead>
                   <tr className="border-b border-stone-200 bg-stone-50">
                     <SortableTh label="Paciente" sortKey="patientName" activeKey={resSort.sortKey} activeDir={resSort.sortDir} onSort={resSort.toggleSort} />

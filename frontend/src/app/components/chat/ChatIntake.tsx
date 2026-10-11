@@ -31,7 +31,7 @@ const SLEEP_RANGES = ["<5 h", "5-6 h", "7-8 h", "+8 h"];
 const STRESS_LEVELS = ["Bajo", "Medio", "Alto"];
 
 const inputCls =
-  "w-full px-3 py-2 bg-white border border-stone-200 rounded-lg text-sm text-stone-800 placeholder:text-stone-400 focus:outline-none focus:ring-1 focus:ring-emerald-900 transition-shadow";
+  "w-full px-3 py-2 bg-white border border-stone-200 rounded-lg text-base md:text-sm text-stone-800 placeholder:text-stone-400 focus:outline-none focus:ring-1 focus:ring-emerald-900 transition-shadow";
 
 const chipCls = (selected: boolean) =>
   [
