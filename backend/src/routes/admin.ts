@@ -10,6 +10,7 @@ import type { SymptomCandidate } from "../services/symptomMatcher.js";
 import { parseVideoId } from "../tools/parsers.js";
 import { createRecommendationService } from "../services/recommendationService.js";
 import { createConversationService } from "../services/conversationService.js";
+import { createCustomerService } from "../services/customerService.js";
 import { customers, conversations, messages, products, purchases, videos, videoSegments } from "../db/schema.js";
 import { assessmentSymptoms } from "../db/assessmentSchema.js";
 import type { NewGuidance, NewVideo } from "../db/schema.js";
@@ -43,6 +44,7 @@ export function createAdminRouter(db: Db): Hono {
   const catalog = createCatalogService(db);
   const recommendations = createRecommendationService(db);
   const conversationsService = createConversationService(db);
+  const customersService = createCustomerService(db);
   const guidanceService = createGuidanceService(db);
   const videoService = createVideoService(db);
 
@@ -145,7 +147,12 @@ export function createAdminRouter(db: Db): Hono {
   app.delete("/customers/:id", (c) => {
     const id = Number(c.req.param("id"));
     if (!Number.isInteger(id)) return c.json({ error: "invalid id" }, 400);
-    const deleted = db.delete(customers).where(eq(customers.id, id)).returning().get();
+    // Routed through the service, which removes the dependent rows first:
+    // `customer_profile`, `conversations`, `messages`, `recommendations` and
+    // `purchases` reference `customers` with no ON DELETE CASCADE, so a bare
+    // `db.delete(customers)` here threw FOREIGN KEY constraint failed for any
+    // customer with history and the admin "Eliminar" button failed silently.
+    const deleted = customersService.delete(id);
     if (!deleted) return c.json({ error: "customer not found" }, 404);
     return c.body(null, 204);
   });
