@@ -7,6 +7,36 @@ import { ChatLauncher } from "../src/app/components/chat";
 import { ChatHeader } from "../src/app/components/chat/ChatHeader";
 import App from "../src/app/App";
 
+// Records the props passed to every motion.* element so animation intent can
+// be asserted without depending on framer-motion's runtime frame scheduling.
+const motionPropsRecords: Array<Record<string, unknown>> = [];
+const MOTION_ONLY_PROPS = new Set([
+  "animate",
+  "exit",
+  "initial",
+  "transition",
+  "whileHover",
+  "whileTap",
+  "whileInView",
+  "viewport",
+]);
+
+vi.mock("motion/react", () => {
+  const makeComponent = (tag: string) =>
+    function MotionStub(props: Record<string, unknown>) {
+      motionPropsRecords.push(props);
+      const rest: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(props)) {
+        if (!MOTION_ONLY_PROPS.has(key)) rest[key] = value;
+      }
+      return React.createElement(tag, rest);
+    };
+  const motion = new Proxy({}, { get: (_target, tag: string) => makeComponent(tag) });
+  const AnimatePresence = ({ children }: { children?: React.ReactNode }) => <>{children}</>;
+  const useReducedMotion = () => false;
+  return { motion, AnimatePresence, useReducedMotion };
+});
+
 // Mock fetch (the landing components don't call it, but the pattern is kept
 // identical to ChatPage.test.tsx so an accidental fetch fails loudly).
 const mockFetch = vi.fn();
@@ -64,7 +94,7 @@ describe("ChatLauncher (floating AI entry point)", () => {
     vi.clearAllMocks();
   });
 
-  it("renders the Sparkles icon and 'Análisis IA' label; never MessageCircle or the human-advisor copy", () => {
+  it("renders the Sparkles icon and 'Haz tu Análisis' label; never MessageCircle or the human-advisor copy", () => {
     const { container } = render(
       <MemoryRouter>
         <ChatLauncher />
@@ -72,13 +102,30 @@ describe("ChatLauncher (floating AI entry point)", () => {
     );
 
     expect(icon(container, "sparkles")).toBeInTheDocument();
-    expect(screen.getByText("Análisis IA")).toBeInTheDocument();
-    // Accessible name for screen readers
-    expect(screen.getByRole("button", { name: "Abrir Análisis IA" })).toBeInTheDocument();
+    expect(screen.getByText("Haz tu Análisis")).toBeInTheDocument();
+    // Accessible name for screen readers (matches the visible label)
+    expect(screen.getByRole("button", { name: "Haz tu Análisis" })).toBeInTheDocument();
     // The "human advisor" signals are gone
     expect(icon(container, "message-circle")).not.toBeInTheDocument();
     expect(screen.queryByText("Recomendador Preventivo")).not.toBeInTheDocument();
     expect(screen.queryByText("En línea")).not.toBeInTheDocument();
+  });
+
+  it("bounces continuously so the button draws attention", () => {
+    motionPropsRecords.length = 0;
+    render(
+      <MemoryRouter>
+        <ChatLauncher />
+      </MemoryRouter>,
+    );
+
+    const launcher = motionPropsRecords.find(
+      (props) => props["aria-label"] === "Haz tu Análisis",
+    );
+    expect(launcher).toBeDefined();
+    // A looping vertical bob: up, then back to rest.
+    expect(launcher!.animate).toMatchObject({ y: [0, -8, 0] });
+    expect(launcher!.transition).toMatchObject({ repeat: Infinity });
   });
 
   it("navigates to /chat when clicked", async () => {
@@ -95,7 +142,7 @@ describe("ChatLauncher (floating AI entry point)", () => {
 
     expect(screen.getByTestId("location-probe")).toHaveTextContent("/");
 
-    await user.click(screen.getByRole("button", { name: "Abrir Análisis IA" }));
+    await user.click(screen.getByRole("button", { name: "Haz tu Análisis" }));
 
     expect(screen.getByTestId("location-probe")).toHaveTextContent("/chat");
     expect(screen.getByTestId("chat-route")).toBeInTheDocument();
@@ -126,7 +173,7 @@ describe("Landing smoke (single entry point)", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByRole("button", { name: "Abrir Análisis IA" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Haz tu Análisis" })).toBeInTheDocument();
     // The standalone "Prevenición" entry (AssessmentWidget's own button) is gone
     expect(screen.queryByText("Prevenición")).not.toBeInTheDocument();
     expect(screen.queryByText("Evaluación de Prevención")).not.toBeInTheDocument();
