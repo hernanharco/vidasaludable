@@ -86,3 +86,7 @@ Required: the inline `text-sm` is removed so the base `text-base md:text-sm` app
 **L9** A11y gap noted by the writer, not fixed (out of scope): `ChatHeader.tsx`'s close button had no `aria-label` before or after this change. The task said "preserve its aria-label" and there was none to preserve. Worth a follow-up.
 
 **L10** Deferred P2 pool, still untracked and available on request: chat bubble `break-words` (`ChatMessages.tsx:198`), safe-area insets (`index.html` lacks `viewport-fit=cover`, so all `env(safe-area-inset-*)` resolve to 0), `loading="lazy"` + responsive heights on `About.tsx` images, `p-6 sm:p-10` on `Services.tsx:41`, `min-h-11` on secondary buttons (`ui/button.tsx:24` is `h-9`), `PurchasesChart.tsx:43-47` tick overlap at 360px, and `min-w-`/truncation on the 8 admin tables that already scroll.
+
+**L11** Delivery: issue **#16** (`status:approved`), PR **#17** `fix(ui): make the public site and the admin panel usable on mobile`, branch `feat/mobile-ui`, label `type:chore` (the repo exposes no `type:bug`/`type:feature`). CI run 38149938731: Backend pass, Frontend (test + typecheck + build) pass, GitGuardian pass. Merge and deploy to production remain the user's decision.
+
+**L12** Still open at close: visual verification on a real mobile device (not possible statically), and the `ChatHeader` close button has no `aria-label` (L9).
