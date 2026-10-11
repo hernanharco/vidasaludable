@@ -199,7 +199,7 @@ export function Dashboard() {
   return (
     <div>
       {/* Header */}
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="font-serif text-2xl">Dashboard</h1>
           <p className="mt-1 text-sm text-stone-500">

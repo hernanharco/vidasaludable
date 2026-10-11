@@ -14,6 +14,7 @@ import {
   Key,
   Stethoscope,
   Clapperboard,
+  Menu,
 } from "lucide-react";
 import { api, AdminError } from "./api";
 import { getToken, clearToken } from "../lib/auth";
@@ -43,6 +44,8 @@ export function AdminLayout() {
       return false;
     }
   });
+
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   const [authState, setAuthState] = useState<AuthState>("checking");
   const [authMessage, setAuthMessage] = useState<string | null>(null);
@@ -113,21 +116,38 @@ export function AdminLayout() {
 
   return (
     <div className="h-screen bg-stone-50 text-stone-900 font-sans flex overflow-hidden">
-      {/* Sidebar — fixed viewport height; nav scrolls internally if needed */}
+      {/* Backdrop — mobile drawer only; clicking it closes the drawer */}
+      {drawerOpen && (
+        <div
+          className="fixed inset-0 z-30 bg-black/40 md:hidden"
+          onClick={() => setDrawerOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      {/* Sidebar — fixed viewport height; nav scrolls internally if needed.
+          Below md it is a slide-over drawer (fixed, off-screen when closed);
+          at md+ it renders in flow exactly as before. */}
       <aside
-        className={`shrink-0 bg-emerald-950 text-stone-100 flex flex-col transition-all duration-200 ${
-          collapsed ? "w-16" : "w-64"
+        className={`fixed inset-y-0 left-0 z-40 shrink-0 w-64 bg-emerald-950 text-stone-100 flex flex-col transition-all duration-200 md:static ${
+          collapsed ? "md:w-16" : "md:w-64"
+        } ${
+          drawerOpen
+            ? "translate-x-0"
+            : "-translate-x-full invisible md:translate-x-0 md:visible"
         }`}
       >
         <div
-          className={`flex items-center gap-2 py-5 ${collapsed ? "justify-center px-0" : "px-6"}`}
+          className={`flex items-center gap-2 py-5 px-6 ${collapsed ? "md:justify-center md:px-0" : ""}`}
         >
           <Leaf className="w-6 h-6 shrink-0" />
-          {!collapsed && (
-            <span className="font-serif text-lg tracking-wide whitespace-nowrap">
-              Salud Preventiva · Admin
-            </span>
-          )}
+          <span
+            className={`font-serif text-lg tracking-wide whitespace-nowrap ${
+              collapsed ? "md:hidden" : ""
+            }`}
+          >
+            Salud Preventiva · Admin
+          </span>
         </div>
         <nav className="flex-1 px-3 space-y-1 overflow-y-auto">
           {sections.map((s) => (
@@ -136,9 +156,10 @@ export function AdminLayout() {
               to={s.to}
               end={s.end}
               title={collapsed ? s.label : undefined}
+              onClick={() => setDrawerOpen(false)}
               className={({ isActive }) =>
-                `flex items-center gap-2 rounded-md py-2 text-sm tracking-wide transition-colors ${
-                  collapsed ? "justify-center px-0" : "px-3"
+                `flex items-center gap-2 rounded-md py-2 px-3 text-sm tracking-wide transition-colors ${
+                  collapsed ? "md:justify-center md:px-0" : ""
                 } ${
                   isActive
                     ? "bg-emerald-900 text-white"
@@ -147,7 +168,7 @@ export function AdminLayout() {
               }
             >
               <s.icon className="w-4 h-4 shrink-0" />
-              {!collapsed && s.label}
+              <span className={collapsed ? "md:hidden" : undefined}>{s.label}</span>
             </NavLink>
           ))}
         </nav>
@@ -180,18 +201,28 @@ export function AdminLayout() {
 
       {/* Content — the only area that scrolls */}
       <main className="flex-1 overflow-y-auto">
-        <div className="flex items-center justify-between px-8 py-4 bg-white border-b border-stone-200">
-          <Link
-            to="/"
-            className="flex items-center gap-2 text-sm text-stone-600 hover:text-emerald-900"
-          >
-            <Home className="w-4 h-4" /> Volver a la landing
-          </Link>
+        <div className="flex items-center justify-between px-4 sm:px-8 py-4 bg-white border-b border-stone-200">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setDrawerOpen(true)}
+              aria-label="Abrir menú de navegación"
+              className="md:hidden p-2 -ml-2 text-stone-600 hover:text-emerald-900"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+            <Link
+              to="/"
+              className="flex items-center gap-2 text-sm text-stone-600 hover:text-emerald-900"
+            >
+              <Home className="w-4 h-4" /> Volver a la landing
+            </Link>
+          </div>
           <span className="text-xs uppercase tracking-wider text-stone-400">
             CRM interno
           </span>
         </div>
-        <div className="px-8 py-8">
+        <div className="px-4 sm:px-8 py-8">
           {authState === "checking" ? (
             <p className="text-stone-500">Comprobando acceso…</p>
           ) : authState === "ok" ? (
