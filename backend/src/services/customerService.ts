@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import type { Db } from "../db/client.js";
-import { customers, referrers } from "../db/schema.js";
+import { customers, referrers, customerProfile, conversations, messages, recommendations, purchases } from "../db/schema.js";
 import type { Customer } from "../db/schema.js";
 import { CURRENT_CONSENT_VERSION } from "../config/consent.js";
 
@@ -54,7 +54,12 @@ export interface CustomerService {
   hasCurrentConsent(customerId: number): boolean;
   /** Re-consents a customer to the current version, preserving records. */
   reConsent(customerId: number): Customer | undefined;
-  /** Soft-delete: removes the customer record. */
+  /**
+   * Hard delete of the customer record together with every row that references
+   * it. `customers` has NO `ON DELETE CASCADE` on its incoming foreign keys
+   * while the client enables `foreign_keys = ON`, so the implementation must
+   * remove the dependents itself — see the implementation for the order.
+   */
   delete(customerId: number): boolean;
 }
 
@@ -84,11 +89,55 @@ export function createCustomerService(db: Db): CustomerService {
       const byPhone = db.select().from(customers).where(eq(customers.phone, phone)).get();
       const existing = byEmail ?? byPhone;
       if (existing) {
+        // Validate the supplied referrer BEFORE renewing consent. attribution()
+        // validates too, but calling it after reConsent() would leave the
+        // consent already renewed behind a 400 that reports no customer_id —
+        // a partial side effect. Failing first keeps the upsert all-or-nothing:
+        // either nothing changed, or everything did.
+        const suppliedReferrerId = input.referrerId ?? null;
+        if (suppliedReferrerId != null) {
+          const referrer = db
+            .select()
+            .from(referrers)
+            .where(eq(referrers.id, suppliedReferrerId))
+            .get();
+          if (!referrer) {
+            return { status: "invalid", reason: "referrer_id inválido" };
+          }
+        }
+
         const reconsented = this.reConsent(existing.id);
         if (!reconsented) {
           return { status: "invalid", reason: "no se pudo renovar el consentimiento" };
         }
-        return { status: "ok", customer: reconsented, reconsented: true };
+
+        // Last-touch, same rule as attribution(): when the client supplies an
+        // access code, the EXISTING row is re-attributed to it. Before this,
+        // the upsert branch returned right after re-consenting and silently
+        // discarded `referrer_id`, so a customer who already existed (matched
+        // by email or phone) could NEVER be attributed through register() —
+        // which is exactly how a real customer ended up with a NULL
+        // referrer_id despite having typed a valid code.
+        //
+        // Omitting the code keeps the previous attribution: a re-consent must
+        // never null out an existing referrer.
+        const referrerId = suppliedReferrerId;
+        if (referrerId == null) {
+          return { status: "ok", customer: reconsented, reconsented: true };
+        }
+
+        // reConsent() already bumped consentVersion to CURRENT, so
+        // attribution() passes its consent check and its referrer validation
+        // is reused instead of duplicated here.
+        const attributed = this.attribution({ customerId: existing.id, referrerId });
+        if (attributed.status !== "ok") {
+          return {
+            status: "invalid",
+            reason:
+              attributed.status === "invalid" ? attributed.reason : "no se pudo atribuir el referente",
+          };
+        }
+        return { status: "ok", customer: attributed.customer, reconsented: true };
       }
 
       const now = new Date().toISOString();
@@ -191,8 +240,40 @@ export function createCustomerService(db: Db): CustomerService {
     },
 
     delete(customerId: number): boolean {
-      const deleted = db.delete(customers).where(eq(customers.id, customerId)).returning().get();
-      return !!deleted;
+      // `customer_profile`, `conversations`, `purchases` and `recommendations`
+      // reference `customers` directly, and `messages`/`recommendations` do so
+      // through `conversations`. None of those foreign keys cascade, so a bare
+      // `DELETE FROM customers` threw `FOREIGN KEY constraint failed` for any
+      // customer with history — which made the admin "Eliminar" button fail
+      // silently. Remove the dependents first, in FK-safe order, inside ONE
+      // transaction: a failure partway through must not leave the customer
+      // stripped of history while the row itself survives.
+      return db.transaction((tx) => {
+        const conversationIds = tx
+          .select({ id: conversations.id })
+          .from(conversations)
+          .where(eq(conversations.customerId, customerId))
+          .all()
+          .map((row) => row.id);
+
+        for (const conversationId of conversationIds) {
+          tx.delete(messages).where(eq(messages.conversationId, conversationId)).run();
+          tx.delete(recommendations)
+            .where(eq(recommendations.conversationId, conversationId))
+            .run();
+        }
+        tx.delete(recommendations).where(eq(recommendations.customerId, customerId)).run();
+        tx.delete(conversations).where(eq(conversations.customerId, customerId)).run();
+        tx.delete(purchases).where(eq(purchases.customerId, customerId)).run();
+        tx.delete(customerProfile).where(eq(customerProfile.customerId, customerId)).run();
+
+        const deleted = tx
+          .delete(customers)
+          .where(eq(customers.id, customerId))
+          .returning()
+          .get();
+        return !!deleted;
+      });
     },
   };
 }
