@@ -14,6 +14,11 @@ import { Sparkles } from "lucide-react";
  *
  * The button bobs continuously (y: 0 -> -8px -> 0) to invite the click; the
  * bob is disabled when the user asks for reduced motion.
+ *
+ * Below `sm` the label is hidden, so the button collapses to a compact 48px
+ * circle tucked tighter into the corner (`bottom-4 right-4`). That matters:
+ * at 320-360px the landing CTAs are nearly full-bleed, and a 56px pill at
+ * `bottom-6 right-6` sat on top of "Comienza tu plan preventivo".
  */
 export function ChatLauncher() {
   const navigate = useNavigate();
@@ -29,7 +34,7 @@ export function ChatLauncher() {
       }
       onClick={() => navigate("/chat")}
       aria-label="Haz tu Análisis"
-      className="fixed bottom-6 right-6 z-50 h-14 px-5 bg-emerald-900 text-white rounded-full shadow-lg flex items-center justify-center gap-2 hover:bg-emerald-800 transition-colors focus:outline-none focus:ring-4 focus:ring-emerald-900/30"
+      className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-50 h-12 w-12 sm:h-14 sm:w-auto sm:px-5 bg-emerald-900 text-white rounded-full shadow-lg flex items-center justify-center gap-2 hover:bg-emerald-800 transition-colors focus:outline-none focus:ring-4 focus:ring-emerald-900/30"
     >
       <Sparkles className="w-6 h-6" />
       {/* Label is desktop-only: hidden on small screens to keep the pill compact */}
