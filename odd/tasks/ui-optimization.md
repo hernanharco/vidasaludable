@@ -180,3 +180,10 @@ la segunda foto de About (`photo-1505576399279`) devuelve **404 en Unsplash**
 — la imagen está rota en producción desde antes; conviene reemplazarla.
 El botón de enviar email del results phase ya no es icon-only sin nombre
 (inline follow-up de T2). Copy voseo/tú mezclado sigue pendiente (S6).
+
+**L10** Delivery: issue **#22** (`status:approved`), PR **#23**
+`feat(ui): a11y, honest admin error states, performance bundle and shared
+DataTable`, branch `feat/ui-optimization`, label `type:chore` (único
+type:* disponible en el repo). CI: Backend pass, Frontend (test + typecheck
++ build) pass, GitGuardian pass. Merge y deploy siguen siendo decisión del
+usuario.
