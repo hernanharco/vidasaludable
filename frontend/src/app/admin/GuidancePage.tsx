@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, Guidance, Product } from "./api";
+import { DataTable, type DataTableColumn } from "./DataTable";
 
 interface GuidanceFormState {
   title: string;
@@ -146,6 +147,83 @@ export function GuidancePage() {
     );
   }
 
+  const columns: DataTableColumn<Guidance>[] = [
+    {
+      key: "title",
+      header: "Título",
+      sortable: true,
+      cellClassName: "font-medium",
+      render: (g) => g.title,
+    },
+    {
+      key: "content",
+      header: "Contenido",
+      sortable: true,
+      sortValue: (g) => g.content,
+      cellClassName: "max-w-md",
+      render: (g) => <p className="line-clamp-3 text-stone-600">{g.content}</p>,
+    },
+    {
+      key: "products",
+      header: "Productos",
+      sortable: true,
+      sortValue: (g) => parseRefs(g.productReferences).join(", "),
+      render: (g) => {
+        const refs = parseRefs(g.productReferences);
+        return (
+          <ul className="space-y-1">
+            {refs.map((ref) => (
+              <li key={ref} className="font-mono text-xs">
+                {productLabel(ref)}
+              </li>
+            ))}
+            {refs.length === 0 && (
+              <li className="text-stone-400 italic">Sin productos</li>
+            )}
+          </ul>
+        );
+      },
+    },
+    {
+      key: "estado",
+      header: "Estado",
+      sortable: true,
+      sortValue: (g) => g.enabled,
+      render: (g) => (
+        <button
+          onClick={() => handleToggle(g)}
+          title={g.enabled === 1 ? "Desactivar guía" : "Activar guía"}
+          className={`px-2 py-1 text-xs ${
+            g.enabled === 1
+              ? "bg-emerald-100 text-emerald-900 hover:bg-emerald-200"
+              : "bg-stone-200 text-stone-500 hover:bg-stone-300"
+          }`}
+        >
+          {g.enabled === 1 ? "Activa" : "Inactiva"}
+        </button>
+      ),
+    },
+    {
+      key: "accion",
+      header: "Acción",
+      align: "right",
+      cellClassName: "whitespace-nowrap",
+      render: (g) => (
+        <>
+          <button
+            onClick={() => startEdit(g)}
+            className="text-emerald-800 hover:underline mr-3"
+          >
+            Editar
+          </button>
+          <button onClick={() => handleDelete(g)} className="text-red-700 hover:underline">
+            Eliminar
+          </button>
+        </>
+      ),
+    },
+  ];
+
   return (
     <div>
       <div className="flex items-center justify-between">
@@ -238,75 +316,14 @@ export function GuidancePage() {
         </form>
       )}
 
-      <div className="mt-6 overflow-x-auto bg-white border border-stone-200">
-        <table className="w-full text-sm">
-          <thead className="bg-stone-100 text-stone-600 uppercase tracking-wider">
-            <tr>
-              <th className="px-4 py-3 text-left">Título</th>
-              <th className="px-4 py-3 text-left">Contenido</th>
-              <th className="px-4 py-3 text-left">Productos</th>
-              <th className="px-4 py-3 text-left">Estado</th>
-              <th className="px-4 py-3 text-right">Acción</th>
-            </tr>
-          </thead>
-          <tbody>
-            {guidance.map((g) => {
-              const refs = parseRefs(g.productReferences);
-              return (
-                <tr key={g.id} className="border-t border-stone-200 align-top">
-                  <td className="px-4 py-3 font-medium">{g.title}</td>
-                  <td className="px-4 py-3 max-w-md">
-                    <p className="line-clamp-3 text-stone-600">{g.content}</p>
-                  </td>
-                  <td className="px-4 py-3">
-                    <ul className="space-y-1">
-                      {refs.map((ref) => (
-                        <li key={ref} className="font-mono text-xs">
-                          {productLabel(ref)}
-                        </li>
-                      ))}
-                      {refs.length === 0 && (
-                        <li className="text-stone-400 italic">Sin productos</li>
-                      )}
-                    </ul>
-                  </td>
-                  <td className="px-4 py-3">
-                    <button
-                      onClick={() => handleToggle(g)}
-                      title={g.enabled === 1 ? "Desactivar guía" : "Activar guía"}
-                      className={`px-2 py-1 text-xs ${
-                        g.enabled === 1
-                          ? "bg-emerald-100 text-emerald-900 hover:bg-emerald-200"
-                          : "bg-stone-200 text-stone-500 hover:bg-stone-300"
-                      }`}
-                    >
-                      {g.enabled === 1 ? "Activa" : "Inactiva"}
-                    </button>
-                  </td>
-                  <td className="px-4 py-3 text-right whitespace-nowrap">
-                    <button
-                      onClick={() => startEdit(g)}
-                      className="text-emerald-800 hover:underline mr-3"
-                    >
-                      Editar
-                    </button>
-                    <button onClick={() => handleDelete(g)} className="text-red-700 hover:underline">
-                      Eliminar
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
-            {guidance.length === 0 && (
-              <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-stone-400">
-                  No hay guías. Crea la primera para que el agente la use en sus recomendaciones.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        columns={columns}
+        rows={guidance}
+        getRowKey={(g) => String(g.id)}
+        emptyMessage="No hay guías. Crea la primera para que el agente la use en sus recomendaciones."
+        containerClassName="mt-6 bg-white border border-stone-200"
+        rowClassName="align-top"
+      />
     </div>
   );
 }

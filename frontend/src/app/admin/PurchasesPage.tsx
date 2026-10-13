@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, Customer, Product, Purchase } from "./api";
+import { DataTable, type DataTableColumn } from "./DataTable";
 
 export function PurchasesPage() {
   const [purchases, setPurchases] = useState<Purchase[]>([]);
@@ -55,6 +56,33 @@ export function PurchasesPage() {
       </div>
     );
   }
+
+  const columns: DataTableColumn<Purchase>[] = [
+    { key: "id", header: "ID", sortable: true, render: (p) => p.id },
+    {
+      key: "cliente",
+      header: "Cliente",
+      align: "right",
+      sortable: true,
+      render: (p) => p.customerId,
+    },
+    {
+      key: "producto",
+      header: "Producto",
+      sortable: true,
+      cellClassName: "font-mono text-xs",
+      render: (p) => p.productReference,
+    },
+    { key: "qty", header: "Qty", align: "right", sortable: true, render: (p) => p.qty },
+    {
+      key: "fecha",
+      header: "Fecha",
+      align: "right",
+      sortable: true,
+      cellClassName: "text-xs text-stone-500",
+      render: (p) => new Date(p.purchasedAt).toLocaleString(),
+    },
+  ];
 
   return (
     <div>
@@ -120,32 +148,13 @@ export function PurchasesPage() {
         </button>
       </form>
 
-      <div className="mt-6 overflow-x-auto bg-white border border-stone-200">
-        <table className="w-full text-sm">
-          <thead className="bg-stone-100 text-stone-600 uppercase tracking-wider">
-            <tr>
-              <th className="px-4 py-3 text-left">ID</th>
-              <th className="px-4 py-3 text-right">Cliente</th>
-              <th className="px-4 py-3 text-left">Producto</th>
-              <th className="px-4 py-3 text-right">Qty</th>
-              <th className="px-4 py-3 text-right">Fecha</th>
-            </tr>
-          </thead>
-          <tbody>
-            {purchases.map((p) => (
-              <tr key={p.id} className="border-t border-stone-200">
-                <td className="px-4 py-3">{p.id}</td>
-                <td className="px-4 py-3 text-right">{p.customerId}</td>
-                <td className="px-4 py-3 font-mono text-xs">{p.productReference}</td>
-                <td className="px-4 py-3 text-right">{p.qty}</td>
-                <td className="px-4 py-3 text-right text-xs text-stone-500">
-                  {new Date(p.purchasedAt).toLocaleString()}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        columns={columns}
+        rows={purchases}
+        getRowKey={(p) => String(p.id)}
+        emptyMessage="No hay compras registradas todavía."
+        containerClassName="mt-6 bg-white border border-stone-200"
+      />
     </div>
   );
 }
