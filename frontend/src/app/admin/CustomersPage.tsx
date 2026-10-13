@@ -1,11 +1,14 @@
 import { useEffect, useState } from "react";
 import { api, Customer } from "./api";
 import { DataTable, type DataTableColumn } from "./DataTable";
+import { ErrorBanner, toErrorState, type ErrorState } from "./ErrorBanner";
 
 export function CustomersPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<ErrorState | null>(null);
+  const [deleteError, setDeleteError] = useState<ErrorState | null>(null);
   const [loading, setLoading] = useState(true);
+  const [reload, setReload] = useState(0);
 
   useEffect(() => {
     api
@@ -14,17 +17,19 @@ export function CustomersPage() {
         setCustomers(res.customers);
         setError(null);
       })
-      .catch((e) => setError(e instanceof Error ? e.message : "Error de red"))
+      .catch((e) => setError(toErrorState(e)))
       .finally(() => setLoading(false));
-  }, []);
+  }, [reload]);
 
   if (loading) return <p className="text-stone-500">Cargando…</p>;
   if (error) {
     return (
-      <div className="max-w-2xl p-6 bg-amber-50 border border-amber-300 text-amber-900">
-        <h2 className="font-serif text-xl">Acceso restringido</h2>
-        <p className="mt-2 text-sm">Respuesta del backend: {error}</p>
-      </div>
+      <ErrorBanner
+        status={error.status}
+        detail={error.detail}
+        title={error.title}
+        onRetry={() => setReload((n) => n + 1)}
+      />
     );
   }
 
@@ -73,8 +78,9 @@ export function CustomersPage() {
             try {
               await api.deleteCustomer(c.id);
               setCustomers((prev) => prev.filter((x) => x.id !== c.id));
+              setDeleteError(null);
             } catch (e) {
-              alert("Error al eliminar: " + (e instanceof Error ? e.message : "error desconocido"));
+              setDeleteError(toErrorState(e));
             }
           }}
           className="text-xs text-red-500 hover:text-red-700"
@@ -87,6 +93,13 @@ export function CustomersPage() {
 
   return (
     <div>
+      {deleteError && (
+        <ErrorBanner
+          status={deleteError.status}
+          detail={deleteError.detail}
+          title={deleteError.title}
+        />
+      )}
       <h1 className="font-serif text-2xl">Clientes</h1>
       <p className="mt-1 text-sm text-stone-500">
         Clientes registrados a través de la puerta de consentimiento del chat.

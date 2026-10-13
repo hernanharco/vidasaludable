@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet, Link } from "react-router";
 import {
   Leaf,
@@ -46,6 +46,55 @@ export function AdminLayout() {
   });
 
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const hamburgerRef = useRef<HTMLButtonElement>(null);
+  const asideRef = useRef<HTMLElement>(null);
+
+  // T4 (feature ui-optimization, S5b): the mobile drawer gets Escape to
+  // close, a focus trap while open, focus restoration to the toggle, and a
+  // body scroll lock. Desktop (md+) never sets drawerOpen, so behaviour is
+  // unchanged there.
+  useEffect(() => {
+    if (!drawerOpen) return;
+    document.body.style.overflow = "hidden";
+    const aside = asideRef.current;
+    const focusables = () =>
+      Array.from(
+        aside?.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ) ?? [],
+      );
+    focusables()[0]?.focus();
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setDrawerOpen(false);
+        return;
+      }
+      if (e.key === "Tab" && aside) {
+        const items = focusables();
+        if (items.length === 0) return;
+        const first = items[0]!;
+        const last = items[items.length - 1]!;
+        const active = document.activeElement as HTMLElement | null;
+        if (!active || !aside.contains(active)) {
+          e.preventDefault();
+          (e.shiftKey ? last : first).focus();
+        } else if (e.shiftKey && active === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && active === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = "";
+      hamburgerRef.current?.focus();
+    };
+  }, [drawerOpen]);
 
   const [authState, setAuthState] = useState<AuthState>("checking");
   const [authMessage, setAuthMessage] = useState<string | null>(null);
@@ -129,6 +178,8 @@ export function AdminLayout() {
           Below md it is a slide-over drawer (fixed, off-screen when closed);
           at md+ it renders in flow exactly as before. */}
       <aside
+        id="admin-sidebar"
+        ref={asideRef}
         className={`fixed inset-y-0 left-0 z-40 shrink-0 w-64 bg-emerald-950 text-stone-100 flex flex-col transition-all duration-200 md:static ${
           collapsed ? "md:w-16" : "md:w-64"
         } ${
@@ -205,8 +256,11 @@ export function AdminLayout() {
           <div className="flex items-center gap-2">
             <button
               type="button"
+              ref={hamburgerRef}
               onClick={() => setDrawerOpen(true)}
               aria-label="Abrir menú de navegación"
+              aria-expanded={drawerOpen}
+              aria-controls="admin-sidebar"
               className="md:hidden p-2 -ml-2 text-stone-600 hover:text-emerald-900"
             >
               <Menu className="w-5 h-5" />

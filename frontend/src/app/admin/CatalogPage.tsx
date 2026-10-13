@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, Product, ProductInput } from "./api";
 import { DataTable, type DataTableColumn } from "./DataTable";
+import { ErrorBanner, toErrorState, type ErrorState } from "./ErrorBanner";
 
 const EMPTY: ProductInput = {
   reference: "",
@@ -16,7 +17,8 @@ const EMPTY: ProductInput = {
 
 export function CatalogPage() {
   const [products, setProducts] = useState<Product[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<ErrorState | null>(null);
+  const [deleteError, setDeleteError] = useState<ErrorState | null>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<ProductInput | null>(null);
   const [saving, setSaving] = useState(false);
@@ -27,7 +29,7 @@ export function CatalogPage() {
       setProducts(res.products);
       setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Error de red");
+      setError(toErrorState(e));
     } finally {
       setLoading(false);
     }
@@ -53,7 +55,7 @@ export function CatalogPage() {
       setEditing(null);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error al guardar");
+      setError({ ...toErrorState(err), title: "No pudimos guardar los cambios" });
     } finally {
       setSaving(false);
     }
@@ -65,10 +67,7 @@ export function CatalogPage() {
   if (loading) return <p className="text-stone-500">Cargando…</p>;
   if (error && !editing) {
     return (
-      <div className="max-w-2xl p-6 bg-amber-50 border border-amber-300 text-amber-900">
-        <h2 className="font-serif text-xl">Acceso restringido</h2>
-        <p className="mt-2 text-sm">Respuesta del backend: {error}</p>
-      </div>
+      <ErrorBanner status={error.status} detail={error.detail} title={error.title} onRetry={load} />
     );
   }
 
@@ -110,9 +109,10 @@ export function CatalogPage() {
               if (!confirm(`¿Eliminar el producto ${p.reference}?`)) return;
               try {
                 await api.deleteProduct(p.reference);
+                setDeleteError(null);
                 await load();
               } catch (err) {
-                setError(err instanceof Error ? err.message : "Error al eliminar");
+                setDeleteError(toErrorState(err));
               }
             }}
             className="text-red-500 hover:text-red-700"
@@ -126,6 +126,9 @@ export function CatalogPage() {
 
   return (
     <div>
+      {deleteError && (
+        <ErrorBanner status={deleteError.status} detail={deleteError.detail} title={deleteError.title} />
+      )}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="font-serif text-2xl">Catálogo</h1>
@@ -235,7 +238,7 @@ export function CatalogPage() {
               required
             />
           </label>
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && <p className="text-sm text-red-600">{error.detail}</p>}
           <div className="flex gap-3">
             <button
               type="submit"

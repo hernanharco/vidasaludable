@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, Guidance, Product } from "./api";
 import { DataTable, type DataTableColumn } from "./DataTable";
+import { ErrorBanner, toErrorState, type ErrorState } from "./ErrorBanner";
 
 interface GuidanceFormState {
   title: string;
@@ -28,7 +29,7 @@ function parseRefs(raw: string): string[] {
 export function GuidancePage() {
   const [guidance, setGuidance] = useState<Guidance[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<ErrorState | null>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<GuidanceFormState | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -41,7 +42,7 @@ export function GuidancePage() {
       setProducts(p.products);
       setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Error de red");
+      setError(toErrorState(e));
     } finally {
       setLoading(false);
     }
@@ -105,7 +106,7 @@ export function GuidancePage() {
       setEditingId(null);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error al guardar");
+      setError({ ...toErrorState(err), title: "No pudimos guardar los cambios" });
     } finally {
       setSaving(false);
     }
@@ -116,7 +117,7 @@ export function GuidancePage() {
       await api.toggleGuidance(row.id, row.enabled === 1 ? 0 : 1);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error al cambiar estado");
+      setError({ ...toErrorState(err), title: "No pudimos cambiar el estado" });
     }
   }
 
@@ -128,7 +129,7 @@ export function GuidancePage() {
       await api.deleteGuidance(row.id);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error al eliminar");
+      setError({ ...toErrorState(err), title: "No pudimos eliminar" });
     }
   }
 
@@ -140,10 +141,7 @@ export function GuidancePage() {
   if (loading) return <p className="text-stone-500">Cargando…</p>;
   if (error && guidance.length === 0) {
     return (
-      <div className="max-w-2xl p-6 bg-amber-50 border border-amber-300 text-amber-900">
-        <h2 className="font-serif text-xl">Acceso restringido</h2>
-        <p className="mt-2 text-sm">Respuesta del backend: {error}</p>
-      </div>
+      <ErrorBanner status={error.status} detail={error.detail} title={error.title} onRetry={load} />
     );
   }
 
@@ -226,6 +224,9 @@ export function GuidancePage() {
 
   return (
     <div>
+      {error && (
+        <ErrorBanner status={error.status} detail={error.detail} title={error.title} />
+      )}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="font-serif text-2xl">Guías de Salud</h1>
@@ -292,7 +293,7 @@ export function GuidancePage() {
               )}
             </div>
           </fieldset>
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && <p className="text-sm text-red-600">{error.detail}</p>}
           <div className="flex gap-3">
             <button
               type="submit"

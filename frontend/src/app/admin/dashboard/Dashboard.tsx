@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, RefreshCw } from "lucide-react";
 import { api, Customer, Product, Recommendation } from "../api";
+import { ErrorBanner, toErrorState, type ErrorState } from "../ErrorBanner";
 
 import { KpiCards } from "./KpiCards";
 import { TrendCharts } from "./TrendCharts";
@@ -46,7 +47,7 @@ function lastNDays(n: number) {
 
 export function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<ErrorState | null>(null);
   const [reload, setReload] = useState(0);
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
 
@@ -71,7 +72,7 @@ export function Dashboard() {
         setUpdatedAt(new Date());
       })
       .catch((e: unknown) => {
-        if (active) setError(e instanceof Error ? e.message : "Error de red");
+        if (active) setError(toErrorState(e));
       });
     return () => { active = false; };
   }, [reload]);
@@ -182,13 +183,12 @@ export function Dashboard() {
 
   if (error) {
     return (
-      <div className="max-w-2xl p-6 bg-amber-50 border border-amber-300 text-amber-900">
-        <h2 className="font-serif text-xl">Acceso restringido</h2>
-        <p className="mt-2 text-sm">
-          El panel /admin solo está disponible en desarrollo
-          (<code>NODE_ENV=development</code>). Respuesta del backend: {error}
-        </p>
-      </div>
+      <ErrorBanner
+        status={error.status}
+        detail={error.detail}
+        title={error.title}
+        onRetry={() => setReload((n) => n + 1)}
+      />
     );
   }
 
