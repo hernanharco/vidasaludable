@@ -28,8 +28,9 @@ export interface IntakeProfile {
 
 /**
  * Resolved card data for an ENABLED video segment, as served by
- * `GET /api/assistant/videos`. The chat widget fetches this list at boot and
- * resolves persisted `[VIDEO:<id>]` markers against it.
+ * `GET /api/assistant/videos`. The chat widget fetches this list once the
+ * access-code gate is cleared (deferred from boot — feature ui-optimization
+ * S2d) and resolves persisted `[VIDEO:<id>]` markers against it.
  */
 export interface VideoCardInfo {
   id: number;
@@ -49,7 +50,9 @@ export interface VideoCardInfo {
 
 /**
  * T6 — Resolved card data for a catalog product, as served by
- * `GET /api/assistant/products`. The chat widget fetches the list at boot and
+ * `GET /api/assistant/products`. The chat widget fetches the list once the
+ * access-code gate is cleared (deferred from boot — feature ui-optimization
+ * S2d) and
  * resolves the `[REF]` citations (extract convention `\[\d{4,6}\]`, same as
  * the backend's extractProductRefs) against it. `price` stays a number on the
  * wire; ProductCard formats it to es-ES currency for display.

@@ -20,8 +20,9 @@ global.fetch = mockFetch;
  * `[12345]` text (backward compatible — unlike `[VIDEO:id]`, where unknown
  * ids are stripped). User messages are never parsed (same contract as videos).
  *
- * The widget boot-fetches `/api/assistant/products` into a
- * `Map<string, ProductCardInfo>`; a failure degrades to an empty map and
+ * The widget fetches `/api/assistant/products` into a
+ * `Map<string, ProductCardInfo>` — deferred until the access-code gate is
+ * cleared (`phase === "chat"`, T1/S2d); a failure degrades to an empty map and
  * never blocks chat (same best-effort pattern as the videos map).
  */
 const LONG_BENEFITS =
@@ -263,56 +264,74 @@ describe("ChatMessages product cards", () => {
   });
 });
 
-describe("ChatSession product map boot", () => {
+describe("ChatSession product map (deferred until the access-code gate clears)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     window.localStorage.clear();
   });
 
-  it("fetches /api/assistant/products at boot", async () => {
+  /** Router for a returning customer with a saved profile → straight to chat. */
+  function installChatFetch(productsResponse: () => Promise<unknown>) {
     mockFetch.mockImplementation((url: string) => {
-      if (url.includes("/api/assistant/products")) {
+      const u = String(url);
+      const gate = accessCodeFetch(u);
+      if (gate) return Promise.resolve(gate);
+      if (u.includes("/api/assistant/profile")) {
         return Promise.resolve({
           ok: true,
-          json: () => Promise.resolve({ products: PRODUCTS }),
+          status: 200,
+          json: () => Promise.resolve({ profile: { customer_id: 42 } }),
         });
       }
-      return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({}) });
-    });
-
-    render(<ChatSession />);
-    await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalledWith("/api/assistant/products");
-    });
-  });
-
-  it("still opens the widget when the products fetch fails", async () => {
-    mockFetch.mockImplementation((url: string) => {
-      if (url.includes("/api/assistant/products")) {
-        return Promise.reject(new Error("network down"));
+      if (u.includes("/api/assistant/history")) {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ messages: [] }) });
+      }
+      if (u.includes("/api/assistant/products")) return productsResponse();
+      if (u.includes("/api/assistant/videos")) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ videos: VIDEOS }) });
       }
       return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({}) });
     });
+  }
+
+  it("does NOT fetch at boot; fetches /api/assistant/products once the gate is cleared", async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem("vr_customer_id", "42");
+    installChatFetch(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ products: PRODUCTS }) }));
 
     render(<ChatSession />);
-
-    // Chat flow is not blocked by the products failure: access-code gate shows.
+    // Pre-gate: the visit is still on the access-code gate — no catalog call.
     expect(await screen.findByText("Código de acceso")).toBeInTheDocument();
+    expect(mockFetch).not.toHaveBeenCalledWith("/api/assistant/products");
+
+    // Gate cleared → chat → the deferred catalog load fires.
+    await passAccessCodeGate(user);
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledWith("/api/assistant/products"));
   });
 
-  it("still opens the widget when the products response is not an array", async () => {
-    mockFetch.mockImplementation((url: string) => {
-      if (url.includes("/api/assistant/products")) {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({ products: "nope" }),
-        });
-      }
-      return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({}) });
-    });
+  it("still opens the chat when the products fetch fails", async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem("vr_customer_id", "42");
+    installChatFetch(() => Promise.reject(new Error("network down")));
 
     render(<ChatSession />);
-    expect(await screen.findByText("Código de acceso")).toBeInTheDocument();
+    await passAccessCodeGate(user);
+
+    // Chat flow is not blocked by the products failure.
+    expect(await screen.findByPlaceholderText("Escribe un mensaje...")).toBeInTheDocument();
+    expect(screen.queryByText("Código de acceso")).not.toBeInTheDocument();
+  });
+
+  it("still opens the chat when the products response is not an array", async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem("vr_customer_id", "42");
+    installChatFetch(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ products: "nope" }) }));
+
+    render(<ChatSession />);
+    await passAccessCodeGate(user);
+
+    expect(await screen.findByPlaceholderText("Escribe un mensaje...")).toBeInTheDocument();
+    expect(screen.queryByText("Código de acceso")).not.toBeInTheDocument();
   });
 
   it("renders a ProductCard end-to-end when an agent reply cites a known ref", async () => {

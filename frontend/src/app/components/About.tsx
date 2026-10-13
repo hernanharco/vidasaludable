@@ -2,6 +2,23 @@ import React from "react";
 import { motion } from "motion/react";
 import { Heart, Shield, Users, Leaf } from "lucide-react";
 
+// T1/S2c — the two Unsplash photos ship as `srcset` width variants instead of
+// a single fixed `w=1080` file. Only the URL stem is shared; each variant
+// appends its own `w=`. The rendered layout is untouched: both images live in
+// fixed-size containers (`h-[450px] lg:h-[600px]` / `h-[300px]`) with
+// `w-full h-full object-cover`, and the explicit width/height only describe
+// the intrinsic ratio (1080×720) so the browser can reserve the box.
+const MAIN_PHOTO =
+  "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxoZWFsdGh5JTIwd2VsbG5lc3MlMjBmaXRuZXNzfGVufDF8fHx8MTc3MzA0NjIyNHww&ixlib=rb-4.1.0&q=80";
+const OVERLAP_PHOTO =
+  "https://images.unsplash.com/photo-1505576399279-0a997dd7e2f8?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxoZWFsdGh5JTIwbGlmZXN0eWxlJTIwd2VsbG5lc3N8ZW58MXx8fHwxNzczMDQ2MjI0fDA&ixlib=rb-4.1.0&q=80";
+
+const PHOTO_WIDTHS = [480, 768, 1080, 1440];
+
+function photoSrcSet(stem: string): string {
+  return PHOTO_WIDTHS.map((w) => `${stem}&w=${w} ${w}w`).join(", ");
+}
+
 export function About() {
   const values = [
     {
@@ -41,7 +58,11 @@ export function About() {
           {/* Main Photo */}
           <div className="relative z-10 w-4/5 h-[450px] lg:h-[600px] ml-auto overflow-hidden shadow-2xl rounded-2xl">
             <img 
-              src="https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxoZWFsdGh5JTIwd2VsbG5lc3MlMjBmaXRuZXNzfGVufDF8fHx8MTc3MzA0NjIyNHww&ixlib=rb-4.1.0&q=80&w=1080" 
+              src={`${MAIN_PHOTO}&w=1080`}
+              srcSet={photoSrcSet(MAIN_PHOTO)}
+              sizes="(min-width: 1024px) 40vw, 80vw"
+              width={1080}
+              height={720}
               alt="Bienestar y salud preventiva" 
               className="w-full h-full object-cover"
             />
@@ -49,7 +70,11 @@ export function About() {
           {/* Overlapping Photo */}
           <div className="absolute bottom-10 left-0 z-20 w-3/5 h-[300px] shadow-xl border-4 border-white overflow-hidden rounded-xl">
              <img 
-              src="https://images.unsplash.com/photo-1505576399279-0a997dd7e2f8?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxoZWFsdGh5JTIwbGlmZXN0eWxlJTIwd2VsbG5lc3N8ZW58MXx8fHwxNzczMDQ2MjI0fDA&ixlib=rb-4.1.0&q=80&w=1080" 
+              src={`${OVERLAP_PHOTO}&w=1080`}
+              srcSet={photoSrcSet(OVERLAP_PHOTO)}
+              sizes="(min-width: 1024px) 26vw, 60vw"
+              width={1080}
+              height={720}
               alt="Estilo de vida saludable" 
               className="w-full h-full object-cover"
             />
