@@ -190,6 +190,8 @@ export function ChatMessages({
   return (
     <div
       ref={scrollRef}
+      role="log"
+      aria-live="polite"
       className="flex-1 p-4 overflow-y-auto bg-stone-50 flex flex-col gap-3"
     >
       {messages.map((msg, idx) => (
@@ -214,7 +216,10 @@ export function ChatMessages({
         </div>
       ))}
       {sending && (
-        <div className="max-w-[80%] p-3 rounded-2xl text-sm bg-white border border-stone-200 text-stone-400 self-start shadow-sm">
+        <div
+          role="status"
+          className="max-w-[80%] p-3 rounded-2xl text-sm bg-white border border-stone-200 text-stone-400 self-start shadow-sm"
+        >
           Escribiendo...
         </div>
       )}

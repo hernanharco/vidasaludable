@@ -121,8 +121,11 @@ describe("AssessmentWidget", () => {
 
   it("calls onClose when the backdrop is clicked", async () => {
     const user = userEvent.setup();
-    const { container, onClose } = renderWidget();
-    const backdrop = container.querySelector("div.fixed.inset-0");
+    // S3a: the modal now renders through the Radix dialog primitive, so the
+    // backdrop (overlay) portals to document.body — query the baseElement,
+    // not the render container.
+    const { baseElement, onClose } = renderWidget();
+    const backdrop = baseElement.querySelector("[data-slot='dialog-overlay']");
     expect(backdrop).not.toBeNull();
     await user.click(backdrop as Element);
     expect(onClose).toHaveBeenCalledTimes(1);

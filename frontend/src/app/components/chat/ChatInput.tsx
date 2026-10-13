@@ -17,11 +17,13 @@ export function ChatInput({ inputValue, sending, onInputChange, onSend }: ChatIn
           value={inputValue}
           onChange={(e) => onInputChange(e.target.value)}
           placeholder="Escribe un mensaje..."
+          aria-label="Escribir mensaje"
           className="flex-1 px-4 py-2.5 min-h-11 bg-stone-100 rounded-full text-base md:text-sm focus:outline-none focus:ring-1 focus:ring-emerald-900 transition-shadow"
         />
         <button
           type="submit"
           disabled={!inputValue.trim() || sending}
+          aria-label={sending ? "Mensaje enviado" : "Enviar mensaje"}
           className="w-10 h-10 bg-emerald-900 text-white rounded-full flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed hover:bg-emerald-800 transition-colors shrink-0"
         >
           {sending ? (

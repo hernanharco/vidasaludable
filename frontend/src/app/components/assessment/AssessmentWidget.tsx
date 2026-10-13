@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { motion, AnimatePresence } from "motion/react";
 import { ClipboardCheck, X, ChevronRight, ChevronLeft, Check, Loader2, Mail, User } from "lucide-react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Progress } from "../ui/progress";
+import { Dialog, DialogContent, DialogTitle, DialogClose } from "../ui/dialog";
 import { CheckCircle2 } from "lucide-react";
 
 import { AssessmentWelcome } from "./AssessmentWelcome";
@@ -37,6 +37,11 @@ export interface AssessmentWidgetProps {
 export function AssessmentWidget({ open, onClose }: AssessmentWidgetProps) {
   const [phase, setPhase] = useState<"access_code" | "loading" | "welcome" | "symptoms" | "calculating" | "results">("access_code");
   const [questionnaire, setQuestionnaire] = useState<QuestionnaireData | null>(null);
+
+  // S3a — control that had focus when the dialog opened; focus returns to
+  // it on close (Radix's built-in restore targets DialogTrigger, which a
+  // controlled dialog with an external trigger does not have).
+  const returnFocusRef = React.useRef<HTMLElement | null>(null);
 
   // Access code state
   const [referrerId, setReferrerId] = useState<number | null>(null);
@@ -162,39 +167,57 @@ export function AssessmentWidget({ open, onClose }: AssessmentWidgetProps) {
     return null;
   }
 
+  // S3 (feature ui-optimization) — the hand-rolled motion.div modal becomes
+  // an accessible dialog on the existing Radix primitive (ui/dialog.tsx):
+  // role="dialog", aria-modal, focus trap, Escape-to-close and focus
+  // restoration to the triggering control come from Radix. Adaptations to
+  // the wrapper, all class-level, keep the visible layout identical:
+  // - positioning classes mirror the old motion.div (mobile inset-4,
+  //   centered 500px card on sm+); the wrapper's translate is neutralized
+  //   on mobile and re-applied under sm:
+  // - the wrapper's built-in absolute X (English sr-only label, unstyleable
+  //   tap area) is hidden via [&>button]:hidden — the header renders its own
+  //   DialogClose with the Spanish label "Cerrar evaluación" and a ~44px
+  //   tap area (p-3 around the 20px icon, negative margins keep the header
+  //   rhythm unchanged).
   return (
-    <AnimatePresence>
-      {open && (
-        <>
-          {/* Backdrop */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 z-50"
-            onClick={onClose}
-          />
-
-          {/* Modal */}
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            className="fixed inset-4 sm:inset-auto sm:top-1/2 sm:left-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 sm:w-[500px] sm:max-h-[85vh] bg-white rounded-2xl shadow-2xl z-50 flex flex-col overflow-hidden"
-          >
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) onClose();
+      }}
+    >
+      <DialogContent
+        aria-modal="true"
+        aria-describedby={undefined}
+        onOpenAutoFocus={(event) => {
+          // Dispatched before focus moves into the dialog: document.activeElement
+          // is still the control that opened the wizard.
+          returnFocusRef.current = document.activeElement as HTMLElement | null;
+        }}
+        onCloseAutoFocus={(event) => {
+          // Restore focus to the opener and skip Radix's trigger-only restore.
+          returnFocusRef.current?.focus?.();
+          event.preventDefault();
+        }}
+        className="fixed top-4 right-4 bottom-4 left-4 translate-x-0 translate-y-0 bg-white rounded-2xl shadow-2xl z-50 flex flex-col overflow-hidden p-0 gap-0 border-0 max-w-none [&>button]:hidden sm:top-1/2 sm:left-1/2 sm:right-auto sm:bottom-auto sm:-translate-x-1/2 sm:-translate-y-1/2 sm:w-[500px] sm:max-h-[85vh] sm:max-w-none"
+      >
             {/* Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b shrink-0">
               <div className="flex items-center gap-2">
-                <ClipboardCheck size={20} className="text-emerald-600" />
-                <h2 className="font-semibold text-lg">Evaluación de Prevención</h2>
+                <ClipboardCheck size={20} className="text-emerald-600" aria-hidden="true" />
+                <DialogTitle asChild>
+                  <h2 className="font-semibold text-lg">Evaluación de Prevención</h2>
+                </DialogTitle>
               </div>
-              <button
-                onClick={onClose}
-                aria-label="Cerrar evaluación"
-                className="p-1 rounded-full hover:bg-stone-100"
-              >
-                <X size={20} />
-              </button>
+              <DialogClose asChild>
+                <button
+                  aria-label="Cerrar evaluación"
+                  className="p-3 -my-2 -mr-2 rounded-full hover:bg-stone-100 flex items-center justify-center"
+                >
+                  <X size={20} aria-hidden="true" />
+                </button>
+              </DialogClose>
             </div>
 
             {/* Progress bar */}
@@ -316,6 +339,7 @@ export function AssessmentWidget({ open, onClose }: AssessmentWidgetProps) {
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         placeholder="Su email para recibir el reporte"
+                        aria-label="Su email para recibir el reporte"
                         className="flex-1"
                       />
                       <Button
@@ -323,6 +347,7 @@ export function AssessmentWidget({ open, onClose }: AssessmentWidgetProps) {
                         disabled={emailSending || !email.includes("@")}
                         variant="outline"
                         size="sm"
+                        aria-label={emailSending ? "Enviando reporte" : "Enviar reporte"}
                       >
                         {emailSending ? (
                           <Loader2 className="animate-spin" size={14} />
@@ -369,9 +394,7 @@ export function AssessmentWidget({ open, onClose }: AssessmentWidgetProps) {
                 </div>
               )}
             </div>
-          </motion.div>
-        </>
-      )}
-    </AnimatePresence>
+      </DialogContent>
+    </Dialog>
   );
 }
