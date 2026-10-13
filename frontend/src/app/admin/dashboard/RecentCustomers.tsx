@@ -11,7 +11,7 @@ export function RecentCustomers({ customers }: RecentCustomersProps) {
       {customers.length === 0 ? (
         <p className="mt-6 text-sm text-stone-400">Sin clientes registrados todavía.</p>
       ) : (
-        <div className="mt-3 overflow-x-auto">
+        <div className="mt-3 overflow-x-auto min-w-[640px]">
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-xs uppercase tracking-wider text-stone-400 border-b border-stone-100">
