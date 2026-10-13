@@ -47,7 +47,7 @@ export function Services() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ duration: 0.6, delay: index * 0.2 }}
-              className="bg-white p-10 shadow-sm border border-stone-100 hover:shadow-xl transition-all duration-300 rounded-2xl group relative overflow-hidden"
+              className="bg-white p-6 sm:p-10 shadow-sm border border-stone-100 hover:shadow-xl transition-all duration-300 rounded-2xl group relative overflow-hidden"
             >
               {/* Background Accent */}
               <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-500 to-teal-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />

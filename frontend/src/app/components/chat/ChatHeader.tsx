@@ -19,6 +19,7 @@ export function ChatHeader({ onClose }: ChatHeaderProps) {
       </div>
       <button
         onClick={onClose}
+        aria-label="Cerrar chat"
         className="p-3 rounded-full flex items-center justify-center text-emerald-200 hover:text-white transition-colors"
       >
         <X className="w-5 h-5" />
