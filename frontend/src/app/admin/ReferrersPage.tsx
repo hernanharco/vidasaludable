@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { Link } from "react-router";
 import { api, type ReferrerWithStats } from "./api";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -134,6 +135,19 @@ export function ReferrersPage() {
       header: "Registrado",
       cellClassName: "text-stone-500",
       render: (cu) => new Date(cu.registeredAt).toLocaleDateString(),
+    },
+    {
+      key: "ficha",
+      header: "Acciones",
+      align: "right",
+      render: (cu) => (
+        <Link
+          to={`/admin/customers/${cu.id}`}
+          className="text-xs text-emerald-700 hover:text-emerald-900 hover:underline"
+        >
+          Ver ficha
+        </Link>
+      ),
     },
   ];
 
@@ -425,6 +439,12 @@ export function ReferrersPage() {
                             <p className="text-stone-500">{cu.email}</p>
                             <p className="text-stone-500">{cu.phone}</p>
                             <p className="text-stone-400">Registrado: {new Date(cu.registeredAt).toLocaleDateString()}</p>
+                            <Link
+                              to={`/admin/customers/${cu.id}`}
+                              className="inline-block mt-1 text-xs text-emerald-700 hover:text-emerald-900 hover:underline"
+                            >
+                              Ver ficha
+                            </Link>
                           </div>
                         ))
                       )}
