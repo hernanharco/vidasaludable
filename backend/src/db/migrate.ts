@@ -44,6 +44,16 @@ CREATE TABLE IF NOT EXISTS customer_profile (
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+-- advisor-summary T1: the AI executive summary per customer, generated on
+-- demand by the advisor. 1:1 with customers (customer_id is the PRIMARY KEY);
+-- regeneration REPLACES the previous row (content/model/generated_at).
+CREATE TABLE IF NOT EXISTS customer_summaries (
+  customer_id INTEGER PRIMARY KEY REFERENCES customers(id),
+  content TEXT NOT NULL,
+  model TEXT NOT NULL,
+  generated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS products (
   reference TEXT PRIMARY KEY,
   name TEXT NOT NULL,

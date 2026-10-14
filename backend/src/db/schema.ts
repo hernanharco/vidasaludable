@@ -67,6 +67,28 @@ export const customerProfile = sqliteTable(
 export type CustomerProfile = typeof customerProfile.$inferSelect;
 export type NewCustomerProfile = typeof customerProfile.$inferInsert;
 
+/**
+ * AI executive summary per customer (advisor-summary): generated ON DEMAND by
+ * the advisor from the customer's full history (intake profile + all chat
+ * messages + recommendations log + purchases), 1:1 with `customers` —
+ * `customerId` is the PRIMARY KEY, and a regeneration REPLACES the previous
+ * content. `model` records the Gemini model that produced the text;
+ * `generatedAt` is what the admin UI shows as "generado el ...".
+ */
+export const customerSummaries = sqliteTable("customer_summaries", {
+  customerId: integer("customer_id")
+    .primaryKey()
+    .references(() => customers.id),
+  content: text("content").notNull(),
+  model: text("model").notNull(),
+  generatedAt: text("generated_at")
+    .notNull()
+    .default(sql`CURRENT_TIMESTAMP`),
+});
+
+export type CustomerSummary = typeof customerSummaries.$inferSelect;
+export type NewCustomerSummary = typeof customerSummaries.$inferInsert;
+
 /** Structured Nutrilite catalog — single source of truth for product data. */
 export const products = sqliteTable(
   "products",

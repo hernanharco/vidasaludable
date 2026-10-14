@@ -11,6 +11,12 @@ import { parseVideoId } from "../tools/parsers.js";
 import { createRecommendationService } from "../services/recommendationService.js";
 import { createConversationService } from "../services/conversationService.js";
 import { createCustomerService } from "../services/customerService.js";
+import {
+  createSummaryService,
+  CustomerNotFoundError,
+  SummaryGenerationError,
+} from "../services/summaryService.js";
+import type { GeminiClient } from "../agent/gemini.js";
 import { customers, conversations, messages, products, purchases, videos, videoSegments, recommendations as recommendationsTable } from "../db/schema.js";
 import { assessmentSymptoms } from "../db/assessmentSchema.js";
 import type { NewGuidance, NewVideo } from "../db/schema.js";
@@ -22,6 +28,14 @@ type VideoStatus = (typeof VIDEO_STATUSES)[number];
 
 function isVideoStatus(value: string): value is VideoStatus {
   return (VIDEO_STATUSES as readonly string[]).includes(value);
+}
+
+/**
+ * Optional router dependencies (tests only): inject a fake Gemini client for
+ * the advisor summary without stubbing globals or needing an API key.
+ */
+export interface AdminRouterDeps {
+  geminiClient?: GeminiClient;
 }
 
 /**
@@ -38,7 +52,7 @@ function isVideoStatus(value: string): value is VideoStatus {
  * - Videos delete is FK-guarded (409 when segments exist) — see the DELETE
  *   /videos/:id doc comment for the deliberate decision; it never cascades.
  */
-export function createAdminRouter(db: Db): Hono {
+export function createAdminRouter(db: Db, deps: AdminRouterDeps = {}): Hono {
   const app = new Hono();
 
   const catalog = createCatalogService(db);
@@ -47,6 +61,7 @@ export function createAdminRouter(db: Db): Hono {
   const customersService = createCustomerService(db);
   const guidanceService = createGuidanceService(db);
   const videoService = createVideoService(db);
+  const summaries = createSummaryService(db, deps.geminiClient);
 
   // --- Catalog (products): list, create, edit. No destructive delete. ---
   app.get("/catalog", (c) => c.json({ products: catalog.listAll() }));
@@ -155,6 +170,37 @@ export function createAdminRouter(db: Db): Hono {
     const deleted = customersService.delete(id);
     if (!deleted) return c.json({ error: "customer not found" }, 404);
     return c.body(null, 204);
+  });
+
+  // --- Advisor executive summary (advisor-summary T2): GET reads the stored
+  // row (possibly null — no auto-generation, the advisor spends Gemini quota
+  // on demand, S3); POST generates or regenerates it from the customer's full
+  // history and REPLACES the previous summary (1:1 table). No auth of its own:
+  // the central /admin JWT guard in index.ts covers these routes (S2). ---
+  app.get("/customers/:id/summary", (c) => {
+    const id = Number(c.req.param("id"));
+    if (!Number.isInteger(id)) return c.json({ error: "invalid id" }, 400);
+    return c.json({ summary: summaries.getSummary(id) });
+  });
+
+  app.post("/customers/:id/summary", async (c) => {
+    const id = Number(c.req.param("id"));
+    if (!Number.isInteger(id)) return c.json({ error: "invalid id" }, 400);
+    try {
+      return c.json({ summary: await summaries.generateSummary(id) });
+    } catch (err) {
+      if (err instanceof CustomerNotFoundError) {
+        return c.json({ error: "customer not found" }, 404);
+      }
+      if (err instanceof SummaryGenerationError) {
+        // Same error shape as the assistant route's Gemini failure.
+        return c.json(
+          { error: "GEMINI_UNAVAILABLE", message: "Motor de recomendación no disponible" },
+          502,
+        );
+      }
+      throw err;
+    }
   });
 
   // --- Conversations: list + view messages + delete. ---
