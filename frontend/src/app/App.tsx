@@ -26,6 +26,9 @@ const CatalogPage = lazy(() =>
 const CustomersPage = lazy(() =>
   import("./admin/CustomersPage").then((m) => ({ default: m.CustomersPage })),
 );
+const CustomerDetailPage = lazy(() =>
+  import("./admin/CustomerDetailPage").then((m) => ({ default: m.CustomerDetailPage })),
+);
 const PurchasesPage = lazy(() =>
   import("./admin/PurchasesPage").then((m) => ({ default: m.PurchasesPage })),
 );
@@ -94,6 +97,7 @@ export default function App() {
           <Route index element={<Dashboard />} />
           <Route path="catalog" element={<CatalogPage />} />
           <Route path="customers" element={<CustomersPage />} />
+          <Route path="customers/:id" element={<CustomerDetailPage />} />
           <Route path="purchases" element={<PurchasesPage />} />
           <Route path="conversations" element={<ConversationsPage />} />
           <Route path="conversations/:id" element={<ConversationDetailPage />} />

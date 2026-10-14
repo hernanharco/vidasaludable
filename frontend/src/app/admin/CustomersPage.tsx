@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router";
 import { api, Customer } from "./api";
 import { DataTable, type DataTableColumn } from "./DataTable";
 import { ErrorBanner, toErrorState, type ErrorState } from "./ErrorBanner";
@@ -72,21 +73,29 @@ export function CustomersPage() {
       header: "Acciones",
       align: "right",
       render: (c) => (
-        <button
-          onClick={async () => {
-            if (!confirm(`¿Eliminar a ${c.name}?`)) return;
-            try {
-              await api.deleteCustomer(c.id);
-              setCustomers((prev) => prev.filter((x) => x.id !== c.id));
-              setDeleteError(null);
-            } catch (e) {
-              setDeleteError(toErrorState(e));
-            }
-          }}
-          className="text-xs text-red-500 hover:text-red-700"
-        >
-          Eliminar
-        </button>
+        <span className="flex items-center justify-end gap-3">
+          <Link
+            to={`/admin/customers/${c.id}`}
+            className="text-xs text-emerald-700 hover:text-emerald-900 hover:underline"
+          >
+            Ver ficha
+          </Link>
+          <button
+            onClick={async () => {
+              if (!confirm(`¿Eliminar a ${c.name}?`)) return;
+              try {
+                await api.deleteCustomer(c.id);
+                setCustomers((prev) => prev.filter((x) => x.id !== c.id));
+                setDeleteError(null);
+              } catch (e) {
+                setDeleteError(toErrorState(e));
+              }
+            }}
+            className="text-xs text-red-500 hover:text-red-700"
+          >
+            Eliminar
+          </button>
+        </span>
       ),
     },
   ];
