@@ -11,7 +11,7 @@ import { Heart, Shield, Users, Leaf } from "lucide-react";
 const MAIN_PHOTO =
   "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxoZWFsdGh5JTIwd2VsbG5lc3MlMjBmaXRuZXNzfGVufDF8fHx8MTc3MzA0NjIyNHww&ixlib=rb-4.1.0&q=80";
 const OVERLAP_PHOTO =
-  "https://images.unsplash.com/photo-1505576399279-0a997dd7e2f8?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxoZWFsdGh5JTIwbGlmZXN0eWxlJTIwd2VsbG5lc3N8ZW58MXx8fHwxNzczMDQ2MjI0fDA&ixlib=rb-4.1.0&q=80";
+  "https://images.unsplash.com/photo-1512621776951-a57141f2eefd?fm=jpg&q=80&fit=max";
 
 const PHOTO_WIDTHS = [480, 768, 1080, 1440];
 
@@ -75,7 +75,7 @@ export function About() {
               sizes="(min-width: 1024px) 26vw, 60vw"
               width={1080}
               height={720}
-              alt="Estilo de vida saludable" 
+              alt="Alimentación saludable" 
               className="w-full h-full object-cover"
             />
           </div>

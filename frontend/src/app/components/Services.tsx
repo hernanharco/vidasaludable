@@ -1,14 +1,14 @@
 import React from "react";
 import { motion } from "motion/react";
-import { Check, Pill, Stethoscope, Sun } from "lucide-react";
+import { Check, MonitorPlay, Pill, Sun } from "lucide-react";
 
 export function Services() {
   const services = [
     {
-      title: "Medicina Preventiva & Funcional",
-      icon: <Stethoscope className="w-8 h-8" />,
-      description: "Consultas presenciales o virtuales para un análisis completo de salud, metabolismo y estilo de vida.",
-      benefits: ["Evaluación clínica detallada", "Exámenes de laboratorio específicos", "Plan de acción a tu medida"]
+      title: "Asesoría Virtual Personalizada",
+      icon: <MonitorPlay className="w-8 h-8" />,
+      description: "Acompañamiento 100% en línea para diseñar tu plan de nutrición, suplementación y hábitos según tus objetivos.",
+      benefits: ["Plan 100% online", "Enfoque preventivo y de estilo de vida", "Acompañamiento de tu equipo"]
     },
     {
       title: "Planificación con Vitaminas",
