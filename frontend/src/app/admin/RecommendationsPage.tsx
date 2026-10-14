@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { api, Recommendation } from "./api";
+import { api, Product, Recommendation } from "./api";
+import { ProductRefs } from "./ProductRefs";
 import { ErrorBanner, toErrorState, type ErrorState } from "./ErrorBanner";
 
 function parseRefs(raw: string): string[] {
@@ -13,15 +14,16 @@ function parseRefs(raw: string): string[] {
 
 export function RecommendationsPage() {
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
   const [error, setError] = useState<ErrorState | null>(null);
   const [loading, setLoading] = useState(true);
   const [reload, setReload] = useState(0);
 
   useEffect(() => {
-    api
-      .listRecommendations()
-      .then((res) => {
-        setRecommendations(res.recommendations);
+    Promise.all([api.listRecommendations(), api.listProducts()])
+      .then(([recs, catalog]) => {
+        setRecommendations(recs.recommendations);
+        setProducts(catalog.products);
         setError(null);
       })
       .catch((e) => setError(toErrorState(e)))
@@ -70,7 +72,7 @@ export function RecommendationsPage() {
               </p>
               <p className="mt-1 text-sm">
                 <span className="font-medium">Productos:</span>{" "}
-                {parseRefs(r.productReferences).join(", ") || "—"}
+                <ProductRefs references={parseRefs(r.productReferences)} products={products} />
               </p>
               <p className="mt-1 text-sm text-stone-600">
                 <span className="font-medium">Racional:</span> {r.rationale}
