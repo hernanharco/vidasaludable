@@ -43,6 +43,16 @@ export interface Conversation {
   createdAt: string;
 }
 
+// T3 (advisor-summary) — one AI executive summary per customer, generated
+// on demand by the advisor. `content` is Spanish plain text with "## "
+// section headings (rendered as text, no markdown dependency).
+export interface CustomerSummary {
+  customerId: number;
+  content: string;
+  model: string;
+  generatedAt: string;
+}
+
 export interface Message {
   id: number;
   conversationId: number;
@@ -250,6 +260,14 @@ export const api = {
     request<null>(`/catalog/${encodeURIComponent(reference)}`, { method: "DELETE" }),
   listCustomers: () => request<{ customers: Customer[] }>("/customers"),
   deleteCustomer: (id: number) => request<null>(`/customers/${id}`, { method: "DELETE" }),
+  // GET → { summary: CustomerSummary | null }; POST generates/replaces
+  // (takes a few seconds) and 404s for an unknown customer.
+  getCustomerSummary: (id: number) =>
+    request<{ summary: CustomerSummary | null }>(`/customers/${id}/summary`),
+  generateCustomerSummary: (id: number) =>
+    request<{ summary: CustomerSummary }>(`/customers/${id}/summary`, {
+      method: "POST",
+    }),
   listConversations: () =>
     request<{ conversations: Conversation[] }>("/conversations"),
   deleteConversation: (id: number) =>
