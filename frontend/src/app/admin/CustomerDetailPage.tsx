@@ -5,9 +5,11 @@ import {
   type Conversation,
   type Customer,
   type CustomerSummary,
+  type Product,
   type Purchase,
   type Recommendation,
 } from "./api";
+import { ProductRefs } from "./ProductRefs";
 import { ErrorBanner, toErrorState, type ErrorState } from "./ErrorBanner";
 
 // T3/T4 (advisor-summary) — per-customer "ficha": profile header, the
@@ -78,6 +80,7 @@ export function CustomerDetailPage() {
     recommendations: Recommendation[];
     purchases: Purchase[];
     conversations: Conversation[];
+    products: Product[];
   } | null>(null);
   const [extrasError, setExtrasError] = useState<ErrorState | null>(null);
   const [extrasReload, setExtrasReload] = useState(0);
@@ -134,8 +137,9 @@ export function CustomerDetailPage() {
       api.listRecommendations(),
       api.listPurchases(),
       api.listConversations(),
+      api.listProducts(),
     ])
-      .then(([recs, purchases, conversations]) => {
+      .then(([recs, purchases, conversations, catalog]) => {
         if (cancelled) return;
         setExtras({
           recommendations: recs.recommendations.filter(
@@ -145,6 +149,7 @@ export function CustomerDetailPage() {
           conversations: conversations.conversations.filter(
             (c) => c.customerId === customerId,
           ),
+          products: catalog.products,
         });
         setExtrasError(null);
       })
@@ -310,7 +315,10 @@ export function CustomerDetailPage() {
                       <span>
                         <span className="font-medium">{r.symptom}</span> ·
                         Productos:{" "}
-                        {parseRefs(r.productReferences).join(", ") || "—"}
+                        <ProductRefs
+                          references={parseRefs(r.productReferences)}
+                          products={extras.products}
+                        />
                       </span>
                       <span className="text-xs text-stone-500">
                         {new Date(r.createdAt).toLocaleString()}

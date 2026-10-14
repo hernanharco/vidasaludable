@@ -8,6 +8,7 @@ import type {
   Conversation,
   Customer,
   CustomerSummary,
+  Product,
   Purchase,
   Recommendation,
 } from "../src/app/admin/api";
@@ -108,6 +109,31 @@ const CONVERSATIONS: Conversation[] = [
   { id: 6, customerId: 2, createdAt: "2025-02-03T09:00:00Z" },
 ];
 
+const PRODUCTS: Product[] = [
+  {
+    reference: "VIT-D",
+    name: "Vitamina D3 2000 UI",
+    category: "Nutrición",
+    size: "120 cápsulas",
+    price: 25.5,
+    benefits: "Salud ósea",
+    dosage: "1 cápsula/día",
+    ingredients: "Vitamina D3",
+    disclaimer: "Complemento alimenticio",
+  },
+  {
+    reference: "MAG",
+    name: "Magnesio Plus",
+    category: "Nutrición",
+    size: "90 comprimidos",
+    price: 19.9,
+    benefits: "Descanso",
+    dosage: "1 comprimido/día",
+    ingredients: "Magnesio",
+    disclaimer: "Complemento alimenticio",
+  },
+];
+
 let summaryState: CustomerSummary | null;
 let customersFail: boolean;
 let deferGenerate: boolean;
@@ -159,6 +185,9 @@ function installFetchMock() {
     }
     if (url === "/api/admin/conversations" && method === "GET") {
       return ok(200, { conversations: CONVERSATIONS });
+    }
+    if (url === "/api/admin/catalog" && method === "GET") {
+      return ok(200, { products: PRODUCTS });
     }
     return bad(404, { error: `unmocked ${method} ${url}` });
   });
@@ -265,9 +294,18 @@ describe("CustomerDetailPage (ficha + resumen de asesoría)", () => {
   it("renders the extras sections filtered by customerId", async () => {
     renderPage();
 
-    // Recommendations: symptom + products + date, only customer 1
+    // Recommendations: symptom + product NAMES linked to amway + date, only customer 1
     expect(await screen.findByText("Dolor articular")).toBeInTheDocument();
-    expect(screen.getByText(/Productos: VIT-D, MAG/)).toBeInTheDocument();
+    const vitLink = screen.getByRole("link", { name: "Vitamina D3 2000 UI (VIT-D)" });
+    expect(vitLink).toHaveAttribute(
+      "href",
+      "https://www.amway.es/Productos/c/100000?q=VIT-D",
+    );
+    const magLink = screen.getByRole("link", { name: "Magnesio Plus (MAG)" });
+    expect(magLink).toHaveAttribute(
+      "href",
+      "https://www.amway.es/Productos/c/100000?q=MAG",
+    );
     expect(
       screen.getByText(new Date(RECOMMENDATIONS[0]!.createdAt).toLocaleString()),
     ).toBeInTheDocument();
