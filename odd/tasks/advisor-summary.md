@@ -44,10 +44,10 @@ chat, sus recomendaciones del log y sus compras.
 
 | ID | Specs | Ruta | Commit |
 |----|-------|------|--------|
-| T1 | S1, S4 | backend — tabla `customer_summaries` (migrate.ts DDL + schema.ts) + test de migración | — |
-| T2 | S1, S3, S4 | backend — `summaryService` (contexto + prompt + Gemini), rutas `GET/POST /admin/customers/:id/summary` + tests de integración (Gemini mockeado) | — |
-| T3 | S1, S2, S3 | frontend — `CustomerDetailPage` con bloque de resumen + botón Generar/Regenerar, ruta y link desde CustomersPage, `api.ts` | — |
-| T4 | S1–S4 | frontend — tests de la ficha/resumen + suites completas verdes + docs | — |
+| T1 | S1, S4 | backend — tabla `customer_summaries` (migrate.ts DDL + schema.ts) + test de migración | d9692572 |
+| T2 | S1, S3, S4 | backend — `summaryService` (contexto + prompt + Gemini), rutas `GET/POST /admin/customers/:id/summary` + tests de integración (Gemini mockeado) | d9692572 |
+| T3 | S1, S2, S3 | frontend — `CustomerDetailPage` con bloque de resumen + botón Generar/Regenerar, ruta y link desde CustomersPage, `api.ts` | 863d0575 |
+| T4 | S1–S4 | frontend — tests de la ficha/resumen + suites completas verdes + docs | 863d0575 + 00068afa (spec) |
 
 ## Log
 
@@ -63,3 +63,12 @@ chat, sus recomendaciones del log y sus compras.
 - **L3** (2026-10-14, decisiones de diseño): cuándo = "Bajo demanda (botón)"
   (S3); alcance = "Por cliente" con encuesta + chats + compras (S4). Se descartó
   "Alertas/Bandeja" e "Informe exportable".
+- **L4** (2026-10-14, entrega): estrategia elegida por el usuario =
+  `feature-branch-chain` (menú oversized, ~1569 líneas vs presupuesto 400; una
+  pasada de slicing deja backend 746 / frontend 758 sin poder partir más sin
+  separar tests de su comportamiento). Issue **#24** (enhancement +
+  status:approved). Cadena: tracker **#25** (draft, base
+  `feat/ui-optimization` — retarget a `main` cuando mergee #23), hijo 1
+  **#26** backend, hijo 2 **#27** frontend. Verificación: backend 251/251 +
+  tsc 0; frontend 155/155 + tsc 0; CI verde en los 3 PRs. Labels: `type:chore`
+  (único `type:*` disponible en el repo, precedente PR #21).
