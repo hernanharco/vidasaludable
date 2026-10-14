@@ -1,1 +1,7 @@
-@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Inter:wght@300;400;500;600&display=swap');
+/* T1/S2b — this stylesheet no longer holds the Google Fonts request.
+ *
+ * Its single line was a remote font import that chained a second
+ * render-blocking CSS request behind index.css. The @font-face rules now live
+ * inline in index.css (the main stylesheet), so this file is intentionally
+ * empty. It is kept so old references keep resolving instead of 404ing.
+ */

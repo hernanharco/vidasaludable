@@ -4,6 +4,11 @@
     <head>
       <meta charset="UTF-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <!-- T1/S2b — warm up the font origins before the stylesheet asks for the
+           inlined @font-face files (src/styles/index.css). `crossorigin` on
+           fonts.gstatic.com matches how the woff2 files are fetched (CORS). -->
+      <link rel="preconnect" href="https://fonts.googleapis.com" />
+      <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
       <title>Salud Preventiva — Bienestar integral y prevención</title>
       <style>html, body { height: 100%; margin: 0; } #root { height: 100%; }</style>
     </head>

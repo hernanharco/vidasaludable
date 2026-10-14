@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { api, type ReferrerWithStats } from "./api";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
+import { DataTable, type DataTableColumn } from "./DataTable";
 
 /**
  * CRM Referrers page — CRUD for access codes + stats.
@@ -110,6 +111,157 @@ export function ReferrersPage() {
     }
   };
 
+  type ReferrerCustomer = ReferrerWithStats["customers"][number];
+
+  // Nested expanded table: customers of one referrer. Kept non-sortable to
+  // preserve its minimal inline look.
+  const nestedColumns: DataTableColumn<ReferrerCustomer>[] = [
+    { key: "name", header: "Nombre", render: (cu) => cu.name },
+    {
+      key: "email",
+      header: "Email",
+      cellClassName: "text-stone-500",
+      render: (cu) => cu.email,
+    },
+    {
+      key: "phone",
+      header: "Teléfono",
+      cellClassName: "text-stone-500",
+      render: (cu) => cu.phone,
+    },
+    {
+      key: "registered",
+      header: "Registrado",
+      cellClassName: "text-stone-500",
+      render: (cu) => new Date(cu.registeredAt).toLocaleDateString(),
+    },
+  ];
+
+  const columns: DataTableColumn<ReferrerWithStats>[] = [
+    {
+      key: "code",
+      header: "Código",
+      sortable: true,
+      cellClassName: "font-mono text-xs",
+      render: (r) => r.code,
+    },
+    {
+      key: "name",
+      header: "Nombre",
+      sortable: true,
+      render: (r) =>
+        editingId === r.id ? (
+          <Input value={editName} onChange={(e) => setEditName(e.target.value)} />
+        ) : (
+          r.name
+        ),
+    },
+    {
+      key: "phone",
+      header: "Teléfono",
+      sortable: true,
+      render: (r) =>
+        editingId === r.id ? (
+          <Input
+            value={editPhone}
+            onChange={(e) => setEditPhone(e.target.value)}
+            placeholder="Teléfono"
+          />
+        ) : (
+          <span className="text-stone-500">{r.phone ?? "—"}</span>
+        ),
+    },
+    {
+      key: "email",
+      header: "Email",
+      sortable: true,
+      render: (r) =>
+        editingId === r.id ? (
+          <Input
+            value={editEmail}
+            onChange={(e) => setEditEmail(e.target.value)}
+            placeholder="Email"
+          />
+        ) : (
+          <span className="text-stone-500">{r.email ?? "—"}</span>
+        ),
+    },
+    {
+      key: "customers",
+      header: "Clientes",
+      align: "center",
+      sortable: true,
+      render: (r) => (
+        <button
+          onClick={() => setExpandedId(expandedId === r.id ? null : r.id)}
+          className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-emerald-100 text-emerald-700 text-xs font-medium hover:bg-emerald-200"
+          title="Ver clientes"
+        >
+          {r.customerCount}
+        </button>
+      ),
+    },
+    {
+      key: "estado",
+      header: "Estado",
+      align: "center",
+      sortable: true,
+      render: (r) => (
+        <span
+          className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
+            r.active ? "bg-green-100 text-green-700" : "bg-stone-100 text-stone-500"
+          }`}
+        >
+          {r.active ? "Activo" : "Inactivo"}
+        </span>
+      ),
+    },
+    {
+      key: "acciones",
+      header: "Acciones",
+      align: "right",
+      cellClassName: "space-x-2",
+      render: (r) =>
+        editingId === r.id ? (
+          <>
+            <button
+              onClick={() => handleSaveEdit(r.id)}
+              className="text-xs text-emerald-600 hover:text-emerald-800 font-medium"
+            >
+              Guardar
+            </button>
+            <button
+              onClick={() => setEditingId(null)}
+              className="text-xs text-stone-500 hover:text-stone-700"
+            >
+              Cancelar
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              onClick={() => startEdit(r)}
+              className="text-xs text-emerald-600 hover:text-emerald-800"
+            >
+              Editar
+            </button>
+            <button
+              onClick={() => handleToggle(r.id, r.active)}
+              className="text-xs text-stone-500 hover:text-stone-700"
+            >
+              {r.active ? "Desactivar" : "Activar"}
+            </button>
+            <button
+              onClick={() => handleDelete(r.id)}
+              className="text-xs text-red-500 hover:text-red-700"
+            >
+              Eliminar
+            </button>
+          </>
+        ),
+    },
+  ];
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -190,139 +342,30 @@ export function ReferrersPage() {
       ) : (
         <>
         {/* Desktop: table (md and up) */}
-        <div className="hidden md:block bg-white rounded-xl border border-stone-200 overflow-x-auto">
-          <table className="w-full min-w-[720px] text-sm">
-            <thead>
-              <tr className="border-b border-stone-200 bg-stone-50">
-                <th className="text-left px-4 py-3 font-medium text-stone-600">Código</th>
-                <th className="text-left px-4 py-3 font-medium text-stone-600">Nombre</th>
-                <th className="text-left px-4 py-3 font-medium text-stone-600">Teléfono</th>
-                <th className="text-left px-4 py-3 font-medium text-stone-600">Email</th>
-                <th className="text-center px-4 py-3 font-medium text-stone-600">Clientes</th>
-                <th className="text-center px-4 py-3 font-medium text-stone-600">Estado</th>
-                <th className="text-right px-4 py-3 font-medium text-stone-600">Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {referrers.map((r) => (
-                <React.Fragment key={r.id}>
-                <tr className="border-b border-stone-100 hover:bg-stone-50">
-                  <td className="px-4 py-3 font-mono text-xs">{r.code}</td>
-                  {editingId === r.id ? (
-                    <>
-                      <td className="px-4 py-3">
-                        <Input value={editName} onChange={(e) => setEditName(e.target.value)} />
-                      </td>
-                      <td className="px-4 py-3">
-                        <Input value={editPhone} onChange={(e) => setEditPhone(e.target.value)} placeholder="Teléfono" />
-                      </td>
-                      <td className="px-4 py-3">
-                        <Input value={editEmail} onChange={(e) => setEditEmail(e.target.value)} placeholder="Email" />
-                      </td>
-                    </>
-                  ) : (
-                    <>
-                      <td className="px-4 py-3">{r.name}</td>
-                      <td className="px-4 py-3 text-stone-500">{r.phone ?? "—"}</td>
-                      <td className="px-4 py-3 text-stone-500">{r.email ?? "—"}</td>
-                    </>
-                  )}
-                  <td className="px-4 py-3 text-center">
-                    <button
-                      onClick={() => setExpandedId(expandedId === r.id ? null : r.id)}
-                      className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-emerald-100 text-emerald-700 text-xs font-medium hover:bg-emerald-200"
-                      title="Ver clientes"
-                    >
-                      {r.customerCount}
-                    </button>
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    <span
-                      className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
-                        r.active
-                          ? "bg-green-100 text-green-700"
-                          : "bg-stone-100 text-stone-500"
-                      }`}
-                    >
-                      {r.active ? "Activo" : "Inactivo"}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-right space-x-2">
-                    {editingId === r.id ? (
-                      <>
-                        <button
-                          onClick={() => handleSaveEdit(r.id)}
-                          className="text-xs text-emerald-600 hover:text-emerald-800 font-medium"
-                        >
-                          Guardar
-                        </button>
-                        <button
-                          onClick={() => setEditingId(null)}
-                          className="text-xs text-stone-500 hover:text-stone-700"
-                        >
-                          Cancelar
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <button
-                          onClick={() => startEdit(r)}
-                          className="text-xs text-emerald-600 hover:text-emerald-800"
-                        >
-                          Editar
-                        </button>
-                        <button
-                          onClick={() => handleToggle(r.id, r.active)}
-                          className="text-xs text-stone-500 hover:text-stone-700"
-                        >
-                          {r.active ? "Desactivar" : "Activar"}
-                        </button>
-                        <button
-                          onClick={() => handleDelete(r.id)}
-                          className="text-xs text-red-500 hover:text-red-700"
-                        >
-                          Eliminar
-                        </button>
-                      </>
-                    )}
-                  </td>
-                </tr>
-                {expandedId === r.id && (
-                  <tr key={`${r.id}-expanded`}>
-                    <td colSpan={7} className="px-4 py-3 bg-stone-50">
-                      {r.customers.length === 0 ? (
-                        <p className="text-xs text-stone-500">Sin clientes asociados.</p>
-                      ) : (
-                        <div className="overflow-x-auto">
-                          <table className="w-full min-w-[720px] text-xs">
-                            <thead>
-                              <tr className="text-stone-500">
-                                <th className="text-left py-1">Nombre</th>
-                                <th className="text-left py-1">Email</th>
-                                <th className="text-left py-1">Teléfono</th>
-                                <th className="text-left py-1">Registrado</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {r.customers.map((cu) => (
-                                <tr key={cu.id} className="border-t border-stone-200">
-                                  <td className="py-1">{cu.name}</td>
-                                  <td className="py-1 text-stone-500">{cu.email}</td>
-                                  <td className="py-1 text-stone-500">{cu.phone}</td>
-                                  <td className="py-1 text-stone-500">{new Date(cu.registeredAt).toLocaleDateString()}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                )}
-                </React.Fragment>
-              ))}
-            </tbody>
-          </table>
+        <div className="hidden md:block">
+          <DataTable
+            columns={columns}
+            rows={referrers}
+            getRowKey={(r) => String(r.id)}
+            emptyMessage="No hay referentes creados todavía."
+            containerClassName="bg-white rounded-xl border border-stone-200"
+            tableClassName="min-w-[720px]"
+            renderExpandedRow={(r) =>
+              r.customers.length === 0 ? (
+                <p className="text-xs text-stone-500">Sin clientes asociados.</p>
+              ) : (
+                <DataTable
+                  columns={nestedColumns}
+                  rows={r.customers}
+                  getRowKey={(cu) => String(cu.id)}
+                  emptyMessage="Sin clientes asociados."
+                  tableClassName="min-w-[720px] text-xs"
+                  thClassName="px-0 py-1 font-normal text-stone-500"
+                  tdClassName="px-0 py-1"
+                />
+              )
+            }
+          />
         </div>
 
         {/* Mobile: cards (below md) — one referrer per card, no horizontal scroll */}

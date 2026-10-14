@@ -1,9 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import React from "react";
 import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { ChatMessages } from "../src/app/components/chat/ChatMessages";
 import { ChatSession } from "../src/app/components/chat";
 import type { VideoCardInfo } from "../src/app/components/chat/types";
+import { accessCodeFetch, passAccessCodeGate } from "./helpers/accessCode";
 
 // Mock fetch
 const mockFetch = vi.fn();
@@ -189,55 +191,70 @@ describe("VideoCard scheme guard", () => {
   });
 });
 
-describe("ChatSession video map boot", () => {
+describe("ChatSession video map (deferred until the access-code gate clears)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     window.localStorage.clear();
   });
 
-  it("fetches /api/assistant/videos at boot", async () => {
+  /** Router for a returning customer with a saved profile → straight to chat. */
+  function installChatFetch(videosResponse: () => Promise<unknown>) {
     mockFetch.mockImplementation((url: string) => {
-      if (url.includes("/api/assistant/videos")) {
+      const u = String(url);
+      const gate = accessCodeFetch(u);
+      if (gate) return Promise.resolve(gate);
+      if (u.includes("/api/assistant/profile")) {
         return Promise.resolve({
           ok: true,
-          json: () => Promise.resolve({ videos: VIDEOS }),
+          status: 200,
+          json: () => Promise.resolve({ profile: { customer_id: 42 } }),
         });
       }
+      if (u.includes("/api/assistant/history")) {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ messages: [] }) });
+      }
+      if (u.includes("/api/assistant/videos")) return videosResponse();
       return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({}) });
     });
+  }
+
+  it("does NOT fetch at boot; fetches /api/assistant/videos once the gate is cleared", async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem("vr_customer_id", "42");
+    installChatFetch(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ videos: VIDEOS }) }));
 
     render(<ChatSession />);
-    await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalledWith("/api/assistant/videos");
-    });
+    // Pre-gate: the visit is still on the access-code gate — no catalog call.
+    expect(await screen.findByText("Código de acceso")).toBeInTheDocument();
+    expect(mockFetch).not.toHaveBeenCalledWith("/api/assistant/videos");
+
+    // Gate cleared → chat → the deferred catalog load fires.
+    await passAccessCodeGate(user);
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledWith("/api/assistant/videos"));
   });
 
-  it("still opens the widget when the videos fetch fails", async () => {
-    mockFetch.mockImplementation((url: string) => {
-      if (url.includes("/api/assistant/videos")) {
-        return Promise.reject(new Error("network down"));
-      }
-      return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({}) });
-    });
+  it("still opens the chat when the videos fetch fails", async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem("vr_customer_id", "42");
+    installChatFetch(() => Promise.reject(new Error("network down")));
 
     render(<ChatSession />);
+    await passAccessCodeGate(user);
 
-    // Chat flow is not blocked by the videos failure: access-code gate shows.
-    expect(await screen.findByText("Código de acceso")).toBeInTheDocument();
+    // Chat flow is not blocked by the videos failure.
+    expect(await screen.findByPlaceholderText("Escribe un mensaje...")).toBeInTheDocument();
+    expect(screen.queryByText("Código de acceso")).not.toBeInTheDocument();
   });
 
-  it("still opens the widget when the videos response is not an array", async () => {
-    mockFetch.mockImplementation((url: string) => {
-      if (url.includes("/api/assistant/videos")) {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({ videos: "nope" }),
-        });
-      }
-      return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({}) });
-    });
+  it("still opens the chat when the videos response is not an array", async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem("vr_customer_id", "42");
+    installChatFetch(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ videos: "nope" }) }));
 
     render(<ChatSession />);
-    expect(await screen.findByText("Código de acceso")).toBeInTheDocument();
+    await passAccessCodeGate(user);
+
+    expect(await screen.findByPlaceholderText("Escribe un mensaje...")).toBeInTheDocument();
+    expect(screen.queryByText("Código de acceso")).not.toBeInTheDocument();
   });
 });

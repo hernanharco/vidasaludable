@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, Product, ProductInput } from "./api";
+import { DataTable, type DataTableColumn } from "./DataTable";
+import { ErrorBanner, toErrorState, type ErrorState } from "./ErrorBanner";
 
 const EMPTY: ProductInput = {
   reference: "",
@@ -15,7 +17,8 @@ const EMPTY: ProductInput = {
 
 export function CatalogPage() {
   const [products, setProducts] = useState<Product[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<ErrorState | null>(null);
+  const [deleteError, setDeleteError] = useState<ErrorState | null>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<ProductInput | null>(null);
   const [saving, setSaving] = useState(false);
@@ -26,7 +29,7 @@ export function CatalogPage() {
       setProducts(res.products);
       setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Error de red");
+      setError(toErrorState(e));
     } finally {
       setLoading(false);
     }
@@ -52,7 +55,7 @@ export function CatalogPage() {
       setEditing(null);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error al guardar");
+      setError({ ...toErrorState(err), title: "No pudimos guardar los cambios" });
     } finally {
       setSaving(false);
     }
@@ -64,15 +67,68 @@ export function CatalogPage() {
   if (loading) return <p className="text-stone-500">Cargando…</p>;
   if (error && !editing) {
     return (
-      <div className="max-w-2xl p-6 bg-amber-50 border border-amber-300 text-amber-900">
-        <h2 className="font-serif text-xl">Acceso restringido</h2>
-        <p className="mt-2 text-sm">Respuesta del backend: {error}</p>
-      </div>
+      <ErrorBanner status={error.status} detail={error.detail} title={error.title} onRetry={load} />
     );
   }
 
+  const columns: DataTableColumn<Product>[] = [
+    {
+      key: "reference",
+      header: "Reference",
+      sortable: true,
+      cellClassName: "font-mono text-xs",
+      render: (p) => p.reference,
+    },
+    { key: "name", header: "Nombre", sortable: true, render: (p) => p.name },
+    { key: "category", header: "Categoría", sortable: true, render: (p) => p.category },
+    {
+      key: "price",
+      header: "Precio",
+      align: "right",
+      sortable: true,
+      render: (p) => `${p.price.toFixed(2)} €`,
+    },
+    {
+      key: "acciones",
+      header: "Acciones",
+      align: "right",
+      cellClassName: "space-x-2",
+      render: (p) => (
+        <>
+          <button
+            onClick={() => {
+              setEditing({ ...p });
+              setError(null);
+            }}
+            className="text-emerald-800 hover:underline"
+          >
+            Editar
+          </button>
+          <button
+            onClick={async () => {
+              if (!confirm(`¿Eliminar el producto ${p.reference}?`)) return;
+              try {
+                await api.deleteProduct(p.reference);
+                setDeleteError(null);
+                await load();
+              } catch (err) {
+                setDeleteError(toErrorState(err));
+              }
+            }}
+            className="text-red-500 hover:text-red-700"
+          >
+            Eliminar
+          </button>
+        </>
+      ),
+    },
+  ];
+
   return (
     <div>
+      {deleteError && (
+        <ErrorBanner status={deleteError.status} detail={deleteError.detail} title={deleteError.title} />
+      )}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="font-serif text-2xl">Catálogo</h1>
@@ -182,7 +238,7 @@ export function CatalogPage() {
               required
             />
           </label>
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && <p className="text-sm text-red-600">{error.detail}</p>}
           <div className="flex gap-3">
             <button
               type="submit"
@@ -205,54 +261,13 @@ export function CatalogPage() {
         </form>
       )}
 
-      <div className="mt-6 overflow-x-auto bg-white border border-stone-200">
-        <table className="w-full text-sm">
-          <thead className="bg-stone-100 text-stone-600 uppercase tracking-wider">
-            <tr>
-              <th className="px-4 py-3 text-left">Reference</th>
-              <th className="px-4 py-3 text-left">Nombre</th>
-              <th className="px-4 py-3 text-left">Categoría</th>
-              <th className="px-4 py-3 text-right">Precio</th>
-              <th className="px-4 py-3 text-right">Acciones</th>
-            </tr>
-          </thead>
-          <tbody>
-            {products.map((p) => (
-              <tr key={p.reference} className="border-t border-stone-200">
-                <td className="px-4 py-3 font-mono text-xs">{p.reference}</td>
-                <td className="px-4 py-3">{p.name}</td>
-                <td className="px-4 py-3">{p.category}</td>
-                <td className="px-4 py-3 text-right">{p.price.toFixed(2)} €</td>
-                <td className="px-4 py-3 text-right space-x-2">
-                  <button
-                    onClick={() => {
-                      setEditing({ ...p });
-                      setError(null);
-                    }}
-                    className="text-emerald-800 hover:underline"
-                  >
-                    Editar
-                  </button>
-                  <button
-                    onClick={async () => {
-                      if (!confirm(`¿Eliminar el producto ${p.reference}?`)) return;
-                      try {
-                        await api.deleteProduct(p.reference);
-                        await load();
-                      } catch (err) {
-                        setError(err instanceof Error ? err.message : "Error al eliminar");
-                      }
-                    }}
-                    className="text-red-500 hover:text-red-700"
-                  >
-                    Eliminar
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        columns={columns}
+        rows={products}
+        getRowKey={(p) => p.reference}
+        emptyMessage="No hay productos en el catálogo todavía."
+        containerClassName="mt-6 bg-white border border-stone-200"
+      />
     </div>
   );
 }

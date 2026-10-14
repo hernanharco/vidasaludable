@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router";
 import { api, Message } from "./api";
+import { ErrorBanner, toErrorState, type ErrorState } from "./ErrorBanner";
 
 export function ConversationDetailPage() {
   const { id } = useParams();
   const [messages, setMessages] = useState<Message[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<ErrorState | null>(null);
   const [loading, setLoading] = useState(true);
+  const [reload, setReload] = useState(0);
 
   useEffect(() => {
     if (!id) return;
@@ -16,17 +18,19 @@ export function ConversationDetailPage() {
         setMessages(res.messages);
         setError(null);
       })
-      .catch((e) => setError(e instanceof Error ? e.message : "Error de red"))
+      .catch((e) => setError(toErrorState(e)))
       .finally(() => setLoading(false));
-  }, [id]);
+  }, [id, reload]);
 
   if (loading) return <p className="text-stone-500">Cargando…</p>;
   if (error) {
     return (
-      <div className="max-w-2xl p-6 bg-amber-50 border border-amber-300 text-amber-900">
-        <h2 className="font-serif text-xl">Acceso restringido</h2>
-        <p className="mt-2 text-sm">Respuesta del backend: {error}</p>
-      </div>
+      <ErrorBanner
+        status={error.status}
+        detail={error.detail}
+        title={error.title}
+        onRetry={() => setReload((n) => n + 1)}
+      />
     );
   }
 

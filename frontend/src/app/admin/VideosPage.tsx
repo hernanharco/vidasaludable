@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { formatTime } from "../lib/format";
+import { DataTable, type DataTableColumn } from "./DataTable";
 import {
   api,
   Video,
@@ -248,6 +249,157 @@ export function VideosPage() {
 
   if (loading) return <p className="text-stone-500">Cargando…</p>;
 
+  const videoColumns: DataTableColumn<Video>[] = [
+    { key: "speaker", header: "Ponente", sortable: true, render: (v) => v.speaker },
+    {
+      key: "title",
+      header: "Título",
+      sortable: true,
+      cellClassName: "font-medium",
+      render: (v) => (
+        <>
+          {v.title}
+          <span className="block text-xs text-stone-400 font-mono">{v.url}</span>
+        </>
+      ),
+    },
+    {
+      key: "status",
+      header: "Estado",
+      sortable: true,
+      render: (v) => (
+        <span
+          className={`inline-block px-2 py-0.5 text-xs font-medium rounded-full ${
+            STATUS_CHIPS[v.status] ?? "bg-stone-100 text-stone-600"
+          }`}
+        >
+          {STATUS_LABELS[v.status] ?? v.status}
+        </span>
+      ),
+    },
+    {
+      key: "license",
+      header: "Licencia",
+      sortable: true,
+      cellClassName: "max-w-xs",
+      render: (v) =>
+        v.licenseNote ? (
+          <span className="text-stone-600">{v.licenseNote}</span>
+        ) : (
+          <span className="text-stone-400">—</span>
+        ),
+    },
+    {
+      key: "accion",
+      header: "Acción",
+      align: "right",
+      render: (v) => (
+        <button
+          onClick={() => handleDeleteVideo(v)}
+          className="text-red-700 hover:underline"
+        >
+          Eliminar
+        </button>
+      ),
+    },
+  ];
+
+  const segmentColumns: DataTableColumn<VideoSegment>[] = [
+    {
+      key: "video",
+      header: "Vídeo",
+      sortable: true,
+      sortValue: (s) => videoTitle(String(s.videoId)),
+      render: (s) => videoTitle(String(s.videoId)),
+    },
+    {
+      key: "title",
+      header: "Título",
+      sortable: true,
+      cellClassName: "font-medium",
+      render: (s) => s.title,
+    },
+    {
+      key: "condition",
+      header: "Condición",
+      sortable: true,
+      render: (s) =>
+        s.condition ? (
+          <span>{s.condition}</span>
+        ) : (
+          <span className="text-amber-700 font-medium">sin condición</span>
+        ),
+    },
+    {
+      key: "marca",
+      header: "Marca",
+      sortable: true,
+      sortValue: (s) => s.startS,
+      cellClassName: "font-mono text-xs",
+      render: (s) => (
+        <>
+          {formatTime(s.startS)} – {formatTime(s.endS)}
+        </>
+      ),
+    },
+    {
+      key: "enabled",
+      header: "Estado",
+      sortable: true,
+      render: (s) => (
+        <button
+          onClick={() => handleToggleSegment(s)}
+          title={
+            s.enabled === 1
+              ? "Desactivar segmento (no se inyecta en el chat)"
+              : "Activar segmento (se inyecta en el chat)"
+          }
+          className={`px-2 py-1 text-xs ${
+            s.enabled === 1
+              ? "bg-emerald-100 text-emerald-900 hover:bg-emerald-200"
+              : "bg-stone-200 text-stone-500 hover:bg-stone-300"
+          }`}
+        >
+          {s.enabled === 1 ? "Activo" : "Inactivo"}
+        </button>
+      ),
+    },
+    {
+      key: "clip",
+      header: "Clip",
+      sortable: true,
+      cellClassName: "font-mono text-xs",
+      render: (s) =>
+        s.clipYoutubeId ? (
+          s.clipYoutubeId
+        ) : (
+          <span className="text-stone-400">—</span>
+        ),
+    },
+    {
+      key: "acciones",
+      header: "Acciones",
+      align: "right",
+      cellClassName: "whitespace-nowrap",
+      render: (s) => (
+        <>
+          <button
+            onClick={() => startSegmentEdit(s)}
+            className="text-emerald-800 hover:underline mr-3"
+          >
+            Editar
+          </button>
+          <button
+            onClick={() => handleDeleteSegment(s)}
+            className="text-red-700 hover:underline"
+          >
+            Eliminar
+          </button>
+        </>
+      ),
+    },
+  ];
+
   return (
     <div>
       <div className="flex items-center justify-between">
@@ -328,61 +480,14 @@ export function VideosPage() {
         </form>
       )}
 
-      <div className="mt-6 overflow-x-auto bg-white border border-stone-200">
-        <table className="w-full text-sm">
-          <thead className="bg-stone-100 text-stone-600 uppercase tracking-wider">
-            <tr>
-              <th className="px-4 py-3 text-left">Ponente</th>
-              <th className="px-4 py-3 text-left">Título</th>
-              <th className="px-4 py-3 text-left">Estado</th>
-              <th className="px-4 py-3 text-left">Licencia</th>
-              <th className="px-4 py-3 text-right">Acción</th>
-            </tr>
-          </thead>
-          <tbody>
-            {videos.map((v) => (
-              <tr key={v.id} className="border-t border-stone-200 align-top">
-                <td className="px-4 py-3">{v.speaker}</td>
-                <td className="px-4 py-3 font-medium">
-                  {v.title}
-                  <span className="block text-xs text-stone-400 font-mono">{v.url}</span>
-                </td>
-                <td className="px-4 py-3">
-                  <span
-                    className={`inline-block px-2 py-0.5 text-xs font-medium rounded-full ${
-                      STATUS_CHIPS[v.status] ?? "bg-stone-100 text-stone-600"
-                    }`}
-                  >
-                    {STATUS_LABELS[v.status] ?? v.status}
-                  </span>
-                </td>
-                <td className="px-4 py-3 max-w-xs">
-                  {v.licenseNote ? (
-                    <span className="text-stone-600">{v.licenseNote}</span>
-                  ) : (
-                    <span className="text-stone-400">—</span>
-                  )}
-                </td>
-                <td className="px-4 py-3 text-right">
-                  <button
-                    onClick={() => handleDeleteVideo(v)}
-                    className="text-red-700 hover:underline"
-                  >
-                    Eliminar
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {videos.length === 0 && (
-              <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-stone-400">
-                  No hay vídeos registrados. Crea el primero para empezar a analizar segmentos.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        columns={videoColumns}
+        rows={videos}
+        getRowKey={(v) => String(v.id)}
+        emptyMessage="No hay vídeos registrados. Crea el primero para empezar a analizar segmentos."
+        containerClassName="mt-6 bg-white border border-stone-200"
+        rowClassName="align-top"
+      />
 
       {/* Segmentos */}
       <div className="mt-8">
@@ -577,85 +682,18 @@ export function VideosPage() {
           </form>
         )}
 
-        <div className="mt-4 overflow-x-auto bg-white border border-stone-200">
-          <table className="w-full text-sm">
-            <thead className="bg-stone-100 text-stone-600 uppercase tracking-wider">
-              <tr>
-                <th className="px-4 py-3 text-left">Vídeo</th>
-                <th className="px-4 py-3 text-left">Título</th>
-                <th className="px-4 py-3 text-left">Condición</th>
-                <th className="px-4 py-3 text-left">Marca</th>
-                <th className="px-4 py-3 text-left">Estado</th>
-                <th className="px-4 py-3 text-left">Clip</th>
-                <th className="px-4 py-3 text-right">Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {visibleSegments.map((s) => (
-                <tr key={s.id} className="border-t border-stone-200 align-top">
-                  <td className="px-4 py-3">{videoTitle(String(s.videoId))}</td>
-                  <td className="px-4 py-3 font-medium">{s.title}</td>
-                  <td className="px-4 py-3">
-                    {s.condition ? (
-                      <span>{s.condition}</span>
-                    ) : (
-                      <span className="text-amber-700 font-medium">sin condición</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 font-mono text-xs">
-                    {formatTime(s.startS)} – {formatTime(s.endS)}
-                  </td>
-                  <td className="px-4 py-3">
-                    <button
-                      onClick={() => handleToggleSegment(s)}
-                      title={
-                        s.enabled === 1
-                          ? "Desactivar segmento (no se inyecta en el chat)"
-                          : "Activar segmento (se inyecta en el chat)"
-                      }
-                      className={`px-2 py-1 text-xs ${
-                        s.enabled === 1
-                          ? "bg-emerald-100 text-emerald-900 hover:bg-emerald-200"
-                          : "bg-stone-200 text-stone-500 hover:bg-stone-300"
-                      }`}
-                    >
-                      {s.enabled === 1 ? "Activo" : "Inactivo"}
-                    </button>
-                  </td>
-                  <td className="px-4 py-3 font-mono text-xs">
-                    {s.clipYoutubeId ? (
-                      s.clipYoutubeId
-                    ) : (
-                      <span className="text-stone-400">—</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-right whitespace-nowrap">
-                    <button
-                      onClick={() => startSegmentEdit(s)}
-                      className="text-emerald-800 hover:underline mr-3"
-                    >
-                      Editar
-                    </button>
-                    <button
-                      onClick={() => handleDeleteSegment(s)}
-                      className="text-red-700 hover:underline"
-                    >
-                      Eliminar
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {visibleSegments.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-stone-400">
-                    No hay segmentos{selectedVideoId != null ? " para este vídeo" : ""}. El
-                    analizador del pipeline los crea; aquí se revisan y aprueban.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          columns={segmentColumns}
+          rows={visibleSegments}
+          getRowKey={(s) => String(s.id)}
+          emptyMessage={
+            selectedVideoId != null
+              ? "No hay segmentos para este vídeo. El analizador del pipeline los crea; aquí se revisan y aprueban."
+              : "No hay segmentos. El analizador del pipeline los crea; aquí se revisan y aprueban."
+          }
+          containerClassName="mt-4 bg-white border border-stone-200"
+          rowClassName="align-top"
+        />
       </div>
     </div>
   );

@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api } from "./api";
+import { DataTable, type DataTableColumn } from "./DataTable";
 import type {
   AssessmentSymptom,
   AssessmentNutrient,
@@ -8,68 +9,6 @@ import type {
 } from "./api";
 
 type Tab = "symptoms" | "nutrients" | "mappings" | "results";
-
-type SortDir = "asc" | "desc";
-
-function SortableTh({
-  label,
-  sortKey,
-  activeKey,
-  activeDir,
-  onSort,
-  className = "",
-}: {
-  label: string;
-  sortKey: string;
-  activeKey: string | null;
-  activeDir: SortDir;
-  onSort: (key: string) => void;
-  className?: string;
-}) {
-  const active = activeKey === sortKey;
-  return (
-    <th
-      className={`px-4 py-3 font-medium text-stone-600 cursor-pointer select-none hover:text-stone-900 transition-colors ${className}`}
-      onClick={() => onSort(sortKey)}
-    >
-      <span className="inline-flex items-center gap-1">
-        {label}
-        <span className="text-xs text-stone-400">
-          {active ? (activeDir === "asc" ? "▲" : "▼") : "⇅"}
-        </span>
-      </span>
-    </th>
-  );
-}
-
-function useTableSort<T>(items: T[], defaultKey: string, defaultDir: SortDir = "asc") {
-  const [sortKey, setSortKey] = useState<string>(defaultKey);
-  const [sortDir, setSortDir] = useState<SortDir>(defaultDir);
-
-  const toggleSort = (key: string) => {
-    if (key === sortKey) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    } else {
-      setSortKey(key);
-      setSortDir("asc");
-    }
-  };
-
-  const sorted = [...items].sort((a, b) => {
-    const av = (a as Record<string, unknown>)[sortKey];
-    const bv = (b as Record<string, unknown>)[sortKey];
-    if (av == null && bv == null) return 0;
-    if (av == null) return 1;
-    if (bv == null) return -1;
-    if (typeof av === "number" && typeof bv === "number") {
-      return sortDir === "asc" ? av - bv : bv - av;
-    }
-    const cmp = String(av).localeCompare(String(bv), "es");
-    return sortDir === "asc" ? cmp : -cmp;
-  });
-
-  return { sorted, sortKey, sortDir, toggleSort };
-}
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "symptoms", label: "Síntomas" },
@@ -128,12 +67,6 @@ export function AssessmentAdminPage() {
 
   // Results
   const [results, setResults] = useState<AssessmentResult[]>([]);
-
-  // ─── Sorting
-  const symSort = useTableSort(symptoms, "id");
-  const nutSort = useTableSort(nutrients, "id");
-  const mapSort = useTableSort(mappings, "symptomId");
-  const resSort = useTableSort(results, "createdAt", "desc");
 
   // ─── Loaders ───────────────────────────────────────────────────────
 
@@ -337,6 +270,234 @@ export function AssessmentAdminPage() {
   const nutrientLabel = (id: string) =>
     nutrients.find((n) => n.id === id)?.name ?? id;
 
+  // ─── DataTable columns (S4: shared DataTable replaces the local
+  // mouse-only useTableSort/SortableTh; sort is now keyboard-accessible) ──
+
+  const symptomColumns: DataTableColumn<AssessmentSymptom>[] = [
+    {
+      key: "id",
+      header: "ID",
+      sortable: true,
+      cellClassName: "font-mono text-xs",
+      render: (s) => s.id,
+    },
+    { key: "nameEs", header: "Nombre", sortable: true, render: (s) => s.nameEs },
+    {
+      key: "acciones",
+      header: "Acciones",
+      align: "right",
+      cellClassName: "space-x-2",
+      render: (s) => (
+        <>
+          <button
+            onClick={() => startEditSym(s)}
+            className="text-xs text-stone-500 hover:text-stone-700"
+          >
+            Editar
+          </button>
+          <button
+            onClick={() => handleDeleteSym(s.id)}
+            className="text-xs text-red-500 hover:text-red-700"
+          >
+            Eliminar
+          </button>
+        </>
+      ),
+    },
+  ];
+
+  const nutrientColumns: DataTableColumn<AssessmentNutrient>[] = [
+    {
+      key: "id",
+      header: "ID",
+      sortable: true,
+      cellClassName: "font-mono text-xs",
+      render: (n) => n.id,
+    },
+    { key: "name", header: "Nombre", sortable: true, render: (n) => n.name },
+    {
+      key: "type",
+      header: "Tipo",
+      sortable: true,
+      render: (n) => (
+        <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-stone-100 text-stone-600">
+          {TYPE_LABELS[n.type] ?? n.type}
+        </span>
+      ),
+    },
+    {
+      key: "acciones",
+      header: "Acciones",
+      align: "right",
+      cellClassName: "space-x-2",
+      render: (n) => (
+        <>
+          <button
+            onClick={() => startEditNut(n)}
+            className="text-xs text-stone-500 hover:text-stone-700"
+          >
+            Editar
+          </button>
+          <button
+            onClick={() => handleDeleteNut(n.id)}
+            className="text-xs text-red-500 hover:text-red-700"
+          >
+            Eliminar
+          </button>
+        </>
+      ),
+    },
+  ];
+
+  const mappingColumns: DataTableColumn<AssessmentMapping>[] = [
+    {
+      key: "symptomName",
+      header: "Síntoma",
+      sortable: true,
+      render: (m) => (
+        <>
+          <span className="text-xs text-stone-400 mr-1">#{m.symptomId}</span>
+          {m.symptomName}
+        </>
+      ),
+    },
+    {
+      key: "nutrientName",
+      header: "Nutriente",
+      sortable: true,
+      render: (m) => m.nutrientName,
+    },
+    {
+      key: "weight",
+      header: "Peso",
+      align: "center",
+      sortable: true,
+      render: (m) => {
+        const isEditing =
+          editingMapKey?.symptomId === m.symptomId &&
+          editingMapKey?.nutrientId === m.nutrientId;
+        return isEditing ? (
+          <select
+            value={mapWeight}
+            onChange={(e) => setMapWeight(e.target.value)}
+            className="border border-stone-300 px-2 py-1 text-sm rounded"
+          >
+            <option value="1">1</option>
+            <option value="2">2</option>
+          </select>
+        ) : (
+          <span
+            className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
+              m.weight === 2 ? "bg-amber-100 text-amber-700" : "bg-stone-100 text-stone-600"
+            }`}
+          >
+            {m.weight} — {m.weight === 2 ? "Fuerte" : "Moderado"}
+          </span>
+        );
+      },
+    },
+    {
+      key: "acciones",
+      header: "Acciones",
+      align: "right",
+      cellClassName: "space-x-2",
+      render: (m) => {
+        const isEditing =
+          editingMapKey?.symptomId === m.symptomId &&
+          editingMapKey?.nutrientId === m.nutrientId;
+        return isEditing ? (
+          <>
+            <button
+              onClick={handleMapWeightUpdate}
+              disabled={saving}
+              className="text-xs text-emerald-600 hover:text-emerald-700 font-medium"
+            >
+              Guardar
+            </button>
+            <button
+              onClick={() => setEditingMapKey(null)}
+              className="text-xs text-stone-500 hover:text-stone-700"
+            >
+              Cancelar
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              onClick={() => {
+                setEditingMapKey({ symptomId: m.symptomId, nutrientId: m.nutrientId });
+                setMapWeight(String(m.weight));
+              }}
+              className="text-xs text-stone-500 hover:text-stone-700"
+            >
+              Editar peso
+            </button>
+            <button
+              onClick={() => handleDeleteMap(m.symptomId, m.nutrientId)}
+              className="text-xs text-red-500 hover:text-red-700"
+            >
+              Eliminar
+            </button>
+          </>
+        );
+      },
+    },
+  ];
+
+  const resultColumns: DataTableColumn<AssessmentResult>[] = [
+    {
+      key: "patientName",
+      header: "Paciente",
+      sortable: true,
+      render: (r) => r.patientName,
+    },
+    {
+      key: "patientSex",
+      header: "Sexo",
+      sortable: true,
+      render: (r) => (
+        <span
+          className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
+            r.patientSex === "F" ? "bg-pink-100 text-pink-700" : "bg-blue-100 text-blue-700"
+          }`}
+        >
+          {r.patientSex}
+        </span>
+      ),
+    },
+    {
+      key: "patientAge",
+      header: "Edad",
+      align: "center",
+      sortable: true,
+      render: (r) => r.patientAge,
+    },
+    {
+      key: "status",
+      header: "Estado",
+      sortable: true,
+      render: (r) => (
+        <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
+          {r.status}
+        </span>
+      ),
+    },
+    {
+      key: "createdAt",
+      header: "Creada",
+      sortable: true,
+      cellClassName: "text-xs text-stone-500",
+      render: (r) => r.createdAt,
+    },
+    {
+      key: "completedAt",
+      header: "Completada",
+      sortable: true,
+      cellClassName: "text-xs text-stone-500",
+      render: (r) => r.completedAt ?? "—",
+    },
+  ];
+
   if (loading) return <p className="text-stone-500">Cargando…</p>;
 
   return (
@@ -425,46 +586,19 @@ export function AssessmentAdminPage() {
             </div>
           </form>
 
-          {symptoms.length === 0 ? (
-            <p className="text-stone-500 text-sm">No hay síntomas cargados.</p>
-          ) : (
-            <div className="bg-white rounded-xl border border-stone-200 overflow-x-auto">
-              <table className="w-full min-w-[640px] text-sm">
-                <thead>
-                  <tr className="border-b border-stone-200 bg-stone-50">
-                    <SortableTh label="ID" sortKey="id" activeKey={symSort.sortKey} activeDir={symSort.sortDir} onSort={symSort.toggleSort} />
-                    <SortableTh label="Nombre" sortKey="nameEs" activeKey={symSort.sortKey} activeDir={symSort.sortDir} onSort={symSort.toggleSort} />
-                    <th className="text-right px-4 py-3 font-medium text-stone-600">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {symSort.sorted.map((s) => (
-                    <tr key={s.id} className="border-b border-stone-100 hover:bg-stone-50">
-                      <td className="px-4 py-3 font-mono text-xs">{s.id}</td>
-                      <td className="px-4 py-3">{s.nameEs}</td>
-                      <td className="px-4 py-3 text-right space-x-2">
-                        <button
-                          onClick={() => startEditSym(s)}
-                          className="text-xs text-stone-500 hover:text-stone-700"
-                        >
-                          Editar
-                        </button>
-                        <button
-                          onClick={() => handleDeleteSym(s.id)}
-                          className="text-xs text-red-500 hover:text-red-700"
-                        >
-                          Eliminar
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          <DataTable
+            columns={symptomColumns}
+            rows={symptoms}
+            getRowKey={(s) => String(s.id)}
+            emptyMessage="No hay síntomas cargados."
+            initialSort={{ key: "id", dir: "asc" }}
+            containerClassName="bg-white rounded-xl border border-stone-200"
+            footer={
               <div className="px-4 py-2 text-xs text-stone-400 border-t border-stone-100">
                 {symptoms.length} síntomas
               </div>
-            </div>
-          )}
+            }
+          />
         </div>
       )}
 
@@ -533,52 +667,19 @@ export function AssessmentAdminPage() {
             </div>
           </form>
 
-          {nutrients.length === 0 ? (
-            <p className="text-stone-500 text-sm">No hay nutrientes cargados.</p>
-          ) : (
-            <div className="bg-white rounded-xl border border-stone-200 overflow-x-auto">
-              <table className="w-full min-w-[640px] text-sm">
-                <thead>
-                  <tr className="border-b border-stone-200 bg-stone-50">
-                    <SortableTh label="ID" sortKey="id" activeKey={nutSort.sortKey} activeDir={nutSort.sortDir} onSort={nutSort.toggleSort} />
-                    <SortableTh label="Nombre" sortKey="name" activeKey={nutSort.sortKey} activeDir={nutSort.sortDir} onSort={nutSort.toggleSort} />
-                    <SortableTh label="Tipo" sortKey="type" activeKey={nutSort.sortKey} activeDir={nutSort.sortDir} onSort={nutSort.toggleSort} />
-                    <th className="text-right px-4 py-3 font-medium text-stone-600">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {nutSort.sorted.map((n) => (
-                    <tr key={n.id} className="border-b border-stone-100 hover:bg-stone-50">
-                      <td className="px-4 py-3 font-mono text-xs">{n.id}</td>
-                      <td className="px-4 py-3">{n.name}</td>
-                      <td className="px-4 py-3">
-                        <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-stone-100 text-stone-600">
-                          {TYPE_LABELS[n.type] ?? n.type}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-right space-x-2">
-                        <button
-                          onClick={() => startEditNut(n)}
-                          className="text-xs text-stone-500 hover:text-stone-700"
-                        >
-                          Editar
-                        </button>
-                        <button
-                          onClick={() => handleDeleteNut(n.id)}
-                          className="text-xs text-red-500 hover:text-red-700"
-                        >
-                          Eliminar
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          <DataTable
+            columns={nutrientColumns}
+            rows={nutrients}
+            getRowKey={(n) => n.id}
+            emptyMessage="No hay nutrientes cargados."
+            initialSort={{ key: "id", dir: "asc" }}
+            containerClassName="bg-white rounded-xl border border-stone-200"
+            footer={
               <div className="px-4 py-2 text-xs text-stone-400 border-t border-stone-100">
                 {nutrients.length} nutrientes
               </div>
-            </div>
-          )}
+            }
+          />
         </div>
       )}
 
@@ -641,155 +742,40 @@ export function AssessmentAdminPage() {
             </div>
           </form>
 
-          {mappings.length === 0 ? (
-            <p className="text-stone-500 text-sm">No hay mapeos cargados.</p>
-          ) : (
-            <div className="bg-white rounded-xl border border-stone-200 overflow-x-auto">
-              <table className="w-full min-w-[640px] text-sm">
-                <thead>
-                  <tr className="border-b border-stone-200 bg-stone-50">
-                    <SortableTh label="Síntoma" sortKey="symptomName" activeKey={mapSort.sortKey} activeDir={mapSort.sortDir} onSort={mapSort.toggleSort} />
-                    <SortableTh label="Nutriente" sortKey="nutrientName" activeKey={mapSort.sortKey} activeDir={mapSort.sortDir} onSort={mapSort.toggleSort} />
-                    <SortableTh label="Peso" sortKey="weight" activeKey={mapSort.sortKey} activeDir={mapSort.sortDir} onSort={mapSort.toggleSort} className="text-center" />
-                    <th className="text-right px-4 py-3 font-medium text-stone-600">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {mapSort.sorted.map((m) => {
-                    const isEditing =
-                      editingMapKey?.symptomId === m.symptomId &&
-                      editingMapKey?.nutrientId === m.nutrientId;
-                    return (
-                      <tr key={`${m.symptomId}-${m.nutrientId}`} className="border-b border-stone-100 hover:bg-stone-50">
-                        <td className="px-4 py-3">
-                          <span className="text-xs text-stone-400 mr-1">#{m.symptomId}</span>
-                          {m.symptomName}
-                        </td>
-                        <td className="px-4 py-3">{m.nutrientName}</td>
-                        <td className="px-4 py-3 text-center">
-                          {isEditing ? (
-                            <select
-                              value={mapWeight}
-                              onChange={(e) => setMapWeight(e.target.value)}
-                              className="border border-stone-300 px-2 py-1 text-sm rounded"
-                            >
-                              <option value="1">1</option>
-                              <option value="2">2</option>
-                            </select>
-                          ) : (
-                            <span
-                              className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
-                                m.weight === 2
-                                  ? "bg-amber-100 text-amber-700"
-                                  : "bg-stone-100 text-stone-600"
-                              }`}
-                            >
-                              {m.weight} — {m.weight === 2 ? "Fuerte" : "Moderado"}
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-right space-x-2">
-                          {isEditing ? (
-                            <>
-                              <button
-                                onClick={handleMapWeightUpdate}
-                                disabled={saving}
-                                className="text-xs text-emerald-600 hover:text-emerald-700 font-medium"
-                              >
-                                Guardar
-                              </button>
-                              <button
-                                onClick={() => setEditingMapKey(null)}
-                                className="text-xs text-stone-500 hover:text-stone-700"
-                              >
-                                Cancelar
-                              </button>
-                            </>
-                          ) : (
-                            <>
-                              <button
-                                onClick={() => {
-                                  setEditingMapKey({ symptomId: m.symptomId, nutrientId: m.nutrientId });
-                                  setMapWeight(String(m.weight));
-                                }}
-                                className="text-xs text-stone-500 hover:text-stone-700"
-                              >
-                                Editar peso
-                              </button>
-                              <button
-                                onClick={() => handleDeleteMap(m.symptomId, m.nutrientId)}
-                                className="text-xs text-red-500 hover:text-red-700"
-                              >
-                                Eliminar
-                              </button>
-                            </>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+          <DataTable
+            columns={mappingColumns}
+            rows={mappings}
+            getRowKey={(m) => `${m.symptomId}-${m.nutrientId}`}
+            emptyMessage="No hay mapeos cargados."
+            // The rows used to open sorted by symptomId (no header marked);
+            // the shared DataTable reproduces exactly that initial order.
+            initialSort={{ key: "symptomId", dir: "asc" }}
+            containerClassName="bg-white rounded-xl border border-stone-200"
+            footer={
               <div className="px-4 py-2 text-xs text-stone-400 border-t border-stone-100">
                 {mappings.length} mapeos
               </div>
-            </div>
-          )}
+            }
+          />
         </div>
       )}
 
       {/* ─── Results Tab (read-only) ──────────────────────────────── */}
       {tab === "results" && (
         <div>
-          {results.length === 0 ? (
-            <div className="bg-stone-50 rounded-xl border border-stone-200 p-8 text-center">
-              <p className="text-stone-500">No hay evaluaciones completadas todavía.</p>
-            </div>
-          ) : (
-            <div className="bg-white rounded-xl border border-stone-200 overflow-x-auto">
-              <table className="w-full min-w-[640px] text-sm">
-                <thead>
-                  <tr className="border-b border-stone-200 bg-stone-50">
-                    <SortableTh label="Paciente" sortKey="patientName" activeKey={resSort.sortKey} activeDir={resSort.sortDir} onSort={resSort.toggleSort} />
-                    <SortableTh label="Sexo" sortKey="patientSex" activeKey={resSort.sortKey} activeDir={resSort.sortDir} onSort={resSort.toggleSort} />
-                    <SortableTh label="Edad" sortKey="patientAge" activeKey={resSort.sortKey} activeDir={resSort.sortDir} onSort={resSort.toggleSort} className="text-center" />
-                    <SortableTh label="Estado" sortKey="status" activeKey={resSort.sortKey} activeDir={resSort.sortDir} onSort={resSort.toggleSort} />
-                    <SortableTh label="Creada" sortKey="createdAt" activeKey={resSort.sortKey} activeDir={resSort.sortDir} onSort={resSort.toggleSort} />
-                    <SortableTh label="Completada" sortKey="completedAt" activeKey={resSort.sortKey} activeDir={resSort.sortDir} onSort={resSort.toggleSort} />
-                  </tr>
-                </thead>
-                <tbody>
-                  {resSort.sorted.map((r) => (
-                    <tr key={r.id} className="border-b border-stone-100 hover:bg-stone-50">
-                      <td className="px-4 py-3">{r.patientName}</td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
-                            r.patientSex === "F"
-                              ? "bg-pink-100 text-pink-700"
-                              : "bg-blue-100 text-blue-700"
-                          }`}
-                        >
-                          {r.patientSex}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-center">{r.patientAge}</td>
-                      <td className="px-4 py-3">
-                        <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
-                          {r.status}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-xs text-stone-500">{r.createdAt}</td>
-                      <td className="px-4 py-3 text-xs text-stone-500">{r.completedAt ?? "—"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          <DataTable
+            columns={resultColumns}
+            rows={results}
+            getRowKey={(r) => r.id}
+            emptyMessage="No hay evaluaciones completadas todavía."
+            initialSort={{ key: "createdAt", dir: "desc" }}
+            containerClassName="bg-white rounded-xl border border-stone-200"
+            footer={
               <div className="px-4 py-2 text-xs text-stone-400 border-t border-stone-100">
                 {results.length} evaluaciones completadas
               </div>
-            </div>
-          )}
+            }
+          />
         </div>
       )}
     </div>

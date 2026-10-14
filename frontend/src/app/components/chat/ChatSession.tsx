@@ -121,19 +121,23 @@ export function ChatSession({ onOpenAssessment, onClose }: ChatSessionProps) {
   // T3 chat-intake — the 5-step questionnaire answers (client-side shape).
   const [profile, setProfile] = useState<IntakeProfile>(EMPTY_PROFILE);
 
-  // ENABLED video segments for `[VIDEO:<id>]` cards — fetched at boot.
+  // ENABLED video segments for `[VIDEO:<id>]` cards — fetched once the
+  // access-code gate is cleared (see the catalog effect below).
   const [videos, setVideos] = useState<Map<number, VideoCardInfo>>(() => new Map());
 
-  // T6 — Catalog products for `[REF]` citations — fetched at boot. Same
-  // best-effort contract as videos: failure → empty map, never blocks chat.
+  // T6 — Catalog products for `[REF]` citations — same deferred load as the
+  // videos. Best-effort contract unchanged: failure → empty map, never blocks chat.
   const [products, setProducts] = useState<Map<string, ProductCardInfo>>(() => new Map());
 
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Boot: resolve the persisted `[VIDEO:<id>]` markers in assistant replies
-  // (live and reloaded history) into clickable cards. Best-effort only — a
-  // failure here must never block consent, gates, or chat.
+  // T1/S2d — resolve the persisted `[VIDEO:<id>]` markers in assistant replies
+  // (live and reloaded history) into clickable cards. Deferred until
+  // `phase === "chat"`: a visit that never clears the access-code gate must not
+  // pay for this request. Best-effort only — a failure here must never block
+  // consent, gates, or chat.
   useEffect(() => {
+    if (phase !== "chat") return;
     let cancelled = false;
     (async () => {
       try {
@@ -169,11 +173,13 @@ export function ChatSession({ onOpenAssessment, onClose }: ChatSessionProps) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [phase]);
 
-  // T6 — Boot: resolve the `[REF]` citations in agent replies into ProductCards.
+  // T1/S2d — resolve the `[REF]` citations in agent replies into ProductCards,
+  // deferred to `phase === "chat"` for the same reason as the videos.
   // Best-effort only — a failure here must never block consent, gates, or chat.
   useEffect(() => {
+    if (phase !== "chat") return;
     let cancelled = false;
     (async () => {
       try {
@@ -209,7 +215,7 @@ export function ChatSession({ onOpenAssessment, onClose }: ChatSessionProps) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [phase]);
 
   const fetchConsent = useCallback(async (): Promise<ConsentInfo | null> => {
     try {
