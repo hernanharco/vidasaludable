@@ -33,6 +33,13 @@ const STRESS_LEVELS = ["Bajo", "Medio", "Alto"];
 const inputCls =
   "w-full px-3 py-2 bg-white border border-stone-200 rounded-lg text-base md:text-sm text-stone-800 placeholder:text-stone-400 focus:outline-none focus:ring-1 focus:ring-emerald-900 transition-shadow";
 
+/**
+ * S4 — the sex chips read "Mujer"/"Hombre" instead of the bare letters, but
+ * the option VALUE stays F/M so the `POST /api/assistant/profile` wire
+ * contract and every stored row are untouched.
+ */
+const SEX_CHIP_LABELS: Record<string, string> = { F: "Mujer", M: "Hombre" };
+
 const chipCls = (selected: boolean) =>
   [
     "px-3 py-1.5 text-xs rounded-full border transition-colors",
@@ -54,20 +61,49 @@ function isValidAge(raw: string): boolean {
   return Number.isInteger(n) && n >= 1 && n <= 120;
 }
 
+/**
+ * What each gated step still needs, phrased for the customer. The disabled
+ * `Siguiente` button and the visible nudge both read this list, so they can
+ * never disagree (S3 — "no deja avanzar"): the button was grey with no clue
+ * about what was missing.
+ */
+function missingFields(step: number, profile: IntakeProfile): string[] {
+  switch (step) {
+    case 1: {
+      const missing: string[] = [];
+      if (!isValidAge(profile.age)) missing.push("tu edad (entre 1 y 120 años)");
+      if (profile.sex !== "M" && profile.sex !== "F") missing.push("tu sexo (Mujer u Hombre)");
+      return missing;
+    }
+    case 2:
+      return profile.goal === "" ? ["tu objetivo principal"] : [];
+    case 3: {
+      const missing: string[] = [];
+      if (profile.diet === "") missing.push("tu dieta");
+      if (profile.activity === "") missing.push("tu actividad física");
+      return missing;
+    }
+    case 4: {
+      const missing: string[] = [];
+      if (profile.sleep === "") missing.push("tu horario de sueño");
+      if (profile.stress === "") missing.push("tu nivel de estrés");
+      return missing;
+    }
+    default:
+      return []; // step 5: free text is optional
+  }
+}
+
 /** Every step except the last requires its selections before advancing. */
 function isStepComplete(step: number, profile: IntakeProfile): boolean {
-  switch (step) {
-    case 1:
-      return isValidAge(profile.age) && (profile.sex === "M" || profile.sex === "F");
-    case 2:
-      return profile.goal !== "";
-    case 3:
-      return profile.diet !== "" && profile.activity !== "";
-    case 4:
-      return profile.sleep !== "" && profile.stress !== "";
-    default:
-      return true; // step 5: free text is optional
-  }
+  return missingFields(step, profile).length === 0;
+}
+
+/** S3 — the line rendered next to the button while a step is incomplete. */
+function missingHint(step: number, profile: IntakeProfile): string | null {
+  const missing = missingFields(step, profile);
+  if (missing.length === 0) return null;
+  return `Para continuar, completa ${missing.join(" y ")}.`;
 }
 
 function ChipGroup({
@@ -75,15 +111,21 @@ function ChipGroup({
   options,
   value,
   onSelect,
+  labels,
+  hideLabel,
 }: {
   label: string;
   options: string[];
   value: string;
   onSelect: (option: string) => void;
+  /** Optional answer text per option value (the value itself stays the wire value). */
+  labels?: Record<string, string>;
+  /** Skips the visible caption; the group keeps `aria-label={label}` (S4). */
+  hideLabel?: boolean;
 }) {
   return (
     <div className="mb-3">
-      <p className="text-xs text-stone-600 mb-1.5">{label}</p>
+      {!hideLabel && <p className="text-xs text-stone-600 mb-1.5">{label}</p>}
       <div className="flex flex-wrap gap-2" role="group" aria-label={label}>
         {options.map((option) => (
           <button
@@ -93,7 +135,7 @@ function ChipGroup({
             onClick={() => onSelect(option)}
             className={chipCls(value === option)}
           >
-            {option}
+            {labels?.[option] ?? option}
           </button>
         ))}
       </div>
@@ -107,6 +149,7 @@ export function ChatIntake({ profile, onChange, onComplete }: ChatIntakeProps) {
   const [error, setError] = useState<string | null>(null);
 
   const update = (patch: Partial<IntakeProfile>) => onChange({ ...profile, ...patch });
+  const hint = missingHint(step, profile);
 
   const handleComplete = async () => {
     if (saving) return;
@@ -121,136 +164,158 @@ export function ChatIntake({ profile, onChange, onComplete }: ChatIntakeProps) {
 
   return (
     <div className="flex-1 overflow-y-auto p-4 bg-stone-50 flex flex-col">
-      <div className="flex items-baseline justify-between mb-3">
-        <h4 className="font-semibold text-stone-800 text-sm">Cuéntanos sobre ti</h4>
-        <span className="text-[11px] text-stone-400">
-          Paso {step} de {TOTAL_STEPS}
-        </span>
-      </div>
+      {/* S2 — bounded, centered column. At 1440×900 the old full-width panel
+          rendered a thin strip of form, ~700px of empty background and
+          "Siguiente" anchored to the bottom of the viewport. */}
+      <div className="w-full max-w-lg mx-auto my-auto flex flex-col">
+        <div className="flex items-baseline justify-between mb-3">
+          <h4 className="font-semibold text-stone-800 text-sm">Cuéntanos sobre ti</h4>
+          <span className="text-[11px] text-stone-400">
+            Paso {step} de {TOTAL_STEPS}
+          </span>
+        </div>
 
-      {step === 1 && (
-        <div>
-          <label className="text-xs text-stone-600">
-            Tu edad
-            <input
-              type="text"
-              inputMode="numeric"
-              value={profile.age}
-              onChange={(e) => update({ age: e.target.value })}
-              placeholder={AGE_PLACEHOLDER}
-              className={inputCls}
-            />
-          </label>
-          <div className="mt-3">
+        {step === 1 && (
+          <div>
+            <label className="text-xs text-stone-600">
+              Tu edad
+              <input
+                type="text"
+                inputMode="numeric"
+                value={profile.age}
+                onChange={(e) => update({ age: e.target.value })}
+                placeholder={AGE_PLACEHOLDER}
+                className={inputCls}
+              />
+            </label>
+            {/* S4 — this rule belongs to the age field; it used to sit under
+                the Sexo chips, where it read as a non sequitur. */}
+            <p className="mt-1 text-[11px] text-stone-400">Edad entre 1 y 120 años.</p>
+            <div className="mt-3">
+              <ChipGroup
+                label="Sexo"
+                options={["F", "M"]}
+                labels={SEX_CHIP_LABELS}
+                value={profile.sex}
+                onSelect={(option) => update({ sex: option as IntakeProfile["sex"] })}
+              />
+            </div>
+          </div>
+        )}
+
+        {step === 2 && (
+          <div>
+            <h5 className="text-sm font-medium text-stone-800 mb-1">Objetivo principal</h5>
+            <p className="text-xs text-stone-500 mb-3">¿Qué te gustaría mejorar?</p>
+            {/* S4 — the heading already says "Objetivo principal", so the chip
+                group keeps it as aria-label only (it used to print it twice). */}
             <ChipGroup
-              label="Sexo"
-              options={["M", "F"]}
-              value={profile.sex}
-              onSelect={(option) => update({ sex: option as IntakeProfile["sex"] })}
+              label="Objetivo principal"
+              hideLabel
+              options={GOALS}
+              value={profile.goal}
+              onSelect={(option) => update({ goal: option })}
             />
           </div>
-          <p className="text-[11px] text-stone-400">Edad entre 1 y 120 años.</p>
-        </div>
-      )}
+        )}
 
-      {step === 2 && (
-        <div>
-          <h5 className="text-sm font-medium text-stone-800 mb-1">Objetivo principal</h5>
-          <p className="text-xs text-stone-500 mb-3">¿Qué te gustaría mejorar?</p>
-          <ChipGroup
-            label="Objetivo principal"
-            options={GOALS}
-            value={profile.goal}
-            onSelect={(option) => update({ goal: option })}
-          />
-        </div>
-      )}
+        {step === 3 && (
+          <div>
+            <h5 className="text-sm font-medium text-stone-800 mb-3">Hábitos</h5>
+            <ChipGroup
+              label="Dieta"
+              options={DIETS}
+              value={profile.diet}
+              onSelect={(option) => update({ diet: option })}
+            />
+            <ChipGroup
+              label="Actividad física"
+              options={ACTIVITIES}
+              value={profile.activity}
+              onSelect={(option) => update({ activity: option })}
+            />
+          </div>
+        )}
 
-      {step === 3 && (
-        <div>
-          <h5 className="text-sm font-medium text-stone-800 mb-3">Hábitos</h5>
-          <ChipGroup
-            label="Dieta"
-            options={DIETS}
-            value={profile.diet}
-            onSelect={(option) => update({ diet: option })}
-          />
-          <ChipGroup
-            label="Actividad física"
-            options={ACTIVITIES}
-            value={profile.activity}
-            onSelect={(option) => update({ activity: option })}
-          />
-        </div>
-      )}
+        {step === 4 && (
+          <div>
+            <h5 className="text-sm font-medium text-stone-800 mb-3">Sueño y estrés</h5>
+            <ChipGroup
+              label="Sueño"
+              options={SLEEP_RANGES}
+              value={profile.sleep}
+              onSelect={(option) => update({ sleep: option })}
+            />
+            <ChipGroup
+              label="Estrés"
+              options={STRESS_LEVELS}
+              value={profile.stress}
+              onSelect={(option) => update({ stress: option })}
+            />
+          </div>
+        )}
 
-      {step === 4 && (
-        <div>
-          <h5 className="text-sm font-medium text-stone-800 mb-3">Sueño y estrés</h5>
-          <ChipGroup
-            label="Sueño"
-            options={SLEEP_RANGES}
-            value={profile.sleep}
-            onSelect={(option) => update({ sleep: option })}
-          />
-          <ChipGroup
-            label="Estrés"
-            options={STRESS_LEVELS}
-            value={profile.stress}
-            onSelect={(option) => update({ stress: option })}
-          />
-        </div>
-      )}
+        {step === 5 && (
+          <div>
+            <h5 className="text-sm font-medium text-stone-800 mb-1">Pregunta abierta</h5>
+            <p className="text-xs text-stone-500 mb-3">
+              Cuéntanos con tus palabras si algo te preocupa.
+            </p>
+            <textarea
+              value={profile.openNote}
+              onChange={(e) => update({ openNote: e.target.value })}
+              placeholder={OPEN_NOTE_PLACEHOLDER}
+              rows={4}
+              className={inputCls}
+            />
+            {error && (
+              <div className="flex items-start gap-1.5 mt-3 text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg p-2">
+                <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                <span>{error}</span>
+              </div>
+            )}
+          </div>
+        )}
 
-      {step === 5 && (
-        <div>
-          <h5 className="text-sm font-medium text-stone-800 mb-1">Pregunta abierta</h5>
-          <p className="text-xs text-stone-500 mb-3">
-            Cuéntanos con tus palabras si algo te preocupa.
+        {/* S3 — while a step cannot advance, say what is missing right next
+            to the greyed-out button instead of leaving a dead screen. */}
+        {hint && (
+          <p
+            role="status"
+            className="mt-3 text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2"
+          >
+            {hint}
           </p>
-          <textarea
-            value={profile.openNote}
-            onChange={(e) => update({ openNote: e.target.value })}
-            placeholder={OPEN_NOTE_PLACEHOLDER}
-            rows={4}
-            className={inputCls}
-          />
-          {error && (
-            <div className="flex items-start gap-1.5 mt-3 text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg p-2">
-              <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-              <span>{error}</span>
-            </div>
+        )}
+
+        <div className="pt-4 flex gap-2">
+          {step > 1 && (
+            <button
+              type="button"
+              onClick={() => setStep((s) => s - 1)}
+              disabled={saving}
+              className={backBtnCls}
+            >
+              <ChevronLeft className="w-4 h-4" />
+              Atrás
+            </button>
+          )}
+          {step < TOTAL_STEPS ? (
+            <button
+              type="button"
+              onClick={() => setStep((s) => s + 1)}
+              disabled={!isStepComplete(step, profile)}
+              className={nextBtnCls}
+            >
+              Siguiente
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          ) : (
+            <button type="button" onClick={handleComplete} disabled={saving} className={nextBtnCls}>
+              {saving ? "Guardando..." : "Mis recomendaciones"}
+            </button>
           )}
         </div>
-      )}
-
-      <div className="mt-auto pt-4 flex gap-2">
-        {step > 1 && (
-          <button
-            type="button"
-            onClick={() => setStep((s) => s - 1)}
-            disabled={saving}
-            className={backBtnCls}
-          >
-            <ChevronLeft className="w-4 h-4" />
-            Atrás
-          </button>
-        )}
-        {step < TOTAL_STEPS ? (
-          <button
-            type="button"
-            onClick={() => setStep((s) => s + 1)}
-            disabled={!isStepComplete(step, profile)}
-            className={nextBtnCls}
-          >
-            Siguiente
-            <ChevronRight className="w-4 h-4" />
-          </button>
-        ) : (
-          <button type="button" onClick={handleComplete} disabled={saving} className={nextBtnCls}>
-            {saving ? "Guardando..." : "Mis recomendaciones"}
-          </button>
-        )}
       </div>
     </div>
   );

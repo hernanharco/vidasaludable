@@ -43,8 +43,10 @@ export function Hero() {
           </p>
 
           <div className="flex flex-col sm:flex-row gap-4">
+            {/* S1 (odd/tasks/chat-intake-ux.md) — the primary CTA opens the
+                dedicated chat route instead of the in-page booking anchor. */}
             <a
-              href="#booking"
+              href="https://vidasaludable.rincom.es/chat"
               className="inline-flex items-center justify-center px-8 py-4 bg-white text-emerald-900 font-semibold tracking-wide text-sm hover:bg-emerald-50 transition-all group rounded-full shadow-lg shadow-emerald-900/30"
             >
               Comienza tu plan preventivo

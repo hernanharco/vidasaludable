@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import React, { useState } from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ChatIntake, ChatSession } from "../src/app/components/chat";
 import type { IntakeProfile } from "../src/app/components/chat/types";
@@ -46,6 +46,8 @@ interface FetchOptions {
   profile: typeof SERVER_PROFILE | null;
   /** Mutable so a test can flip the POST answer mid-flight (retry case). */
   postProfileOk: boolean;
+  /** POST /api/assistant/register answer (default: 200 + a customer id). */
+  registerOk?: boolean;
 }
 
 function installFetch(options: FetchOptions) {
@@ -54,6 +56,23 @@ function installFetch(options: FetchOptions) {
     // access-code-always: the gate validates + attributes before intake/chat
     const gate = accessCodeFetch(u);
     if (gate) return Promise.resolve(gate);
+    // Fresh-visitor registration gate: consent text + the register upsert.
+    if (u.includes("/api/assistant/consent")) {
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ version: 1, text: "Consentimiento informado." }),
+      });
+    }
+    if (u.includes("/api/assistant/register")) {
+      return options.registerOk === false
+        ? Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) })
+        : Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve({ customer_id: CUSTOMER_ID }),
+          });
+    }
     if (u.includes("/api/assistant/profile")) {
       if (init?.method === "POST") {
         return options.postProfileOk
@@ -88,7 +107,8 @@ const OPEN_NOTE_PLACEHOLDER = "¿Hay algo que te preocupe hoy? (opcional)";
 
 async function fillStep1(user: ReturnType<typeof userEvent.setup>, age = "34", sex: "M" | "F" = "F") {
   await user.type(screen.getByPlaceholderText(AGE_PLACEHOLDER), age);
-  await user.click(screen.getByRole("button", { name: sex }));
+  // S4 — the chips read "Mujer"/"Hombre" but still store the F/M wire value.
+  await user.click(screen.getByRole("button", { name: sex === "F" ? "Mujer" : "Hombre" }));
   await user.click(screen.getByRole("button", { name: /Siguiente/ }));
 }
 
@@ -130,7 +150,7 @@ describe("ChatSession intake flow", () => {
     // Age out of range (0) still blocks, even with a sex selected
     const ageInput = screen.getByPlaceholderText(AGE_PLACEHOLDER);
     await user.type(ageInput, "0");
-    await user.click(screen.getByRole("button", { name: "F" }));
+    await user.click(screen.getByRole("button", { name: "Mujer" }));
     expect(next).toBeDisabled();
 
     // Non-numeric age blocks too
@@ -160,7 +180,7 @@ describe("ChatSession intake flow", () => {
     const next = screen.getByRole("button", { name: /Siguiente/ });
     await user.type(screen.getByPlaceholderText(AGE_PLACEHOLDER), "34");
     expect(next).toBeDisabled();
-    await user.click(screen.getByRole("button", { name: "M" }));
+    await user.click(screen.getByRole("button", { name: "Hombre" }));
     expect(next).toBeEnabled();
   });
 
@@ -227,6 +247,32 @@ describe("ChatSession intake flow", () => {
     });
   });
 
+  it("greets with the saved profile and asks which ailments to talk about (S5)", async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem("vr_customer_id", String(CUSTOMER_ID));
+    installFetch({ profile: null, postProfileOk: true });
+
+    await openWidget(user);
+    expect(await screen.findByText("Paso 1 de 5")).toBeInTheDocument();
+    await fillStep1(user, "34", "F");
+    await fillSteps2to4(user);
+    await user.click(screen.getByRole("button", { name: "Mis recomendaciones" }));
+
+    expect(await screen.findByPlaceholderText("Escribe un mensaje...")).toBeInTheDocument();
+    const transcript = screen.getByRole("log").textContent ?? "";
+
+    // Fixed message (no LLM round-trip) built from the profile just saved.
+    expect(transcript).toContain(
+      "¿Qué dolencias o molestias te gustaría conversar conmigo?",
+    );
+    expect(transcript).toContain("34 años");
+    expect(transcript).toContain("objetivo Sueño");
+    expect(transcript).toContain("Cuéntamelo con tus palabras");
+    expect(
+      mockFetch.mock.calls.filter((call) => String(call[0]).includes("/assistant/ask")),
+    ).toHaveLength(0);
+  });
+
   it("opens chat without intake when the profile already exists", async () => {
     const user = userEvent.setup();
     window.localStorage.setItem("vr_customer_id", String(CUSTOMER_ID));
@@ -237,6 +283,34 @@ describe("ChatSession intake flow", () => {
     expect(await screen.findByPlaceholderText("Escribe un mensaje...")).toBeInTheDocument();
     expect(screen.queryByText(/Paso \d de 5/)).not.toBeInTheDocument();
     expect(mockFetch).toHaveBeenCalledWith("/api/assistant/profile?customer_id=42");
+    expect(profilePostCalls()).toHaveLength(0);
+    // Untouched path pinned: chat that skips the questionnaire still opens
+    // with the generic greeting (the questionnaire path has its own, S5).
+    expect(screen.getByRole("log").textContent).toContain(
+      "¡Hola! ¿En qué te puedo ayudar hoy con tu bienestar?",
+    );
+  });
+
+  it("keeps the generic greeting when a fresh registration finds a saved profile", async () => {
+    const user = userEvent.setup();
+    // No stored identity → full registration gate, then the profile check
+    // routes straight to chat (the upsert re-registers an existing customer).
+    installFetch({ profile: SERVER_PROFILE, postProfileOk: true });
+
+    render(<ChatSession />);
+    await passAccessCodeGate(user);
+
+    await user.type(screen.getByPlaceholderText("Tu nombre"), "Ana Prueba");
+    await user.type(screen.getByPlaceholderText("correo@ejemplo.com"), "ana@example.com");
+    await user.type(screen.getByPlaceholderText("Número de contacto"), "612345678");
+    await user.click(screen.getByRole("checkbox"));
+    await user.click(screen.getByRole("button", { name: /Aceptar y continuar/ }));
+
+    expect(await screen.findByPlaceholderText("Escribe un mensaje...")).toBeInTheDocument();
+    expect(screen.queryByText(/Paso \d de 5/)).not.toBeInTheDocument();
+    expect(screen.getByRole("log").textContent).toContain(
+      "¡Hola! ¿En qué te puedo ayudar hoy con tu bienestar?",
+    );
     expect(profilePostCalls()).toHaveLength(0);
   });
 
@@ -293,7 +367,7 @@ describe("ChatIntake component", () => {
 
     // Step 1: age + sex
     await user.type(screen.getByPlaceholderText(AGE_PLACEHOLDER), "37");
-    await user.click(screen.getByRole("button", { name: "M" }));
+    await user.click(screen.getByRole("button", { name: "Hombre" }));
     await user.click(screen.getByRole("button", { name: /Siguiente/ }));
 
     // Step 2: single-select goal (Energía first, then switch to Huesos)
@@ -319,7 +393,7 @@ describe("ChatIntake component", () => {
     await user.click(screen.getByRole("button", { name: /Atrás/ }));
     expect(await screen.findByText("Paso 1 de 5")).toBeInTheDocument();
     expect(screen.getByPlaceholderText(AGE_PLACEHOLDER)).toHaveValue("37");
-    expect(screen.getByRole("button", { name: "M" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Hombre" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("button", { name: /Siguiente/ })).toBeEnabled();
 
     // Forward again → step 3 selections still there
@@ -348,5 +422,152 @@ describe("ChatIntake component", () => {
       stress: "Medio",
       openNote: "",
     });
+  });
+});
+
+/**
+ * S2-S4 (odd/tasks/chat-intake-ux.md) — the desktop repro showed a thin form
+ * strip, ~700px of empty background and a disabled "Siguiente" pinned to the
+ * bottom with no explanation of what was missing.
+ */
+describe("ChatIntake copy, layout and guidance (S2-S4)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("labels the sex chips Mujer/Hombre and keeps the F/M wire values", async () => {
+    const user = userEvent.setup();
+    const onComplete = vi.fn().mockResolvedValue(true);
+    render(<IntakeHarness onComplete={onComplete} />);
+
+    expect(await screen.findByText("Paso 1 de 5")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Mujer" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Hombre" })).toBeInTheDocument();
+    // The raw letters are no longer offered as answers.
+    expect(screen.queryByRole("button", { name: "M" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "F" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Mujer" }));
+    expect(screen.getByRole("button", { name: "Mujer" })).toHaveAttribute("aria-pressed", "true");
+
+    await user.type(screen.getByPlaceholderText(AGE_PLACEHOLDER), "34");
+    await user.click(screen.getByRole("button", { name: /Siguiente/ }));
+    await user.click(screen.getByRole("button", { name: "Sueño" }));
+    await user.click(screen.getByRole("button", { name: /Siguiente/ }));
+    await user.click(screen.getByRole("button", { name: "Omnívora" }));
+    await user.click(screen.getByRole("button", { name: "Sedentaria" }));
+    await user.click(screen.getByRole("button", { name: /Siguiente/ }));
+    await user.click(screen.getByRole("button", { name: "7-8 h" }));
+    await user.click(screen.getByRole("button", { name: "Medio" }));
+    await user.click(screen.getByRole("button", { name: /Siguiente/ }));
+    await user.click(screen.getByRole("button", { name: "Mis recomendaciones" }));
+
+    await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(1));
+    // Wire contract unchanged: the stored value is still "F".
+    expect(onComplete).toHaveBeenCalledWith(
+      expect.objectContaining({ sex: "F", age: "34" }),
+    );
+  });
+
+  it("says what is missing while Siguiente is disabled and hides it once complete", async () => {
+    const user = userEvent.setup();
+    render(<IntakeHarness onComplete={vi.fn().mockResolvedValue(true)} />);
+
+    const next = await screen.findByRole("button", { name: /Siguiente/ });
+    expect(next).toBeDisabled();
+
+    // Step 1 with nothing filled: both requirements are announced.
+    const hint = await screen.findByRole("status");
+    expect(hint.textContent).toContain("completa tu edad");
+    expect(hint.textContent).toContain("tu sexo");
+
+    // Age only → the hint narrows down to the missing sex chip.
+    await user.type(screen.getByPlaceholderText(AGE_PLACEHOLDER), "34");
+    expect(screen.getByRole("status").textContent).toContain("tu sexo");
+    expect(screen.getByRole("status").textContent).not.toContain("tu edad");
+
+    await user.click(screen.getByRole("button", { name: "Mujer" }));
+    await waitFor(() => expect(screen.queryByRole("status")).not.toBeInTheDocument());
+    expect(next).toBeEnabled();
+  });
+
+  it("nudges every gated step with its own missing answers", async () => {
+    const user = userEvent.setup();
+    render(<IntakeHarness onComplete={vi.fn().mockResolvedValue(true)} />);
+
+    await user.type(screen.getByPlaceholderText(AGE_PLACEHOLDER), "41");
+    await user.click(screen.getByRole("button", { name: "Hombre" }));
+    await user.click(screen.getByRole("button", { name: /Siguiente/ }));
+
+    // Step 2 — objetivo
+    expect(await screen.findByText("Paso 2 de 5")).toBeInTheDocument();
+    expect(screen.getByRole("status").textContent).toContain("tu objetivo principal");
+    await user.click(screen.getByRole("button", { name: "Energía" }));
+    await waitFor(() => expect(screen.queryByRole("status")).not.toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: /Siguiente/ }));
+
+    // Step 3 — dieta y actividad, una por una
+    expect(await screen.findByText("Paso 3 de 5")).toBeInTheDocument();
+    expect(screen.getByRole("status").textContent).toContain("tu dieta");
+    expect(screen.getByRole("status").textContent).toContain("tu actividad física");
+    await user.click(screen.getByRole("button", { name: "Vegetariana" }));
+    expect(screen.getByRole("status").textContent).toContain("tu actividad física");
+    expect(screen.getByRole("status").textContent).not.toContain("tu dieta");
+    await user.click(screen.getByRole("button", { name: "Leve" }));
+    await waitFor(() => expect(screen.queryByRole("status")).not.toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: /Siguiente/ }));
+
+    // Step 4 — sueño y estrés
+    expect(await screen.findByText("Paso 4 de 5")).toBeInTheDocument();
+    expect(screen.getByRole("status").textContent).toContain("tu horario de sueño");
+    await user.click(screen.getByRole("button", { name: "7-8 h" }));
+    expect(screen.getByRole("status").textContent).toContain("tu nivel de estrés");
+    await user.click(screen.getByRole("button", { name: "Medio" }));
+    await waitFor(() => expect(screen.queryByRole("status")).not.toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: /Siguiente/ }));
+
+    // Step 5 — nothing is required, so there is no nag.
+    expect(await screen.findByText("Paso 5 de 5")).toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Mis recomendaciones" })).toBeEnabled();
+  });
+
+  it("renders 'Objetivo principal' once, as the heading and the group name", async () => {
+    const user = userEvent.setup();
+    render(<IntakeHarness onComplete={vi.fn().mockResolvedValue(true)} />);
+
+    await user.type(screen.getByPlaceholderText(AGE_PLACEHOLDER), "34");
+    await user.click(screen.getByRole("button", { name: "Mujer" }));
+    await user.click(screen.getByRole("button", { name: /Siguiente/ }));
+
+    expect(await screen.findByText("Paso 2 de 5")).toBeInTheDocument();
+    expect(screen.getAllByText("Objetivo principal")).toHaveLength(1);
+    // The chip group keeps its accessible name for screen readers.
+    expect(screen.getByRole("group", { name: "Objetivo principal" })).toBeInTheDocument();
+  });
+
+  it("places the age rule next to the age field, above the Sexo group", async () => {
+    render(<IntakeHarness onComplete={vi.fn().mockResolvedValue(true)} />);
+    expect(await screen.findByText("Paso 1 de 5")).toBeInTheDocument();
+
+    const ageRule = screen.getByText("Edad entre 1 y 120 años.");
+    const afterAgeRule = ageRule.nextElementSibling as HTMLElement;
+    expect(afterAgeRule).not.toBeNull();
+    expect(within(afterAgeRule).getByRole("group", { name: "Sexo" })).toBeInTheDocument();
+  });
+
+  it("keeps the form in a centered bounded column with the button next to it", async () => {
+    render(<IntakeHarness onComplete={vi.fn().mockResolvedValue(true)} />);
+    expect(await screen.findByText("Paso 1 de 5")).toBeInTheDocument();
+
+    const column = document.querySelector(".max-w-lg") as HTMLElement | null;
+    expect(column).not.toBeNull();
+    expect(column?.className).toContain("mx-auto");
+
+    const next = screen.getByRole("button", { name: /Siguiente/ });
+    expect(column?.contains(next)).toBe(true);
+    // No auto margin pushing the footer to the far bottom of the viewport:
+    // that is what left ~700px of blank background on desktop.
+    expect(document.querySelector(".mt-auto")).toBeNull();
   });
 });
