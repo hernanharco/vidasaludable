@@ -48,6 +48,10 @@ interface FetchOptions {
   postProfileOk: boolean;
   /** POST /api/assistant/register answer (default: 200 + a customer id). */
   registerOk?: boolean;
+  /** POST /api/assistant/ask reply text (default: handled error via 404). */
+  askReply?: string;
+  /** When true, POST /api/assistant/ask answers 500 (failure path). */
+  askFail?: boolean;
 }
 
 function installFetch(options: FetchOptions) {
@@ -83,6 +87,20 @@ function installFetch(options: FetchOptions) {
         ok: true,
         status: 200,
         json: () => Promise.resolve({ profile: options.profile }),
+      });
+    }
+    if (u.includes("/api/assistant/ask")) {
+      if (options.askFail) {
+        return Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) });
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () =>
+          Promise.resolve({
+            conversation_id: 77,
+            reply: options.askReply ?? "Respuesta del agente",
+          }),
       });
     }
     // videos / products / consent / history — not needed by these tests
@@ -553,10 +571,14 @@ describe("ChatIntake copy, layout and guidance (S2-S4)", () => {
     expect(screen.getByRole("group", { name: "Objetivos principales" })).toBeInTheDocument();
   });
 
-  it("opens the conversation quoting the saved open note as the topic", async () => {
+  it("hands the saved note to the agent as the first user message and shows its reply", async () => {
     const user = userEvent.setup();
     window.localStorage.setItem("vr_customer_id", String(CUSTOMER_ID));
-    installFetch({ profile: null, postProfileOk: true });
+    installFetch({
+      profile: null,
+      postProfileOk: true,
+      askReply: "Revisemos: ¿a qué horas del día sientes ese cansancio?",
+    });
 
     await openWidget(user);
     expect(await screen.findByText("Paso 1 de 5")).toBeInTheDocument();
@@ -588,13 +610,55 @@ describe("ChatIntake copy, layout and guidance (S2-S4)", () => {
     expect(await screen.findByPlaceholderText("Escribe un mensaje...")).toBeInTheDocument();
     const transcript = screen.getByRole("log").textContent ?? "";
 
-    // The saved note is quoted as the opener, not the generic ailments ask.
+    // The note becomes the customer's first message and the agent engages
+    // with its own (LLM) reply — exactly one automatic ask, carrying the note.
+    const askCalls = mockFetch.mock.calls.filter((call) =>
+      String(call[0]).includes("/assistant/ask"),
+    );
+    expect(askCalls).toHaveLength(1);
+    expect(JSON.parse(String((askCalls[0]![1] as RequestInit).body))).toMatchObject({
+      customer_id: CUSTOMER_ID,
+      message: "Me preocupa el cansancio de la tarde",
+    });
+    expect(
+      await screen.findByText("Revisemos: ¿a qué horas del día sientes ese cansancio?"),
+    ).toBeInTheDocument();
+
+    // The greeting no longer quotes the note (the user bubble carries it).
     expect(transcript).toContain("Me preocupa el cansancio de la tarde");
+    expect(transcript).not.toContain("Veo que esto te preocupa");
     expect(transcript).not.toContain(
       "¿Qué dolencias o molestias te gustaría conversar conmigo?",
     );
     // Multiple goals are pluralized in the greeting.
     expect(transcript).toContain("objetivos Energía, Sueño");
+  });
+
+  it("keeps the chat usable when the automatic opener ask fails", async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem("vr_customer_id", String(CUSTOMER_ID));
+    installFetch({ profile: null, postProfileOk: true, askFail: true });
+
+    await openWidget(user);
+    expect(await screen.findByText("Paso 1 de 5")).toBeInTheDocument();
+    await fillStep1(user, "34", "F");
+    await fillSteps2to4(user);
+    await user.type(
+      screen.getByPlaceholderText(OPEN_NOTE_PLACEHOLDER),
+      "Me preocupa el cansancio de la tarde",
+    );
+    await user.click(screen.getByRole("button", { name: "Mis recomendaciones" }));
+
+    // The ask was attempted once and its failure degrades to the standard
+    // agent error line — the conversation stays open and usable.
+    const askCalls = mockFetch.mock.calls.filter((call) =>
+      String(call[0]).includes("/assistant/ask"),
+    );
+    expect(askCalls).toHaveLength(1);
+    expect(
+      await screen.findByText("Algo salió mal al procesar tu mensaje. Por favor, inténtalo de nuevo."),
+    ).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Escribe un mensaje...")).toBeInTheDocument();
   });
 
   it("places the age rule next to the age field, above the Sexo group", async () => {

@@ -56,13 +56,11 @@ function buildIntakeGreeting(profile: IntakeProfile): string {
   }
   const detail = facts.length > 0 ? ` (${facts.join(" · ")})` : "";
   const base = `¡Hola! Ya guardé tu ficha inicial${detail}. `;
-  const note = profile.openNote.trim();
-  if (note !== "") {
-    // The step-5 note is the topic the customer already opened with: quote it
-    // as the conversation starter instead of the generic ailments ask.
-    return (
-      base + `Veo que esto te preocupa: «${note}». Cuéntame más al respecto cuando quieras.`
-    );
+  if (profile.openNote.trim() !== "") {
+    // With a note the hand-off is conversational: the greeting stays short,
+    // the note is appended as the customer's first message and the agent
+    // replies through /assistant/ask (see handleIntakeComplete).
+    return base + "Gracias por contarme tu preocupación; la tengo en cuenta.";
   }
   return (
     base +
@@ -507,18 +505,30 @@ export function ChatSession({ onOpenAssessment, onClose }: ChatSessionProps) {
     }
     setProfile(next);
     setChatError(null);
+    const note = next.openNote.trim();
+    const fresh = messages.length === 0;
     // Keep an already-restored conversation; otherwise open with the
     // profile-aware S5 greeting that asks about the customer's ailments.
     setMessages((prev) =>
       prev.length > 0 ? prev : [{ sender: "agent", text: buildIntakeGreeting(next) }],
     );
     setPhase("chat");
+    if (fresh && note !== "") {
+      // The concern they just typed becomes their first message: the agent
+      // engages from the full profile (the note rides in profileBlock),
+      // either asking follow-up questions or recommending — degraded to the
+      // standard error line if /assistant/ask fails, never blocking the chat.
+      void sendMessage(note);
+    }
     return true;
   };
 
-  const handleSend = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const text = inputValue.trim();
+  /**
+   * One conversation turn: appends the customer's bubble and runs the
+   * /assistant/ask round-trip with its 401/503/error degradation. Shared by
+   * the input form and the automatic post-intake opener (note hand-off).
+   */
+  const sendMessage = async (text: string) => {
     if (!text || sending) return;
 
     if (customerId == null) {
@@ -528,7 +538,6 @@ export function ChatSession({ onOpenAssessment, onClose }: ChatSessionProps) {
       return;
     }
 
-    setInputValue("");
     setChatError(null);
     appendMessage({ sender: "user", text });
     setSending(true);
@@ -585,6 +594,14 @@ export function ChatSession({ onOpenAssessment, onClose }: ChatSessionProps) {
     } finally {
       setSending(false);
     }
+  };
+
+  const handleSend = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const text = inputValue.trim();
+    if (!text || sending) return;
+    setInputValue("");
+    void sendMessage(text);
   };
 
   return (
