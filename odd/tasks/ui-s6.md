@@ -189,3 +189,40 @@ confirmó que no existe search en admin, que el truncado solo vive en
 `sonner` está instalado pero sin montar, el mapa completo de headings y los tres
 quick wins. El grep de `alert(`/`window.confirm` = 0 → el ítem "confirm→alert-dialog"
 del pool ya está cerrado por PR #45.
+
+**L4** Chain A — T1 (S3+S4) implementado por writer con Allowed edit surfaces;
+RED→GREEN (17 tests nuevos), verificación parent 201/201 + tsc + build; review
+nativo `review-ae954835d5fce811` (medium, 4 lentes) **APPROVED**, receipt
+quemado, 5 advisory (2 WARNING sobre `searchable` sin `searchText` → corregido
+en T4). Commit `49b3816b` (+ docs `17b67633` con `.gitignore` de `.codegraph/`);
+PR **#51** squash-mergeado a `main` como `83216957` con CI + Deploy verdes.
+Issue #50 abierto a propósito hasta chain B.
+
+**L5** Chain B — T2 (`1b585958`): S5 (regla global + `MotionConfig`) y S7
+(`<Toaster/>` + 10 `toast.success`), suite 204/204; el mock de `motion/react` en
+`ChatLauncher.test.tsx` necesitó `MotionConfig` stub + `matchMedia` (jsdom sin
+`matchMedia`, sonner lo llama sin guardar) — decisión del parent, opción 1 del
+writer. T3+T4 (`dd9273af`): headings tag-only (~16 archivos) + quick wins +
+fix del advisory (`DataTable` input gated en `searchable && searchText`), suite
+**210/210** (28 files) + tsc + build. Review `review-90572f3f82431916` (medium,
+4 lentes) **APPROVED**, receipt quemado, 4 advisory informativos (el grupo de
+lecturas falló 2× por transporte en `readability` y cerró al 3er intento, slot a
+slot). Rebase limpio sobre `83216957` → commits `e53a70e4` + `d5c41226`;
+post-rebase 210/210 + tsc + build verdes.
+
+**L6** Desviaciones registradas (todas deliberadas, ninguna rompe S9):
+1. `ErrorBanner` ganó `headingLevel?: 1 | 2` (default 2 = comportamiento previo
+   byte-idéntico): un tag fijo no puede servir a las ramas exclusivas (h1) y a
+   las embedidas sin romper "un h1 por pantalla".
+2. `RegistrationGate` vive en `components/chat/RegistrationGate.tsx` (el spec
+   listaba un path `components/` viejo; es el único del repo).
+3. **Pendiente conocido**: `ErrorBanner` embedido en 4 páginas fuera de las
+   superficies de esta tarea (`CustomersPage`, `ConversationsPage`,
+   `CatalogPage`, `Dashboard`) puede renderizar h2 sobre el h1 de la página en
+   estados de error — no estaba en los flags de S6.
+4. El target `c6ae20f9…` (diff commiteado T1+T2) no pudo iniciar review (2×
+   `empty_candidate_base_ref_required`, sin linaje creado); T1 y T3+T4 tienen
+   receipt APPROVED propio y T2 queda como candidato para un retry o verifier
+   independiente al cierre.
+5. Smoke end-to-end pendiente por DNS: `vidasaludable.rincon.es` no resuelve
+   desde la máquina del agente (000); el pipeline CI+Deploy es la señal viva.
