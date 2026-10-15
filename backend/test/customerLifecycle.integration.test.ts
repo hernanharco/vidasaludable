@@ -14,6 +14,7 @@ import {
   recommendations,
   purchases,
   products,
+  customerSummaries,
 } from "../src/db/schema.js";
 import type { Hono } from "hono";
 
@@ -311,6 +312,32 @@ describe("customer lifecycle (register attribution + safe delete)", () => {
     // Unknown id stays a clean 404.
     const missing = await app.request(`/admin/customers/${customerId}`, { method: "DELETE" });
     expect(missing.status).toBe(404);
+  });
+
+  it("DELETE /admin/customers/:id removes a customer who has an advisor summary (regression: FK customer_summaries)", async () => {
+    const res = await post("/assistant/register", {
+      name: "Con Resumen",
+      email: "resumen@example.com",
+      phone: "+34600000004",
+      consent_version: 1,
+      referrer_id: referrerB.id,
+    });
+    expect(res.status).toBe(200);
+    const customerId = ((await res.json()) as { customer_id: number }).customer_id;
+
+    // advisor-summary added customer_summaries.customer_id → customers.id
+    // with NO cascade AFTER the delete cascade was written. In production
+    // this shape made the admin "Eliminar" button return HTTP 500
+    // (SQLITE_CONSTRAINT_FOREIGNKEY) for any customer with a generated
+    // executive summary (real case: customer id 3, 2026-10-15).
+    db.insert(customerSummaries)
+      .values({ customerId, content: "Resumen", model: "gemini-3.5-flash-lite" })
+      .run();
+
+    const del = await app.request(`/admin/customers/${customerId}`, { method: "DELETE" });
+    expect(del.status).toBe(204);
+    expect(getCustomer(customerId)).toBeUndefined();
+    expect(countRows(customerSummaries, customerId)).toBe(0);
   });
 
   it("DELETE /admin/conversations/:id removes a conversation that has recommendations", async () => {

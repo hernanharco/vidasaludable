@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import type { Db } from "../db/client.js";
-import { customers, referrers, customerProfile, conversations, messages, recommendations, purchases } from "../db/schema.js";
+import { customers, referrers, customerProfile, customerSummaries, conversations, messages, recommendations, purchases } from "../db/schema.js";
 import type { Customer } from "../db/schema.js";
 import { CURRENT_CONSENT_VERSION } from "../config/consent.js";
 
@@ -240,9 +240,10 @@ export function createCustomerService(db: Db): CustomerService {
     },
 
     delete(customerId: number): boolean {
-      // `customer_profile`, `conversations`, `purchases` and `recommendations`
-      // reference `customers` directly, and `messages`/`recommendations` do so
-      // through `conversations`. None of those foreign keys cascade, so a bare
+      // `customer_profile`, `customer_summaries`, `conversations`, `purchases`
+      // and `recommendations` reference `customers` directly, and
+      // `messages`/`recommendations` do so through `conversations`. None of
+      // those foreign keys cascade, so a bare
       // `DELETE FROM customers` threw `FOREIGN KEY constraint failed` for any
       // customer with history — which made the admin "Eliminar" button fail
       // silently. Remove the dependents first, in FK-safe order, inside ONE
@@ -266,6 +267,11 @@ export function createCustomerService(db: Db): CustomerService {
         tx.delete(conversations).where(eq(conversations.customerId, customerId)).run();
         tx.delete(purchases).where(eq(purchases.customerId, customerId)).run();
         tx.delete(customerProfile).where(eq(customerProfile.customerId, customerId)).run();
+        // Added after the fact by advisor-summary: this FK came later and
+        // made the admin "Eliminar" button 500 for any customer with a
+        // generated executive summary (regression test in
+        // customerLifecycle.integration.test.ts).
+        tx.delete(customerSummaries).where(eq(customerSummaries.customerId, customerId)).run();
 
         const deleted = tx
           .delete(customers)
