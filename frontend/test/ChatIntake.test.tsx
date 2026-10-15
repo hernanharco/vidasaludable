@@ -46,6 +46,8 @@ interface FetchOptions {
   profile: typeof SERVER_PROFILE | null;
   /** Mutable so a test can flip the POST answer mid-flight (retry case). */
   postProfileOk: boolean;
+  /** POST /api/assistant/register answer (default: 200 + a customer id). */
+  registerOk?: boolean;
 }
 
 function installFetch(options: FetchOptions) {
@@ -54,6 +56,23 @@ function installFetch(options: FetchOptions) {
     // access-code-always: the gate validates + attributes before intake/chat
     const gate = accessCodeFetch(u);
     if (gate) return Promise.resolve(gate);
+    // Fresh-visitor registration gate: consent text + the register upsert.
+    if (u.includes("/api/assistant/consent")) {
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ version: 1, text: "Consentimiento informado." }),
+      });
+    }
+    if (u.includes("/api/assistant/register")) {
+      return options.registerOk === false
+        ? Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) })
+        : Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve({ customer_id: CUSTOMER_ID }),
+          });
+    }
     if (u.includes("/api/assistant/profile")) {
       if (init?.method === "POST") {
         return options.postProfileOk
@@ -264,6 +283,34 @@ describe("ChatSession intake flow", () => {
     expect(await screen.findByPlaceholderText("Escribe un mensaje...")).toBeInTheDocument();
     expect(screen.queryByText(/Paso \d de 5/)).not.toBeInTheDocument();
     expect(mockFetch).toHaveBeenCalledWith("/api/assistant/profile?customer_id=42");
+    expect(profilePostCalls()).toHaveLength(0);
+    // Untouched path pinned: chat that skips the questionnaire still opens
+    // with the generic greeting (the questionnaire path has its own, S5).
+    expect(screen.getByRole("log").textContent).toContain(
+      "¡Hola! ¿En qué te puedo ayudar hoy con tu bienestar?",
+    );
+  });
+
+  it("keeps the generic greeting when a fresh registration finds a saved profile", async () => {
+    const user = userEvent.setup();
+    // No stored identity → full registration gate, then the profile check
+    // routes straight to chat (the upsert re-registers an existing customer).
+    installFetch({ profile: SERVER_PROFILE, postProfileOk: true });
+
+    render(<ChatSession />);
+    await passAccessCodeGate(user);
+
+    await user.type(screen.getByPlaceholderText("Tu nombre"), "Ana Prueba");
+    await user.type(screen.getByPlaceholderText("correo@ejemplo.com"), "ana@example.com");
+    await user.type(screen.getByPlaceholderText("Número de contacto"), "612345678");
+    await user.click(screen.getByRole("checkbox"));
+    await user.click(screen.getByRole("button", { name: /Aceptar y continuar/ }));
+
+    expect(await screen.findByPlaceholderText("Escribe un mensaje...")).toBeInTheDocument();
+    expect(screen.queryByText(/Paso \d de 5/)).not.toBeInTheDocument();
+    expect(screen.getByRole("log").textContent).toContain(
+      "¡Hola! ¿En qué te puedo ayudar hoy con tu bienestar?",
+    );
     expect(profilePostCalls()).toHaveLength(0);
   });
 
