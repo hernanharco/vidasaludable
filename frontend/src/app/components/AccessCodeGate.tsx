@@ -68,9 +68,9 @@ export function AccessCodeGate({ onValidated }: AccessCodeGateProps) {
 
   return (
     <div className="flex-1 overflow-y-auto p-4 bg-stone-50">
-      <h4 className="font-semibold text-stone-800 text-sm mb-1">
+      <h2 className="font-semibold text-stone-800 text-sm mb-1">
         Código de acceso
-      </h4>
+      </h2>
       <p className="text-xs text-stone-500 mb-3">
         Ingresá el código que te dieron para acceder a este servicio.
       </p>

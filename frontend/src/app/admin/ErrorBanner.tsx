@@ -51,17 +51,31 @@ interface ErrorBannerProps {
   title?: string;
   /** When provided, renders a "Reintentar" recovery button. */
   onRetry?: () => void;
+  /**
+   * Heading level for the banner title (S6): 1 when the banner replaces the
+   * page (its title is the screen's only heading); 2 —the default— when it
+   * sits inside a page that already has an h1. Either way the screen keeps
+   * exactly one h1 and no level skips.
+   */
+  headingLevel?: 1 | 2;
 }
 
-export function ErrorBanner({ status, detail, title, onRetry }: ErrorBannerProps) {
+export function ErrorBanner({
+  status,
+  detail,
+  title,
+  onRetry,
+  headingLevel = 2,
+}: ErrorBannerProps) {
   const derived = errorMessageFor(status);
   const heading = title ?? derived.title;
+  const Heading = headingLevel === 1 ? "h1" : "h2";
   return (
     <div
       role="alert"
       className="max-w-2xl p-6 bg-amber-50 border border-amber-300 text-amber-900"
     >
-      <h2 className="font-serif text-xl">{heading}</h2>
+      <Heading className="font-serif text-xl">{heading}</Heading>
       <p className="mt-2 text-sm">{derived.detail}</p>
       {detail && (
         <p className="mt-1 text-xs text-amber-700">

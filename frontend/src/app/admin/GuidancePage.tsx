@@ -4,6 +4,7 @@ import { api, Guidance, Product } from "./api";
 import { DataTable, type DataTableColumn } from "./DataTable";
 import { ErrorBanner, toErrorState, type ErrorState } from "./ErrorBanner";
 import { ConfirmActionDialog } from "./ConfirmActionDialog";
+import { parseRefs } from "../lib/parseRefs";
 
 interface GuidanceFormState {
   title: string;
@@ -12,15 +13,6 @@ interface GuidanceFormState {
 }
 
 const EMPTY: GuidanceFormState = { title: "", content: "", productReferences: [] };
-
-function parseRefs(raw: string): string[] {
-  try {
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.map(String) : [];
-  } catch {
-    return [];
-  }
-}
 
 /**
  * "Guías de salud": expert-authored knowledge injected into the agent
@@ -142,7 +134,7 @@ export function GuidancePage() {
   if (loading) return <p className="text-stone-500">Cargando…</p>;
   if (error && guidance.length === 0) {
     return (
-      <ErrorBanner status={error.status} detail={error.detail} title={error.title} onRetry={load} />
+      <ErrorBanner status={error.status} detail={error.detail} title={error.title} headingLevel={1} onRetry={load} />
     );
   }
 

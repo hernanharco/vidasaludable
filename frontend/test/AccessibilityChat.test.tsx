@@ -19,7 +19,6 @@ function renderMessages(sending = false) {
         { sender: "agent", text: "¡Hola! ¿En qué puedo ayudarte?" },
       ]}
       sending={sending}
-      chatError={null}
       scrollRef={{ current: null } as React.RefObject<HTMLDivElement>}
       videos={new Map()}
     />,

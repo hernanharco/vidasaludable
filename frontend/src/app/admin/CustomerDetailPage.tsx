@@ -11,20 +11,12 @@ import {
 } from "./api";
 import { ProductRefs } from "./ProductRefs";
 import { ErrorBanner, toErrorState, type ErrorState } from "./ErrorBanner";
+import { parseRefs } from "../lib/parseRefs";
 
 // T3/T4 (advisor-summary) — per-customer "ficha": profile header, the
 // on-demand AI executive summary (S1–S3), and the compact extras (S4)
 // assembled client-side from the list endpoints (there is no single-customer
 // endpoint besides the summary).
-
-function parseRefs(raw: string): string[] {
-  try {
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.map(String) : [];
-  } catch {
-    return [];
-  }
-}
 
 /**
  * Renders stored summary text without a markdown dependency: "## " lines
@@ -36,12 +28,12 @@ function SummaryContent({ content }: { content: string }) {
       {content.split("\n").map((line, i) => {
         if (line.startsWith("## ")) {
           return (
-            <h3
+            <h2
               key={i}
               className="mt-4 font-serif text-base font-semibold text-stone-900 first:mt-0"
             >
               {line.slice(3)}
-            </h3>
+            </h2>
           );
         }
         if (line.trim() === "") {
@@ -182,6 +174,7 @@ export function CustomerDetailPage() {
         status={loadError.status}
         detail={loadError.detail}
         title={loadError.title}
+        headingLevel={1}
         onRetry={() => setReload((n) => n + 1)}
       />
     );

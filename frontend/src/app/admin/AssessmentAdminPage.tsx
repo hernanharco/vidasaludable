@@ -550,9 +550,9 @@ export function AssessmentAdminPage() {
       {tab === "symptoms" && (
         <div className="space-y-4">
           <form onSubmit={handleSymSubmit} className="bg-white rounded-xl border border-stone-200 p-4 space-y-3">
-            <h3 className="text-sm font-medium text-stone-700">
+            <h2 className="text-sm font-medium text-stone-700">
               {editingSymId !== null ? `Editar síntoma #${editingSymId}` : "Nuevo síntoma"}
-            </h3>
+            </h2>
             <div className="flex gap-3 items-end">
               <label className="text-xs text-stone-600 w-24">
                 ID
@@ -616,9 +616,9 @@ export function AssessmentAdminPage() {
       {tab === "nutrients" && (
         <div className="space-y-4">
           <form onSubmit={handleNutSubmit} className="bg-white rounded-xl border border-stone-200 p-4 space-y-3">
-            <h3 className="text-sm font-medium text-stone-700">
+            <h2 className="text-sm font-medium text-stone-700">
               {editingNutId !== null ? `Editar nutriente: ${editingNutId}` : "Nuevo nutriente"}
-            </h3>
+            </h2>
             <div className="flex gap-3 items-end flex-wrap">
               <label className="text-xs text-stone-600 w-40">
                 ID
@@ -699,7 +699,7 @@ export function AssessmentAdminPage() {
       {tab === "mappings" && (
         <div className="space-y-4">
           <form onSubmit={handleMapSubmit} className="bg-white rounded-xl border border-stone-200 p-4 space-y-3">
-            <h3 className="text-sm font-medium text-stone-700">Nuevo mapeo</h3>
+            <h2 className="text-sm font-medium text-stone-700">Nuevo mapeo</h2>
             <div className="flex gap-3 items-end flex-wrap">
               <label className="text-xs text-stone-600 flex-1 min-w-[200px]">
                 Síntoma

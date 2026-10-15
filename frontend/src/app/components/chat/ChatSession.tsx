@@ -146,7 +146,6 @@ export function ChatSession({ onOpenAssessment, onClose }: ChatSessionProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [sending, setSending] = useState(false);
-  const [chatError, setChatError] = useState<string | null>(null);
 
   // T3 chat-intake — the 5-step questionnaire answers (client-side shape).
   const [profile, setProfile] = useState<IntakeProfile>(EMPTY_PROFILE);
@@ -445,7 +444,6 @@ export function ChatSession({ onOpenAssessment, onClose }: ChatSessionProps) {
         consentedVersion.current = consent.version;
         const keepConv = consentReentry && conversationId != null ? conversationId : null;
         persistIdentity(data.customer_id, keepConv);
-        setChatError(null);
         // A freshly registered customer has no intake profile yet, so the
         // questionnaire runs next; only a confirmed profile skips it. If the
         // check fails we still run the intake: a new registration cannot have
@@ -504,7 +502,6 @@ export function ChatSession({ onOpenAssessment, onClose }: ChatSessionProps) {
       return false;
     }
     setProfile(next);
-    setChatError(null);
     const note = next.openNote.trim();
     const fresh = messages.length === 0;
     // Keep an already-restored conversation; otherwise open with the
@@ -538,7 +535,6 @@ export function ChatSession({ onOpenAssessment, onClose }: ChatSessionProps) {
       return;
     }
 
-    setChatError(null);
     appendMessage({ sender: "user", text });
     setSending(true);
 
@@ -645,7 +641,6 @@ export function ChatSession({ onOpenAssessment, onClose }: ChatSessionProps) {
           <ChatMessages
             messages={messages}
             sending={sending}
-            chatError={chatError}
             scrollRef={scrollRef}
             videos={videos}
             products={products}

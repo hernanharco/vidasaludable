@@ -23,9 +23,9 @@ export function AssessmentWelcome({
   return (
     <div className="p-6 space-y-6">
       <div className="text-center space-y-2">
-        <h3 className="text-xl font-semibold text-stone-800">
+        <h2 className="text-xl font-semibold text-stone-800">
           Evaluación de Deficiencias
-        </h3>
+        </h2>
         <p className="text-stone-600 text-sm">
           Responda sobre sus síntomas para obtener recomendaciones
           personalizadas de prevención.

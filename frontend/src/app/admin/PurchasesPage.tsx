@@ -51,7 +51,7 @@ export function PurchasesPage() {
   if (error && purchases.length === 0 && customers.length === 0) {
     return (
       <div className="max-w-2xl p-6 bg-amber-50 border border-amber-300 text-amber-900">
-        <h2 className="font-serif text-xl">Acceso restringido</h2>
+        <h1 className="font-serif text-xl">Acceso restringido</h1>
         <p className="mt-2 text-sm">Respuesta del backend: {error}</p>
       </div>
     );

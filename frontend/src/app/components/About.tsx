@@ -123,7 +123,7 @@ export function About() {
                   {item.icon}
                 </div>
                 <div>
-                  <h4 className="font-bold text-lg text-stone-900 mb-1">{item.title}</h4>
+                  <h3 className="font-bold text-lg text-stone-900 mb-1">{item.title}</h3>
                   <p className="text-sm text-stone-500 leading-relaxed">{item.description}</p>
                 </div>
               </motion.div>

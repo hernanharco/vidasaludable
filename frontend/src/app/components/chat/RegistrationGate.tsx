@@ -54,9 +54,9 @@ export function RegistrationGate({
 }: RegistrationGateProps) {
   return (
     <div className="flex-1 overflow-y-auto p-4 bg-stone-50">
-      <h4 className="font-semibold text-stone-800 text-sm mb-1">
+      <h2 className="font-semibold text-stone-800 text-sm mb-1">
         {consentReentry ? "Actualiza tu consentimiento" : "Antes de empezar"}
-      </h4>
+      </h2>
       <p className="text-xs text-stone-500 mb-3">
         {consentReentry
           ? "Necesitamos tu consentimiento actualizado para continuar la conversación."

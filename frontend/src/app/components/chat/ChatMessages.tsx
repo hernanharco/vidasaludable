@@ -1,5 +1,5 @@
 import React from "react";
-import { AlertCircle, ClipboardCheck } from "lucide-react";
+import { ClipboardCheck } from "lucide-react";
 import { ProductCard } from "./ProductCard";
 import { VideoCard } from "./VideoCard";
 import type { ChatMessage, ProductCardInfo, VideoCardInfo } from "./types";
@@ -23,7 +23,6 @@ const ASSESSMENT_MARKER = /(\[ASSESSMENT\])/;
 interface ChatMessagesProps {
   messages: ChatMessage[];
   sending: boolean;
-  chatError: string | null;
   scrollRef: React.RefObject<HTMLDivElement>;
   /** Boot-fetched map of ENABLED segment ids → card data. */
   videos: Map<number, VideoCardInfo>;
@@ -181,7 +180,6 @@ function AgentMessageBody({
 export function ChatMessages({
   messages,
   sending,
-  chatError,
   scrollRef,
   videos,
   products = new Map<string, ProductCardInfo>(),
@@ -221,12 +219,6 @@ export function ChatMessages({
           className="max-w-[80%] p-3 rounded-2xl text-sm bg-white border border-stone-200 text-stone-400 self-start shadow-sm"
         >
           Escribiendo...
-        </div>
-      )}
-      {chatError && (
-        <div className="flex items-start gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg p-2 self-stretch">
-          <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-          <span>{chatError}</span>
         </div>
       )}
     </div>

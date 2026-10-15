@@ -4,7 +4,7 @@ import { ArrowRight, Shield, Zap, Heart } from "lucide-react";
 
 export function Hero() {
   return (
-    <section className="relative min-h-[90vh] flex items-center overflow-hidden bg-gradient-to-br from-emerald-900 via-emerald-800 to-teal-900" id="#">
+    <section className="relative min-h-[90vh] flex items-center overflow-hidden bg-gradient-to-br from-emerald-900 via-emerald-800 to-teal-900" id="inicio">
       {/* Animated background elements */}
       <div className="absolute inset-0 overflow-hidden">
         <div className="absolute -top-40 -right-40 w-96 h-96 bg-emerald-400/20 rounded-full blur-3xl" />
@@ -97,7 +97,7 @@ export function Hero() {
                   <Heart className="w-6 h-6 text-emerald-300" />
                 </div>
                 <div>
-                  <h3 className="text-white font-semibold">Nutrición Celular</h3>
+                  <h2 className="text-white font-semibold">Nutrición Celular</h2>
                   <p className="text-emerald-200/70 text-sm">Suplementación basada en ciencia</p>
                 </div>
               </div>
@@ -115,7 +115,7 @@ export function Hero() {
                   <Zap className="w-6 h-6 text-teal-300" />
                 </div>
                 <div>
-                  <h3 className="text-white font-semibold">Hábitos Inteligentes</h3>
+                  <h2 className="text-white font-semibold">Hábitos Inteligentes</h2>
                   <p className="text-emerald-200/70 text-sm">Rutinas sostenibles para tu vida real</p>
                 </div>
               </div>
@@ -133,7 +133,7 @@ export function Hero() {
                   <Shield className="w-6 h-6 text-emerald-300" />
                 </div>
                 <div>
-                  <h3 className="text-white font-semibold">Prevención Activa</h3>
+                  <h2 className="text-white font-semibold">Prevención Activa</h2>
                   <p className="text-emerald-200/70 text-sm">Anticípate a los problemas de salud</p>
                 </div>
               </div>

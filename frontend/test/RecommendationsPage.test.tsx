@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import React from "react";
 import { render, screen } from "@testing-library/react";
 import { RecommendationsPage } from "../src/app/admin/RecommendationsPage";
+import { parseRefs } from "../src/app/lib/parseRefs";
 import type { Product, Recommendation } from "../src/app/admin/api";
 
 // Real api client on top of a mocked fetch (CustomerDetail.test.tsx harness
@@ -40,6 +41,36 @@ const PRODUCTS: Product[] = [
 function ok(body: unknown) {
   return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) });
 }
+
+// ─── parseRefs — shared helper (ui-s6 S8b: RED→GREEN) ──────────────
+// The three admin copies (GuidancePage, RecommendationsPage, CustomerDetail)
+// had identical behavior; this pins it once for the shared lib/parseRefs.
+describe("parseRefs — shared product-references helper (S8b)", () => {
+  it("parses a valid JSON array of references into strings, order preserved", () => {
+    expect(parseRefs('["VIT-D","1234"]')).toEqual(["VIT-D", "1234"]);
+  });
+
+  it("stringifies non-string items, matching the historical copies", () => {
+    expect(parseRefs("[1, null, true]")).toEqual(["1", "null", "true"]);
+  });
+
+  it("returns [] for valid JSON that is not an array", () => {
+    expect(parseRefs('"VIT-D"')).toEqual([]);
+    expect(parseRefs('{"ref":"VIT-D"}')).toEqual([]);
+    expect(parseRefs("42")).toEqual([]);
+    expect(parseRefs("null")).toEqual([]);
+  });
+
+  it("returns [] for a malformed string or an empty one", () => {
+    expect(parseRefs("[no es json")).toEqual([]);
+    expect(parseRefs("")).toEqual([]);
+  });
+
+  it("returns [] for null/undefined (defensive: the field may be absent)", () => {
+    expect(parseRefs(null as unknown as string)).toEqual([]);
+    expect(parseRefs(undefined as unknown as string)).toEqual([]);
+  });
+});
 
 describe("RecommendationsPage (nombres y links de productos)", () => {
   beforeEach(() => {
