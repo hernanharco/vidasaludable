@@ -153,3 +153,7 @@ fix(admin) (T6-T7) · `dbd0a171` docs (T2, T8) · este commit de doc.
 Verificación post-rebase en la rama: vitest **165/165** (23 archivos),
 `tsc --noEmit` limpio, `vite build` ✓ (9.6s). Issue y PR registrados en el
 resumen de sesión.
+
+**L7** (2026-10-15, merge): PR **#41** squash-mergeado en `main` como
+`1540a5dc`; CI y Deploy Frontend verdes (runs 38735143799 / 38735144058).
+Rama `feat/mobile-ui-p2` eliminada (local y remota).

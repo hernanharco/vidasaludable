@@ -148,3 +148,7 @@ sin llamado a `/api/assistant/ask` para ese mensaje.
   (`status:approved`) creado para esta rama; push de `feat/chat-intake-ux`
   y PR con label `type:chore` (único `type:*` del repo). Merge queda como
   decisión del usuario.
+
+**L7** (2026-10-15, merge): PR **#39** squash-mergeado en `main` como
+`7e45412f`; CI y Deploy Frontend verdes (runs 38734954266 / 38734954424).
+Rama `feat/chat-intake-ux` eliminada (local y remota).
