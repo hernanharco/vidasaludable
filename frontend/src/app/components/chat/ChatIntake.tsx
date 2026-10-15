@@ -186,7 +186,7 @@ export function ChatIntake({ profile, onChange, onComplete }: ChatIntakeProps) {
           "Siguiente" anchored to the bottom of the viewport. */}
       <div className="w-full max-w-lg mx-auto my-auto flex flex-col">
         <div className="flex items-baseline justify-between mb-3">
-          <h4 className="font-semibold text-stone-800 text-sm">Cuéntanos sobre ti</h4>
+          <h2 className="font-semibold text-stone-800 text-sm">Cuéntanos sobre ti</h2>
           <span className="text-[11px] text-stone-400">
             Paso {step} de {TOTAL_STEPS}
           </span>
@@ -222,7 +222,7 @@ export function ChatIntake({ profile, onChange, onComplete }: ChatIntakeProps) {
 
         {step === 2 && (
           <div>
-            <h5 className="text-sm font-medium text-stone-800 mb-1">Objetivos principales</h5>
+            <h3 className="text-sm font-medium text-stone-800 mb-1">Objetivos principales</h3>
             <p className="text-xs text-stone-500 mb-3">¿Qué te gustaría mejorar?</p>
             {/* S4 — the heading already says "Objetivos principales", so the chip
                 group keeps it as aria-label only (it used to print it twice). */}
@@ -239,7 +239,7 @@ export function ChatIntake({ profile, onChange, onComplete }: ChatIntakeProps) {
 
         {step === 3 && (
           <div>
-            <h5 className="text-sm font-medium text-stone-800 mb-3">Hábitos</h5>
+            <h3 className="text-sm font-medium text-stone-800 mb-3">Hábitos</h3>
             <ChipGroup
               label="Dieta"
               options={DIETS}
@@ -257,7 +257,7 @@ export function ChatIntake({ profile, onChange, onComplete }: ChatIntakeProps) {
 
         {step === 4 && (
           <div>
-            <h5 className="text-sm font-medium text-stone-800 mb-3">Sueño y estrés</h5>
+            <h3 className="text-sm font-medium text-stone-800 mb-3">Sueño y estrés</h3>
             <ChipGroup
               label="Sueño"
               options={SLEEP_RANGES}
@@ -275,7 +275,7 @@ export function ChatIntake({ profile, onChange, onComplete }: ChatIntakeProps) {
 
         {step === 5 && (
           <div>
-            <h5 className="text-sm font-medium text-stone-800 mb-1">Pregunta abierta</h5>
+            <h3 className="text-sm font-medium text-stone-800 mb-1">Pregunta abierta</h3>
             <p className="text-xs text-stone-500 mb-3">
               Cuéntanos con tus palabras si algo te preocupa.
             </p>

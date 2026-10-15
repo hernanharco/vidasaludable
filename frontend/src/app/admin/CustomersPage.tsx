@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
+import { toast } from "sonner";
 import { api, Customer } from "./api";
 import { DataTable, type DataTableColumn } from "./DataTable";
 import { ErrorBanner, toErrorState, type ErrorState } from "./ErrorBanner";
@@ -131,6 +132,7 @@ export function CustomersPage() {
               await api.deleteCustomer(row.id);
               setCustomers((prev) => prev.filter((x) => x.id !== row.id));
               setDeleteError(null);
+              toast.success("Cliente eliminado");
             } catch (e) {
               setDeleteError(toErrorState(e));
             }

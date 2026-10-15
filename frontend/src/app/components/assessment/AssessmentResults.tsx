@@ -52,7 +52,7 @@ export function AssessmentResults({
       {/* Recommendations */}
       {recommendations.length > 0 && (
         <div>
-          <h4 className="font-medium text-stone-800 mb-2">Recomendaciones</h4>
+          <h3 className="font-medium text-stone-800 mb-2">Recomendaciones</h3>
           <div className="space-y-2">
             {recommendations.map((rec) => {
               const config = STATUS_CONFIG[rec.status];
@@ -86,7 +86,7 @@ export function AssessmentResults({
       {/* Product Recommendations */}
       {productRecommendations.length > 0 && (
         <div>
-          <h4 className="font-medium text-stone-800 mb-3">Productos Recomendados</h4>
+          <h3 className="font-medium text-stone-800 mb-3">Productos Recomendados</h3>
           <div className="space-y-3">
             {productRecommendations.map((product) => (
               <Card key={product.reference} className="overflow-hidden">
@@ -142,7 +142,7 @@ export function AssessmentResults({
 
       {/* All nutrients */}
       <div className="pb-4">
-        <h4 className="font-medium text-stone-800 mb-2">Todos los Nutrientes</h4>
+        <h3 className="font-medium text-stone-800 mb-2">Todos los Nutrientes</h3>
         <div className="space-y-1">
           {results
             .sort((a, b) => {

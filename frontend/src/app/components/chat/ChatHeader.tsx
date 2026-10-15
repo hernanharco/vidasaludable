@@ -13,7 +13,7 @@ export function ChatHeader({ onClose }: ChatHeaderProps) {
           <Sparkles className="w-4 h-4 text-emerald-100" />
         </div>
         <div>
-          <h4 className="font-medium text-sm">Análisis IA</h4>
+          <h1 className="font-medium text-sm">Análisis IA</h1>
           <p className="text-xs text-emerald-200">Listo para analizar</p>
         </div>
       </div>

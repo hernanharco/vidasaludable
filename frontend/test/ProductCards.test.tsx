@@ -88,7 +88,6 @@ function renderMessages(
     <ChatMessages
       messages={[{ sender, text }]}
       sending={false}
-      chatError={null}
       scrollRef={{ current: null } as React.RefObject<HTMLDivElement>}
       videos={videos}
       products={products}
@@ -181,7 +180,6 @@ describe("ChatMessages product cards", () => {
           { sender: "agent", text: "Segundo [110606]." },
         ]}
         sending={false}
-        chatError={null}
         scrollRef={{ current: null } as React.RefObject<HTMLDivElement>}
         videos={videoMap()}
         products={productMap()}

@@ -283,7 +283,7 @@ export function AdminLayout() {
             <Outlet />
           ) : authState === "restricted" ? (
             <div className="max-w-2xl p-6 bg-amber-50 border border-amber-300 text-amber-900">
-              <h2 className="font-serif text-xl">Acceso restringido</h2>
+              <h1 className="font-serif text-xl">Acceso restringido</h1>
               <p className="mt-2 text-sm">
                 Tu cuenta no tiene permisos de administración (se requiere rol
                 ADMIN o SUPERADMIN). Contacta con el administrador del panel.
@@ -291,7 +291,7 @@ export function AdminLayout() {
             </div>
           ) : (
             <div className="max-w-2xl p-6 bg-amber-50 border border-amber-300 text-amber-900">
-              <h2 className="font-serif text-xl">El panel no está disponible</h2>
+              <h1 className="font-serif text-xl">El panel no está disponible</h1>
               <p className="mt-2 text-sm">
                 Respuesta del backend: {authMessage ?? "error desconocido"}
               </p>

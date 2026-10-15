@@ -56,7 +56,7 @@ export function Booking() {
                 <CalendarIcon className="w-5 h-5 text-emerald-300" />
               </div>
               <div>
-                <h4 className="font-semibold text-lg text-white">Disponibilidad</h4>
+                <h3 className="font-semibold text-lg text-white">Disponibilidad</h3>
                 <p className="text-emerald-200/70 text-sm">Martes a Jueves, 9:00 AM - 4:00 PM</p>
               </div>
             </div>
@@ -65,7 +65,7 @@ export function Booking() {
                 <Clock className="w-5 h-5 text-emerald-300" />
               </div>
               <div>
-                <h4 className="font-semibold text-lg text-white">Duración</h4>
+                <h3 className="font-semibold text-lg text-white">Duración</h3>
                 <p className="text-emerald-200/70 text-sm">Consultas iniciales de 60 minutos</p>
               </div>
             </div>

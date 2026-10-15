@@ -45,7 +45,6 @@ function renderMessages(
     <ChatMessages
       messages={[{ sender, text }]}
       sending={false}
-      chatError={null}
       scrollRef={{ current: null } as React.RefObject<HTMLDivElement>}
       videos={videos}
     />,

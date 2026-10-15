@@ -2,15 +2,7 @@ import { useEffect, useState } from "react";
 import { api, Product, Recommendation } from "./api";
 import { ProductRefs } from "./ProductRefs";
 import { ErrorBanner, toErrorState, type ErrorState } from "./ErrorBanner";
-
-function parseRefs(raw: string): string[] {
-  try {
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.map(String) : [];
-  } catch {
-    return [];
-  }
-}
+import { parseRefs } from "../lib/parseRefs";
 
 export function RecommendationsPage() {
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
@@ -37,6 +29,7 @@ export function RecommendationsPage() {
         status={error.status}
         detail={error.detail}
         title={error.title}
+        headingLevel={1}
         onRetry={() => setReload((n) => n + 1)}
       />
     );

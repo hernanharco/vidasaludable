@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router";
+import { toast } from "sonner";
 import { api, type ReferrerWithStats } from "./api";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -86,6 +87,7 @@ export function ReferrersPage() {
     try {
       await api.deleteReferrer(id);
       await loadReferrers();
+      toast.success("Referente desactivado");
     } catch (e: any) {
       setError(e.message ?? "Error deleting referrer");
     }

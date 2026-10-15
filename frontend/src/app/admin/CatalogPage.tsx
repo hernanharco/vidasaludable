@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
 import { api, Product, ProductInput } from "./api";
 import { DataTable, type DataTableColumn } from "./DataTable";
 import { ErrorBanner, toErrorState, type ErrorState } from "./ErrorBanner";
@@ -277,6 +278,7 @@ export function CatalogPage() {
               await api.deleteProduct(row.reference);
               setDeleteError(null);
               await load();
+              toast.success("Producto eliminado");
             } catch (err) {
               setDeleteError(toErrorState(err));
             }

@@ -227,7 +227,7 @@ export function DataTable<T>({
 
   return (
     <div className={containerClassName}>
-      {searchable && (
+      {searchable && searchText && (
         <div className="px-4 pt-3">
           <label className="block text-sm">
             <span className="text-xs font-medium text-stone-600">Buscar</span>

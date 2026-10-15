@@ -104,6 +104,13 @@ describe("DataTable — searchable (S3b)", () => {
     expect(screen.queryByRole("searchbox")).not.toBeInTheDocument();
   });
 
+  // Advisory fix (native review of PR A): `searchable` without `searchText`
+  // used to render a dead input (the filter already required both).
+  it("renders no search input when searchable is set without searchText", () => {
+    renderTable({ searchable: true });
+    expect(screen.queryByRole("searchbox")).not.toBeInTheDocument();
+  });
+
   it("filters rows case- and accent-insensitively as you type", async () => {
     const user = userEvent.setup();
     renderTable({ searchable: true, searchText: (r) => r.name });
