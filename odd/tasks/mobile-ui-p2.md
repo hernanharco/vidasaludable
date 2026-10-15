@@ -77,18 +77,23 @@ Required: cada wrapper gana `min-w-[640px]` (precedente P1: `min-w-[640px]` /
 `[720px]`). Ninguna columna ni acción se pierde (ya scrolleaban; solo deja de
 colapsar).
 
+> Nota post-rebase (L6): 7 de estos 8 wrappers dejaron de existir — PR #23
+> migró esas páginas a `DataTable`, que trae `min-w-[640px]` interno. El
+> requisito observable (columnas sin colapsar) se cumple vía `DataTable` para
+> esos 7 y vía `17eb1d48` para `dashboard/RecentCustomers.tsx`.
+
 ## Tasks
 
 | ID | Spec | Route | Commit |
 |----|------|-------|--------|
-| T1 | S2 | inline (1 línea) | `f600e918` |
-| T2 | S3 | inline (doc + smoke curl) | (docs commit) |
-| T3 | S4-S5 | inline (2 archivos, 2 líneas) | `f600e918` |
-| T4 | S6-S7 | inline (2 archivos) | `f600e918` |
-| T5 | S8 | inline (1 línea, componente compartido) | `f600e918` |
-| T6 | S9 | test-first: RED del formatter → implementación | `5f9dbbf3` |
-| T7 | S10 | inline (8 wrappers) | `5f9dbbf3` |
-| T8 | S1-S10 | verificación: vitest, tsc --noEmit, vite build + cierre del doc | (docs commit) |
+| T1 | S2 | inline (1 línea) | `6db35266` |
+| T2 | S3 | inline (doc + smoke curl) | `dbd0a171` |
+| T3 | S4-S5 | inline (2 archivos, 2 líneas) | `6db35266` |
+| T4 | S6-S7 | inline (2 archivos) | `6db35266` |
+| T5 | S8 | inline (1 línea, componente compartido) | `6db35266` |
+| T6 | S9 | test-first: RED del formatter → implementación | `17eb1d48` |
+| T7 | S10 | inline (8 wrappers; 7 superseded por DataTable — ver L6) | `17eb1d48` |
+| T8 | S1-S10 | verificación: vitest, tsc --noEmit, vite build + cierre del doc | `dbd0a171` + L6 |
 
 ## Log
 
@@ -130,3 +135,21 @@ el usuario desde su red.
 **L5** Commits: `f600e918` fix(web) (T1, T3-T5) · `5f9dbbf3` fix(admin) (T6-T7)
 · docs commit (T2, T8). Rama `feat/mobile-ui-p2`; push/PR quedan para el
 usuario.
+
+**L6** (2026-10-15, rebase + entrega autorizada): el usuario eligió "Entregar
+ambas ahora" (chat-intake-ux + mobile-ui-p2). Rebase de la rama sobre
+`origin/main` (PRs #23–#37 ya mergeados), conflictos resueltos:
+- `frontend/index.html`: main ganó preconnect de fonts (ui-optimization T1/S2b)
+  → se conserva main + `viewport-fit=cover` (S5).
+- `About.tsx`: main reemplazó la foto 404 (PR #33) y agregó srcset/sizes
+  (PR #23) → se conserva main + `loading="lazy"` (S6).
+- S10: los `min-w-[640px]` de Catalog/Conversations/Customers/Guidance/
+  Purchases/Videos×2 (7 wrappers) se descartaron al rebase — esas páginas ya
+  usan `DataTable` (PR #23), que trae `min-w-[640px]` interno. Queda
+  `dashboard/RecentCustomers.tsx` (1 wrapper) en `17eb1d48`. Corrige L4/S10
+  ("8×" pre-rebase).
+Commits tras el rebase: `6db35266` fix(web) (T1, T3-T5) · `17eb1d48`
+fix(admin) (T6-T7) · `dbd0a171` docs (T2, T8) · este commit de doc.
+Verificación post-rebase en la rama: vitest **165/165** (23 archivos),
+`tsc --noEmit` limpio, `vite build` ✓ (9.6s). Issue y PR registrados en el
+resumen de sesión.
