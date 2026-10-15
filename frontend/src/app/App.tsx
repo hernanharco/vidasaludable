@@ -1,5 +1,6 @@
 import React, { Suspense, lazy } from "react";
 import { Routes, Route } from "react-router";
+import { MotionConfig } from "motion/react";
 import { Navbar } from "./components/Navbar";
 import { Hero } from "./components/Hero";
 import { About } from "./components/About";
@@ -7,6 +8,7 @@ import { Services } from "./components/Services";
 import { Booking } from "./components/Booking";
 import { ChatLauncher, ChatPage } from "./components/chat";
 import { Footer } from "./components/Footer";
+import { Toaster } from "./components/ui/sonner";
 
 // T1/S2a — Performance bundle: every admin route is code-split with
 // React.lazy, so the landing visitor no longer downloads the CRM. This is
@@ -87,27 +89,32 @@ function Landing() {
 
 export default function App() {
   return (
-    <Suspense fallback={<ChunkFallback />}>
-      <Routes>
-        <Route path="/" element={<Landing />} />
-        <Route path="/chat" element={<ChatPage />} />
-        <Route path="/admin/login" element={<LoginScreen />} />
-        <Route path="/auth/callback" element={<AuthCallback />} />
-        <Route path="/admin" element={<AdminLayout />}>
-          <Route index element={<Dashboard />} />
-          <Route path="catalog" element={<CatalogPage />} />
-          <Route path="customers" element={<CustomersPage />} />
-          <Route path="customers/:id" element={<CustomerDetailPage />} />
-          <Route path="purchases" element={<PurchasesPage />} />
-          <Route path="conversations" element={<ConversationsPage />} />
-          <Route path="conversations/:id" element={<ConversationDetailPage />} />
-          <Route path="guidance" element={<GuidancePage />} />
-          <Route path="recommendations" element={<RecommendationsPage />} />
-          <Route path="referrers" element={<ReferrersPage />} />
-          <Route path="assessment" element={<AssessmentAdminPage />} />
-          <Route path="videos" element={<VideosPage />} />
-        </Route>
-      </Routes>
-    </Suspense>
+    // T2/S5b — framer variants respect the OS reduced-motion setting.
+    <MotionConfig reducedMotion="user">
+      <Suspense fallback={<ChunkFallback />}>
+        <Routes>
+          <Route path="/" element={<Landing />} />
+          <Route path="/chat" element={<ChatPage />} />
+          <Route path="/admin/login" element={<LoginScreen />} />
+          <Route path="/auth/callback" element={<AuthCallback />} />
+          <Route path="/admin" element={<AdminLayout />}>
+            <Route index element={<Dashboard />} />
+            <Route path="catalog" element={<CatalogPage />} />
+            <Route path="customers" element={<CustomersPage />} />
+            <Route path="customers/:id" element={<CustomerDetailPage />} />
+            <Route path="purchases" element={<PurchasesPage />} />
+            <Route path="conversations" element={<ConversationsPage />} />
+            <Route path="conversations/:id" element={<ConversationDetailPage />} />
+            <Route path="guidance" element={<GuidancePage />} />
+            <Route path="recommendations" element={<RecommendationsPage />} />
+            <Route path="referrers" element={<ReferrersPage />} />
+            <Route path="assessment" element={<AssessmentAdminPage />} />
+            <Route path="videos" element={<VideosPage />} />
+          </Route>
+        </Routes>
+      </Suspense>
+      {/* T2/S7a — sonner host: every admin delete toast lands here. */}
+      <Toaster />
+    </MotionConfig>
   );
 }

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
 import { api } from "./api";
 import { DataTable, type DataTableColumn } from "./DataTable";
 import type {
@@ -159,6 +160,7 @@ export function AssessmentAdminPage() {
       await api.deleteAssessmentSymptom(id);
       await loadSymptoms();
       await loadMappings();
+      toast.success("Síntoma eliminado");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al eliminar");
     }
@@ -204,6 +206,7 @@ export function AssessmentAdminPage() {
       await api.deleteAssessmentNutrient(id);
       await loadNutrients();
       await loadMappings();
+      toast.success("Nutriente eliminado");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al eliminar");
     }
@@ -261,6 +264,7 @@ export function AssessmentAdminPage() {
     try {
       await api.deleteAssessmentMapping({ symptomId, nutrientId });
       await loadMappings();
+      toast.success("Mapeo eliminado");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al eliminar");
     }

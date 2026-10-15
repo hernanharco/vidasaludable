@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
+import { toast } from "sonner";
 import { api, Conversation, Customer } from "./api";
 import { DataTable, type DataTableColumn } from "./DataTable";
 import { ErrorBanner, toErrorState, type ErrorState } from "./ErrorBanner";
@@ -110,6 +111,7 @@ export function ConversationsPage() {
               await api.deleteConversation(row.id);
               setDeleteError(null);
               await load();
+              toast.success("Conversación eliminada");
             } catch (err) {
               setDeleteError(toErrorState(err));
             }

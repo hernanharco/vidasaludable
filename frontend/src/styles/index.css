@@ -444,3 +444,24 @@
   src: url(https://fonts.gstatic.com/s/playfairdisplay/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTzYgA.woff2) format('woff2');
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
+
+/* T2/S5a — reduced motion global.
+ *
+ * Tailwind utilities (animate-spin/animate-pulse, tw-animate-css
+ * animate-in/out) and the landing's `scroll-smooth` root are class selectors,
+ * so they outrank universal/element selectors in the cascade: `!important` is
+ * required here or the rule is dead. Durations go to 0.01ms (not 0) so the
+ * browser still fires animationend/transitionend and nothing gets stuck mid-
+ * state; iteration-count 1 caps the infinite loops (animate-spin).
+ * framer variants are handled separately by <MotionConfig reducedMotion="user">
+ * in App.tsx. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

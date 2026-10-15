@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
 import { formatTime } from "../lib/format";
 import { DataTable, type DataTableColumn } from "./DataTable";
 import {
@@ -135,6 +136,7 @@ export function VideosPage() {
     try {
       await api.deleteVideo(row.id);
       await load();
+      toast.success("Vídeo eliminado");
       // El vídeo filtrado ya no existe: limpiar el filtro para no dejar una
       // selección fantasma (el select y la cabecera «para este vídeo»).
       if (selectedVideoId === row.id) setSelectedVideoId(null);
@@ -239,6 +241,7 @@ export function VideosPage() {
     try {
       await api.deleteVideoSegment(row.id);
       await load();
+      toast.success("Segmento eliminado");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al eliminar el segmento");
     }

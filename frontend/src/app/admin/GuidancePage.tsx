@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
 import { api, Guidance, Product } from "./api";
 import { DataTable, type DataTableColumn } from "./DataTable";
 import { ErrorBanner, toErrorState, type ErrorState } from "./ErrorBanner";
@@ -127,6 +128,7 @@ export function GuidancePage() {
     try {
       await api.deleteGuidance(row.id);
       await load();
+      toast.success("Guía eliminada");
     } catch (err) {
       setError({ ...toErrorState(err), title: "No pudimos eliminar" });
     }
