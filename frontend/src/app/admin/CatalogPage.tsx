@@ -81,7 +81,7 @@ export function CatalogPage() {
       cellClassName: "font-mono text-xs",
       render: (p) => p.reference,
     },
-    { key: "name", header: "Nombre", sortable: true, render: (p) => p.name },
+    { key: "name", header: "Nombre", sortable: true, truncate: true, render: (p) => p.name },
     { key: "category", header: "Categoría", sortable: true, render: (p) => p.category },
     {
       key: "price",
@@ -259,6 +259,8 @@ export function CatalogPage() {
         rows={products}
         getRowKey={(p) => p.reference}
         emptyMessage="No hay productos en el catálogo todavía."
+        searchable
+        searchText={(p) => `${p.reference} ${p.name} ${p.category}`}
         containerClassName="mt-6 bg-white border border-stone-200"
       />
       <ConfirmActionDialog

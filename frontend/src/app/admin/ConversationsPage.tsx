@@ -92,6 +92,8 @@ export function ConversationsPage() {
         rows={conversations}
         getRowKey={(c) => String(c.id)}
         emptyMessage="No hay conversaciones todavía."
+        searchable
+        searchText={(c) => `${customerName(c.customerId)} ${c.id}`}
         containerClassName="mt-6 bg-white border border-stone-200"
       />
       <ConfirmActionDialog

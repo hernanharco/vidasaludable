@@ -164,6 +164,7 @@ export function ReferrersPage() {
       key: "name",
       header: "Nombre",
       sortable: true,
+      truncate: true,
       render: (r) =>
         editingId === r.id ? (
           <Input value={editName} onChange={(e) => setEditName(e.target.value)} />
@@ -363,6 +364,8 @@ export function ReferrersPage() {
             rows={referrers}
             getRowKey={(r) => String(r.id)}
             emptyMessage="No hay referentes creados todavía."
+            searchable
+            searchText={(r) => `${r.name} ${r.code} ${r.phone ?? ""} ${r.email ?? ""}`}
             containerClassName="bg-white rounded-xl border border-stone-200"
             tableClassName="min-w-[720px]"
             renderExpandedRow={(r) =>

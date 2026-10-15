@@ -30,6 +30,9 @@ export interface DataTableColumn<T> {
   align?: "left" | "right" | "center";
   /** Opt-in: the header becomes a sort button exposing `aria-sort`. */
   sortable?: boolean;
+  /** Opt-in: clamps long cell text (`block max-w-[28ch] truncate`) with a
+   * `title` tooltip when `render` returns a plain string (S4). */
+  truncate?: boolean;
   /** Sort input when it differs from the rendered cell (e.g. formatted dates). */
   sortValue?: (row: T) => SortValue;
   headerClassName?: string;
@@ -59,6 +62,10 @@ export interface DataTableProps<T> {
   expandedCellClassName?: string;
   /** Content below the table inside the container (e.g. record counters). */
   footer?: ReactNode;
+  /** Opt-in: renders a client-side search input above the table (S3). */
+  searchable?: boolean;
+  /** Row text extracted for the search filter; required when `searchable`. */
+  searchText?: (row: T) => string;
 }
 
 export const DEFAULT_PAGE_SIZE = 20;
@@ -66,6 +73,28 @@ export const DEFAULT_PAGE_SIZE = 20;
 // ─── Pure logic (tested in S4c) ────────────────────────────────────
 
 const COLLATOR = new Intl.Collator("es");
+
+/** Strips diacritics via NFD so "Ácido" and "acido" compare equal. */
+const stripDiacritics = (value: string): string =>
+  value.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+/**
+ * Pure client-side row filter (S3a). Case- and accent-insensitive substring
+ * match over `getText(row)`. The query is trimmed; an empty or blank query
+ * returns the same `rows` array (identity, order unchanged). Matching rows
+ * keep their input order (stable).
+ */
+export function filterRows<T>(
+  rows: T[],
+  query: string,
+  getText: (row: T) => string,
+): T[] {
+  const needle = stripDiacritics(query.trim()).toLowerCase();
+  if (!needle) return rows;
+  return rows.filter((row) =>
+    stripDiacritics(getText(row)).toLowerCase().includes(needle),
+  );
+}
 
 /**
  * Compares two sort values. Numbers compare numerically, booleans as 0/1,
@@ -162,9 +191,12 @@ export function DataTable<T>({
   renderExpandedRow,
   expandedCellClassName = "px-4 py-3 bg-stone-50",
   footer,
+  searchable = false,
+  searchText,
 }: DataTableProps<T>) {
   const [sort, setSort] = useState<SortState | null>(initialSort ?? null);
   const [page, setPage] = useState(0);
+  const [query, setQuery] = useState("");
 
   const toggleSort = (column: DataTableColumn<T>) =>
     setSort((prev) =>
@@ -180,12 +212,38 @@ export function DataTable<T>({
     ? sortRows(rows, sort.key, sort.dir, sortColumn?.sortValue)
     : rows;
 
-  const totalPages = totalPagesFor(sortedRows.length, pageSize);
+  // S3: filter between sorting and pagination; changing the query resets
+  // to the first page so a shrinking result set never strands an empty page.
+  const filteredRows =
+    searchable && searchText
+      ? filterRows(sortedRows, query, searchText)
+      : sortedRows;
+
+  const totalPages = totalPagesFor(filteredRows.length, pageSize);
   const currentPage = clampPage(page, totalPages);
-  const pageRows = paginateRows(sortedRows, currentPage, pageSize);
+  const pageRows = paginateRows(filteredRows, currentPage, pageSize);
+
+  const activeQuery = query.trim();
 
   return (
     <div className={containerClassName}>
+      {searchable && (
+        <div className="px-4 pt-3">
+          <label className="block text-sm">
+            <span className="text-xs font-medium text-stone-600">Buscar</span>
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setPage(0);
+              }}
+              placeholder="Buscar…"
+              className="mt-1 block w-full max-w-xs border border-stone-300 px-3 py-2 text-sm"
+            />
+          </label>
+        </div>
+      )}
       <div className="overflow-x-auto">
         <table className={cn("w-full min-w-[640px] text-sm", tableClassName)}>
           <thead>
@@ -240,19 +298,33 @@ export function DataTable<T>({
                       rowClassName,
                     )}
                   >
-                    {columns.map((col) => (
-                      <td
-                        key={col.key}
-                        className={cn(
-                          "px-4 py-3",
-                          col.align && ALIGN_CLASS[col.align],
-                          tdClassName,
-                          col.cellClassName,
-                        )}
-                      >
-                        {col.render(row)}
-                      </td>
-                    ))}
+                    {columns.map((col) => {
+                      const content = col.render(row);
+                      return (
+                        <td
+                          key={col.key}
+                          className={cn(
+                            "px-4 py-3",
+                            col.align && ALIGN_CLASS[col.align],
+                            tdClassName,
+                            col.cellClassName,
+                          )}
+                        >
+                          {col.truncate ? (
+                            <span
+                              className="block max-w-[28ch] truncate"
+                              title={
+                                typeof content === "string" ? content : undefined
+                              }
+                            >
+                              {content}
+                            </span>
+                          ) : (
+                            content
+                          )}
+                        </td>
+                      );
+                    })}
                   </tr>
                   {renderExpandedRow && (
                     <tr>
@@ -270,7 +342,9 @@ export function DataTable<T>({
                   colSpan={columns.length}
                   className="px-4 py-8 text-center text-stone-400"
                 >
-                  {emptyMessage}
+                  {searchable && activeQuery
+                    ? `Sin resultados para «${activeQuery}»`
+                    : emptyMessage}
                 </td>
               </tr>
             )}

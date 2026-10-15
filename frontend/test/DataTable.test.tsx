@@ -262,6 +262,56 @@ describe("DataTable — accessible sort", () => {
   });
 });
 
+describe("DataTable — truncate column flag (S4)", () => {
+  const LONG = "Nombre de paciente extremadamente largo que desborda la columna";
+
+  it("wraps a plain-string render in block max-w-[28ch] truncate with a title tooltip", () => {
+    render(
+      <DataTable<Row>
+        columns={[
+          { key: "name", header: "Nombre", truncate: true, render: (r) => r.name },
+        ]}
+        rows={[{ id: 1, name: LONG, score: null }]}
+        getRowKey={(r) => String(r.id)}
+        emptyMessage="Vacío"
+      />,
+    );
+    const cell = screen.getByRole("cell", { name: LONG });
+    const span = cell.querySelector("span.block.max-w-\\[28ch\\].truncate");
+    expect(span).not.toBeNull();
+    expect(span).toHaveAttribute("title", LONG);
+  });
+
+  it("truncates without a title when render returns an element", () => {
+    render(
+      <DataTable<Row>
+        columns={[
+          {
+            key: "name",
+            header: "Nombre",
+            truncate: true,
+            render: (r) => <strong>{r.name}</strong>,
+          },
+        ]}
+        rows={[{ id: 1, name: LONG, score: null }]}
+        getRowKey={(r) => String(r.id)}
+        emptyMessage="Vacío"
+      />,
+    );
+    const cell = screen.getByRole("cell", { name: LONG });
+    const span = cell.querySelector("span.truncate");
+    expect(span).not.toBeNull();
+    expect(span).not.toHaveAttribute("title");
+    expect(span?.querySelector("strong")).toHaveTextContent(LONG);
+  });
+
+  it("leaves cells untouched when truncate is not set", () => {
+    renderTable();
+    const cell = screen.getByRole("cell", { name: "Beta" });
+    expect(cell.querySelector("span.truncate")).toBeNull();
+  });
+});
+
 describe("DataTable — client-side pagination", () => {
   const many: Row[] = Array.from({ length: 45 }, (_, i) => ({
     id: i + 1,

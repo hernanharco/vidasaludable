@@ -281,7 +281,7 @@ export function VideosPage() {
       cellClassName: "max-w-xs",
       render: (v) =>
         v.licenseNote ? (
-          <span className="text-stone-600">{v.licenseNote}</span>
+          <span className="text-stone-600 line-clamp-2">{v.licenseNote}</span>
         ) : (
           <span className="text-stone-400">—</span>
         ),
@@ -313,6 +313,7 @@ export function VideosPage() {
       key: "title",
       header: "Título",
       sortable: true,
+      truncate: true,
       cellClassName: "font-medium",
       render: (s) => s.title,
     },
@@ -482,6 +483,8 @@ export function VideosPage() {
         rows={videos}
         getRowKey={(v) => String(v.id)}
         emptyMessage="No hay vídeos registrados. Crea el primero para empezar a analizar segmentos."
+        searchable
+        searchText={(v) => `${v.speaker} ${v.title}`}
         containerClassName="mt-6 bg-white border border-stone-200"
         rowClassName="align-top"
       />
@@ -688,6 +691,8 @@ export function VideosPage() {
               ? "No hay segmentos para este vídeo. El analizador del pipeline los crea; aquí se revisan y aprueban."
               : "No hay segmentos. El analizador del pipeline los crea; aquí se revisan y aprueban."
           }
+          searchable
+          searchText={(s) => `${s.title} ${s.condition ?? ""} ${videoTitle(String(s.videoId))}`}
           containerClassName="mt-4 bg-white border border-stone-200"
           rowClassName="align-top"
         />

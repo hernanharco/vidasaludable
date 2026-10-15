@@ -285,7 +285,7 @@ export function AssessmentAdminPage() {
       cellClassName: "font-mono text-xs",
       render: (s) => s.id,
     },
-    { key: "nameEs", header: "Nombre", sortable: true, render: (s) => s.nameEs },
+    { key: "nameEs", header: "Nombre", sortable: true, truncate: true, render: (s) => s.nameEs },
     {
       key: "acciones",
       header: "Acciones",
@@ -318,7 +318,7 @@ export function AssessmentAdminPage() {
       cellClassName: "font-mono text-xs",
       render: (n) => n.id,
     },
-    { key: "name", header: "Nombre", sortable: true, render: (n) => n.name },
+    { key: "name", header: "Nombre", sortable: true, truncate: true, render: (n) => n.name },
     {
       key: "type",
       header: "Tipo",
@@ -595,6 +595,8 @@ export function AssessmentAdminPage() {
             rows={symptoms}
             getRowKey={(s) => String(s.id)}
             emptyMessage="No hay síntomas cargados."
+            searchable
+            searchText={(s) => `${s.nameEs} ${s.id}`}
             initialSort={{ key: "id", dir: "asc" }}
             containerClassName="bg-white rounded-xl border border-stone-200"
             footer={
@@ -676,6 +678,8 @@ export function AssessmentAdminPage() {
             rows={nutrients}
             getRowKey={(n) => n.id}
             emptyMessage="No hay nutrientes cargados."
+            searchable
+            searchText={(n) => `${n.name} ${n.id}`}
             initialSort={{ key: "id", dir: "asc" }}
             containerClassName="bg-white rounded-xl border border-stone-200"
             footer={
