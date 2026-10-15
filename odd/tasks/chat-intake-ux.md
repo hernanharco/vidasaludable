@@ -90,7 +90,9 @@ sin llamado a `/api/assistant/ask` para ese mensaje.
 | T2 | ChatIntake: columna acotada/centrada, botón junto al formulario, aviso de qué falta, textos (Mujer/Hombre, label duplicada, hint de edad) + tests RED | S2-S4 | inline | done | RED: 12 tests en rojo (6 pre-existentes + 6 nuevos) → GREEN: 13/13 en `frontend/test/ChatIntake.test.tsx`. Playwright 1440×900: columna centrada de 512px, "Siguiente" en y=590 (antes y=844), hint ámbar visible, chips "Mujer/Hombre". Commit `da6f3533`. |
 | T3 | ChatSession: saludo fijo con perfil que pregunta dolencias + test RED | S5 | inline | done | RED observado (saludo genérico viejo) → GREEN: 14/14 en `frontend/test/ChatIntake.test.tsx`. E2E Playwright local: al cerrar el cuestionario el agente abre con "¡Hola! Ya guardé tu ficha inicial (38 años · objetivo Sueño). ¿Qué dolencias o molestias te gustaría conversar conmigo?…", sin llamado a `/assistant/ask`. Commit `da6f3533`. |
 | T4 | Cierre: suite frontend completa, typecheck y build | S1-S5 | inline | done | `pnpm test`: 23 archivos / **171 tests en verde**; `pnpm typecheck` sin errores; `pnpm build` ✓ (9.8s). E2E Playwright local completo (código → registro → 5 pasos → chat → respuesta de Gemini). |
-| T5 | Cierre ODD: doc + espejo Engram + assess RDD | S1-S5 | inline | in_progress | |
+| T5 | Verificador independiente (`gentle_review assess` falló → riesgo tratado como alto) | S1-S5 | subagente `gentle-ai-verify` | done | ASSESS devolvió `unassessable` ("untracked files require an explicit declaration", por el `.codegraph/` local) → se verifica como alto. Verificador independiente, task `mv8uck1r-1-y4h0`: **APPROVE**, S1-S5 PASS con evidencia file:line; corrió el test centrado (16/16) y typecheck. Un hallazgo menor: los caminos que abren chat sin cuestionario solo estaban verificados por código → cerrado en T6. |
+| T6 | Suite completa + typecheck tras los tests de regresión | S1-S5 | inline | done | `pnpm test`: 23 archivos / **172 tests en verde**; `pnpm typecheck` sin errores. Commit `7ee1c1a8` (tests que fijan el saludo genérico en los dos caminos sin cuestionario). |
+| T7 | Cierre: doc + espejo Engram + memoria de sesión | S1-S5 | inline | in_progress | |
 
 ## Log
 
@@ -129,3 +131,15 @@ sin llamado a `/api/assistant/ask` para ese mensaje.
   almacenados ni seguridad; el contrato de wire `sex: F|M` se preserva y lo
   cubre un test; el único destino público que cambia (CTA del hero) es el
   pedido.
+- L5 (2026-10-15, verificación y cierre T5-T6): `gentle_review assess` falló
+  por un árbol con `.codegraph/` sin declarar (índice local, no forma parte
+  del cambio) y devolvió riesgo `unassessable`, que se verifica como alto:
+  autoverificación (suite/typecheck/build/E2E ya registrados) + verificador
+  independiente `gentle-ai-verify` → **APPROVE**, S1-S5 PASS. Su único
+  hallazgo menor se cerró con `7ee1c1a8` (fija el saludo genérico en los dos
+  caminos que abren chat sin cuestionario) y la suite volvió a verde en
+  **172/172** con typecheck limpio. Hallazgo de entorno para el usuario: el
+  repositorio guarda una autoridad de review inválida
+  (`review-400dc75d78846e78`, "written by a newer gentle-ai than the one
+  reading it"), ajena a este cambio — requiere subir `gentle-ai` para poder
+  leerla. Commits de la rama: `07156a2b`, `da6f3533`, `8c7e9caf`, `7ee1c1a8`.
