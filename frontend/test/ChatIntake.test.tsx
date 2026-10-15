@@ -370,13 +370,19 @@ describe("ChatIntake component", () => {
     await user.click(screen.getByRole("button", { name: "Hombre" }));
     await user.click(screen.getByRole("button", { name: /Siguiente/ }));
 
-    // Step 2: single-select goal (Energía first, then switch to Huesos)
+    // Step 2: multi-select goals — Energía and Huesos stay pressed together
     expect(await screen.findByText("Paso 2 de 5")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Energía" }));
     expect(screen.getByRole("button", { name: "Energía" })).toHaveAttribute("aria-pressed", "true");
     await user.click(screen.getByRole("button", { name: "Huesos" }));
     expect(screen.getByRole("button", { name: "Huesos" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Energía" })).toHaveAttribute("aria-pressed", "true");
+    // Toggling one off leaves the other selected
+    await user.click(screen.getByRole("button", { name: "Energía" }));
     expect(screen.getByRole("button", { name: "Energía" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("button", { name: "Huesos" })).toHaveAttribute("aria-pressed", "true");
+    // Re-select it so the profile carries both
+    await user.click(screen.getByRole("button", { name: "Energía" }));
     await user.click(screen.getByRole("button", { name: /Siguiente/ }));
 
     // Step 3: habits
@@ -384,10 +390,11 @@ describe("ChatIntake component", () => {
     await user.click(screen.getByRole("button", { name: "Omnívora" }));
     await user.click(screen.getByRole("button", { name: "Intensa" }));
 
-    // Back to step 2 → Huesos still selected
+    // Back to step 2 → both selections preserved
     await user.click(screen.getByRole("button", { name: /Atrás/ }));
     expect(await screen.findByText("Paso 2 de 5")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Huesos" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Energía" })).toHaveAttribute("aria-pressed", "true");
 
     // Back to step 1 → age and sex preserved
     await user.click(screen.getByRole("button", { name: /Atrás/ }));
@@ -415,7 +422,7 @@ describe("ChatIntake component", () => {
     expect(onComplete).toHaveBeenCalledWith({
       sex: "M",
       age: "37",
-      goal: "Huesos",
+      goal: "Energía, Huesos",
       diet: "Omnívora",
       activity: "Intensa",
       sleep: "7-8 h",
@@ -501,7 +508,7 @@ describe("ChatIntake copy, layout and guidance (S2-S4)", () => {
 
     // Step 2 — objetivo
     expect(await screen.findByText("Paso 2 de 5")).toBeInTheDocument();
-    expect(screen.getByRole("status").textContent).toContain("tu objetivo principal");
+    expect(screen.getByRole("status").textContent).toContain("tus objetivos principales");
     await user.click(screen.getByRole("button", { name: "Energía" }));
     await waitFor(() => expect(screen.queryByRole("status")).not.toBeInTheDocument());
     await user.click(screen.getByRole("button", { name: /Siguiente/ }));
@@ -532,7 +539,7 @@ describe("ChatIntake copy, layout and guidance (S2-S4)", () => {
     expect(screen.getByRole("button", { name: "Mis recomendaciones" })).toBeEnabled();
   });
 
-  it("renders 'Objetivo principal' once, as the heading and the group name", async () => {
+  it("renders 'Objetivos principales' once, as the heading and the group name", async () => {
     const user = userEvent.setup();
     render(<IntakeHarness onComplete={vi.fn().mockResolvedValue(true)} />);
 
@@ -541,9 +548,53 @@ describe("ChatIntake copy, layout and guidance (S2-S4)", () => {
     await user.click(screen.getByRole("button", { name: /Siguiente/ }));
 
     expect(await screen.findByText("Paso 2 de 5")).toBeInTheDocument();
-    expect(screen.getAllByText("Objetivo principal")).toHaveLength(1);
+    expect(screen.getAllByText("Objetivos principales")).toHaveLength(1);
     // The chip group keeps its accessible name for screen readers.
-    expect(screen.getByRole("group", { name: "Objetivo principal" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Objetivos principales" })).toBeInTheDocument();
+  });
+
+  it("opens the conversation quoting the saved open note as the topic", async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem("vr_customer_id", String(CUSTOMER_ID));
+    installFetch({ profile: null, postProfileOk: true });
+
+    await openWidget(user);
+    expect(await screen.findByText("Paso 1 de 5")).toBeInTheDocument();
+    await fillStep1(user, "34", "F");
+
+    // Step 2 — two goals selected together (multi-select)
+    expect(await screen.findByText("Paso 2 de 5")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Energía" }));
+    await user.click(screen.getByRole("button", { name: "Sueño" }));
+    await user.click(screen.getByRole("button", { name: /Siguiente/ }));
+    // Step 3 — habits
+    expect(await screen.findByText("Paso 3 de 5")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Vegetariana" }));
+    await user.click(screen.getByRole("button", { name: "Leve" }));
+    await user.click(screen.getByRole("button", { name: /Siguiente/ }));
+    // Step 4 — sleep + stress
+    expect(await screen.findByText("Paso 4 de 5")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "7-8 h" }));
+    await user.click(screen.getByRole("button", { name: "Medio" }));
+    await user.click(screen.getByRole("button", { name: /Siguiente/ }));
+    // Step 5 — the open note becomes the conversation topic
+    expect(await screen.findByText("Paso 5 de 5")).toBeInTheDocument();
+    await user.type(
+      screen.getByPlaceholderText(OPEN_NOTE_PLACEHOLDER),
+      "Me preocupa el cansancio de la tarde",
+    );
+    await user.click(screen.getByRole("button", { name: "Mis recomendaciones" }));
+
+    expect(await screen.findByPlaceholderText("Escribe un mensaje...")).toBeInTheDocument();
+    const transcript = screen.getByRole("log").textContent ?? "";
+
+    // The saved note is quoted as the opener, not the generic ailments ask.
+    expect(transcript).toContain("Me preocupa el cansancio de la tarde");
+    expect(transcript).not.toContain(
+      "¿Qué dolencias o molestias te gustaría conversar conmigo?",
+    );
+    // Multiple goals are pluralized in the greeting.
+    expect(transcript).toContain("objetivos Energía, Sueño");
   });
 
   it("places the age rule next to the age field, above the Sexo group", async () => {

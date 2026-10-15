@@ -76,7 +76,7 @@ function missingFields(step: number, profile: IntakeProfile): string[] {
       return missing;
     }
     case 2:
-      return profile.goal === "" ? ["tu objetivo principal"] : [];
+      return profile.goal === "" ? ["tus objetivos principales"] : [];
     case 3: {
       const missing: string[] = [];
       if (profile.diet === "") missing.push("tu dieta");
@@ -113,6 +113,7 @@ function ChipGroup({
   onSelect,
   labels,
   hideLabel,
+  multi,
 }: {
   label: string;
   options: string[];
@@ -122,7 +123,23 @@ function ChipGroup({
   labels?: Record<string, string>;
   /** Skips the visible caption; the group keeps `aria-label={label}` (S4). */
   hideLabel?: boolean;
+  /** Multi-select: `value` is a comma-joined list (", ") that toggles per chip. */
+  multi?: boolean;
 }) {
+  const selected = multi ? new Set(value.split(", ").filter(Boolean)) : null;
+  const isSelected = (option: string) => (multi ? selected!.has(option) : value === option);
+  const handleSelect = (option: string) => {
+    if (!multi) {
+      onSelect(option);
+      return;
+    }
+    const next = new Set(selected!);
+    if (next.has(option)) next.delete(option);
+    else next.add(option);
+    // Options order, not click order: the stored list stays stable.
+    const joined = options.filter((o) => next.has(o)).join(", ");
+    onSelect(joined);
+  };
   return (
     <div className="mb-3">
       {!hideLabel && <p className="text-xs text-stone-600 mb-1.5">{label}</p>}
@@ -131,9 +148,9 @@ function ChipGroup({
           <button
             key={option}
             type="button"
-            aria-pressed={value === option}
-            onClick={() => onSelect(option)}
-            className={chipCls(value === option)}
+            aria-pressed={isSelected(option)}
+            onClick={() => handleSelect(option)}
+            className={chipCls(isSelected(option))}
           >
             {labels?.[option] ?? option}
           </button>
@@ -205,13 +222,14 @@ export function ChatIntake({ profile, onChange, onComplete }: ChatIntakeProps) {
 
         {step === 2 && (
           <div>
-            <h5 className="text-sm font-medium text-stone-800 mb-1">Objetivo principal</h5>
+            <h5 className="text-sm font-medium text-stone-800 mb-1">Objetivos principales</h5>
             <p className="text-xs text-stone-500 mb-3">¿Qué te gustaría mejorar?</p>
-            {/* S4 — the heading already says "Objetivo principal", so the chip
+            {/* S4 — the heading already says "Objetivos principales", so the chip
                 group keeps it as aria-label only (it used to print it twice). */}
             <ChipGroup
-              label="Objetivo principal"
+              label="Objetivos principales"
               hideLabel
+              multi
               options={GOALS}
               value={profile.goal}
               onSelect={(option) => update({ goal: option })}

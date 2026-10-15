@@ -50,10 +50,22 @@ function buildIntakeGreeting(profile: IntakeProfile): string {
   const facts: string[] = [];
   const age = profile.age.trim();
   if (age !== "") facts.push(`${age} años`);
-  if (profile.goal !== "") facts.push(`objetivo ${profile.goal}`);
+  const goals = profile.goal.split(",").map((goal) => goal.trim()).filter(Boolean);
+  if (goals.length > 0) {
+    facts.push(`${goals.length > 1 ? "objetivos" : "objetivo"} ${goals.join(", ")}`);
+  }
   const detail = facts.length > 0 ? ` (${facts.join(" · ")})` : "";
+  const base = `¡Hola! Ya guardé tu ficha inicial${detail}. `;
+  const note = profile.openNote.trim();
+  if (note !== "") {
+    // The step-5 note is the topic the customer already opened with: quote it
+    // as the conversation starter instead of the generic ailments ask.
+    return (
+      base + `Veo que esto te preocupa: «${note}». Cuéntame más al respecto cuando quieras.`
+    );
+  }
   return (
-    `¡Hola! Ya guardé tu ficha inicial${detail}. ` +
+    base +
     "¿Qué dolencias o molestias te gustaría conversar conmigo? " +
     "Cuéntamelo con tus palabras y arrancamos."
   );
