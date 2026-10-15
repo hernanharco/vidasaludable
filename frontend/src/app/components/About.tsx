@@ -53,10 +53,10 @@ export function About() {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.8 }}
-          className="relative h-full w-full min-h-[500px]"
+          className="relative h-full w-full min-h-[400px] sm:min-h-[500px]"
         >
           {/* Main Photo */}
-          <div className="relative z-10 w-4/5 h-[450px] lg:h-[600px] ml-auto overflow-hidden shadow-2xl rounded-2xl">
+          <div className="relative z-10 w-4/5 h-[300px] sm:h-[450px] lg:h-[600px] ml-auto overflow-hidden shadow-2xl rounded-2xl">
             <img 
               src={`${MAIN_PHOTO}&w=1080`}
               srcSet={photoSrcSet(MAIN_PHOTO)}
@@ -64,11 +64,12 @@ export function About() {
               width={1080}
               height={720}
               alt="Bienestar y salud preventiva" 
+              loading="lazy"
               className="w-full h-full object-cover"
             />
           </div>
           {/* Overlapping Photo */}
-          <div className="absolute bottom-10 left-0 z-20 w-3/5 h-[300px] shadow-xl border-4 border-white overflow-hidden rounded-xl">
+          <div className="absolute bottom-10 left-0 z-20 w-3/5 h-[200px] sm:h-[300px] shadow-xl border-4 border-white overflow-hidden rounded-xl">
              <img 
               src={`${OVERLAP_PHOTO}&w=1080`}
               srcSet={photoSrcSet(OVERLAP_PHOTO)}
@@ -76,6 +77,7 @@ export function About() {
               width={1080}
               height={720}
               alt="Alimentación saludable" 
+              loading="lazy"
               className="w-full h-full object-cover"
             />
           </div>

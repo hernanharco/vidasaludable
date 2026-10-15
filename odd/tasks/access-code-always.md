@@ -90,9 +90,13 @@ user → chat directo". **Siempre** `setPhase("access_code")`.
   (10 tests existentes actualizados al nuevo boot: ChatIntake 6,
   ChatPage 2, AssessmentCard 1, ProductCards 1, con helper compartido
   `test/helpers/accessCode.ts`); `tsc --noEmit` clean
-- [ ] T3 — suites verdes (backend 236/236, frontend 101/101), builds OK
-  (backend `tsc -p`, frontend `vite build`); **pendiente**: push + PR y
-  smoke contra producción (decisión del usuario)
+- [x] T3 — suites verdes (backend 236/236, frontend 101/101), builds OK
+  (backend `tsc -p`, frontend `vite build`); push + PR hechos: issue #12 ·
+  PR #13 → main (commits `37aed5be` y `df779e69` verificados en la historia
+  de main). **Smoke contra producción: no disponible desde el entorno de dev**
+  (DNS de elrincondeharco.com sin respuesta; TLS handshake falla contra
+  api.vidasaludable.rincom.es; el dominio vidasaludable.vercel.app pertenece
+  a otro proyecto). Queda a cargo del usuario desde su red.
 
 ## Evidence (commits per task)
 

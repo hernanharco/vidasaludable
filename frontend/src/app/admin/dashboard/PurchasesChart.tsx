@@ -24,6 +24,15 @@ const tooltipStyle = {
   boxShadow: "0 4px 12px rgba(0,0,0,0.06)",
 };
 
+/**
+ * XAxis tick labels: full product names overlap at 360px with
+ * `interval={0}` + `angle={-12}` (mobile-ui-p2 S9). Labels longer than
+ * 12 chars are truncated to 11 + "…"; the Tooltip keeps the full name.
+ */
+export function truncateTick(name: string): string {
+  return name.length > 12 ? `${name.slice(0, 11)}…` : name;
+}
+
 export function PurchasesChart({ purchases }: PurchasesChartProps) {
   return (
     <div className="bg-white border border-stone-200 p-5">
@@ -44,6 +53,7 @@ export function PurchasesChart({ purchases }: PurchasesChartProps) {
                 angle={-12}
                 textAnchor="end"
                 height={48}
+                tickFormatter={truncateTick}
               />
               <YAxis tick={{ fontSize: 11, fill: "#78716c" }} tickLine={false} axisLine={false} allowDecimals={false} />
               <Tooltip contentStyle={tooltipStyle} cursor={{ fill: "#f5f5f4" }} />

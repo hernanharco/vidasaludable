@@ -197,7 +197,7 @@ export function ChatMessages({
       {messages.map((msg, idx) => (
         <div
           key={idx}
-          className={`max-w-[80%] p-3 rounded-2xl text-sm ${
+          className={`max-w-[80%] p-3 rounded-2xl text-sm break-words ${
             msg.sender === "user"
               ? "bg-emerald-900 text-white rounded-br-none self-end"
               : "bg-white border border-stone-200 text-stone-700 rounded-bl-none self-start shadow-sm whitespace-pre-wrap"
