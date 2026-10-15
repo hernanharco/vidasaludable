@@ -321,6 +321,8 @@ export function GuidancePage() {
         rows={guidance}
         getRowKey={(g) => String(g.id)}
         emptyMessage="No hay guías. Crea la primera para que el agente la use en sus recomendaciones."
+        searchable
+        searchText={(g) => `${g.title} ${g.content}`}
         containerClassName="mt-6 bg-white border border-stone-200"
         rowClassName="align-top"
       />

@@ -38,7 +38,7 @@ export function CustomersPage() {
 
   const columns: DataTableColumn<Customer>[] = [
     { key: "id", header: "ID", sortable: true, render: (c) => c.id },
-    { key: "name", header: "Nombre", sortable: true, render: (c) => c.name },
+    { key: "name", header: "Nombre", sortable: true, truncate: true, render: (c) => c.name },
     { key: "email", header: "Email", sortable: true, render: (c) => c.email },
     { key: "phone", header: "Teléfono", sortable: true, render: (c) => c.phone },
     {
@@ -111,6 +111,10 @@ export function CustomersPage() {
         rows={customers}
         getRowKey={(c) => String(c.id)}
         emptyMessage="No hay clientes registrados todavía."
+        searchable
+        searchText={(c) =>
+          `${c.name} ${c.email} ${c.phone} ${c.referrerName ?? ""}`
+        }
         containerClassName="mt-6 bg-white border border-stone-200"
       />
       <ConfirmActionDialog

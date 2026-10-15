@@ -153,6 +153,8 @@ export function PurchasesPage() {
         rows={purchases}
         getRowKey={(p) => String(p.id)}
         emptyMessage="No hay compras registradas todavía."
+        searchable
+        searchText={(p) => `${p.productReference} ${p.customerId} ${p.id}`}
         containerClassName="mt-6 bg-white border border-stone-200"
       />
     </div>
