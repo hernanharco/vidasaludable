@@ -34,7 +34,27 @@ vi.mock("motion/react", () => {
   const motion = new Proxy({}, { get: (_target, tag: string) => makeComponent(tag) });
   const AnimatePresence = ({ children }: { children?: React.ReactNode }) => <>{children}</>;
   const useReducedMotion = () => false;
-  return { motion, AnimatePresence, useReducedMotion };
+  // App wraps its tree in <MotionConfig reducedMotion="user"> (ui-s6 S5b), so
+  // the stub module must export it too or React throws "Element type is invalid".
+  const MotionConfig = ({ children }: { children?: React.ReactNode }) => <>{children}</>;
+  return { motion, AnimatePresence, useReducedMotion, MotionConfig };
+});
+
+// App mounts sonner's <Toaster /> (ui-s6 S7a) and its theme effect calls
+// window.matchMedia unguarded; this vitest/jsdom setup ships no matchMedia, so a
+// minimal stub keeps the landing renderable (same stub as Toaster.test.tsx).
+Object.defineProperty(window, "matchMedia", {
+  configurable: true,
+  value: (query: string) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  }),
 });
 
 // Mock fetch (the landing components don't call it, but the pattern is kept
