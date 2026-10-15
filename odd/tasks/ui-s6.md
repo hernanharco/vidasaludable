@@ -220,9 +220,14 @@ post-rebase 210/210 + tsc + build verdes.
    superficies de esta tarea (`CustomersPage`, `ConversationsPage`,
    `CatalogPage`, `Dashboard`) puede renderizar h2 sobre el h1 de la página en
    estados de error — no estaba en los flags de S6.
-4. El target `c6ae20f9…` (diff commiteado T1+T2) no pudo iniciar review (2×
-   `empty_candidate_base_ref_required`, sin linaje creado); T1 y T3+T4 tienen
-   receipt APPROVED propio y T2 queda como candidato para un retry o verifier
-   independiente al cierre.
+4. Los targets de base-diff commiteado nunca arrancaron: `0b1277…` (docs, 2×),
+   `c6ae20f9…` (T1+T2, 2×) y `f191a459…` (PR B completo, 2×) fallaron con la
+   misma firma `empty_candidate_base_ref_required` (el start re-proyecta a
+   `current-changes` con `paths: []` y el árbol está limpio; ningún linaje se
+   crea). Los candidatos de workspace SÍ arrancaron y cerraron: T1
+   (`review-ae954835d5fce811`, APPROVED) y T3+T4 (`review-90572f3f82431916`,
+   APPROVED) — ambos con receipt quemado. El retry planificado para T2 sobre
+   `f191a459…` falló 2/2 → T2 cierra con **verifier independiente** (parent:
+   210/210 + tsc + build, verificado post-rebase).
 5. Smoke end-to-end pendiente por DNS: `vidasaludable.rincon.es` no resuelve
    desde la máquina del agente (000); el pipeline CI+Deploy es la señal viva.
