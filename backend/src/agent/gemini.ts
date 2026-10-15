@@ -6,6 +6,8 @@ import type { ChatMessage } from "./prompt.js";
  *
  * - Reads `GEMINI_API_KEY`, `GEMINI_MODEL` and `GEMINI_FALLBACK_MODEL` from the
  *   environment. The key is NEVER hard-coded or committed (see .env.example).
+ *   Ownership: the active `GEMINI_API_KEY` belongs to Eliana Rincon Ossa's
+ *   account (set in the server env / local .env, never in git).
  * - Retries HTTP 429 / 503 on the primary model with backoff 2s / 5s / 10s
  *   (three attempts total).
  * - When the primary model is exhausted on a rate limit (429), retries once on
