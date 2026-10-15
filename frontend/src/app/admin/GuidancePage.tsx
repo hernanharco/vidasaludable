@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api, Guidance, Product } from "./api";
 import { DataTable, type DataTableColumn } from "./DataTable";
 import { ErrorBanner, toErrorState, type ErrorState } from "./ErrorBanner";
+import { ConfirmActionDialog } from "./ConfirmActionDialog";
 
 interface GuidanceFormState {
   title: string;
@@ -34,6 +35,7 @@ export function GuidancePage() {
   const [editing, setEditing] = useState<GuidanceFormState | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<Guidance | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -122,9 +124,6 @@ export function GuidancePage() {
   }
 
   async function handleDelete(row: Guidance) {
-    if (!window.confirm(`¿Eliminar la guía "${row.title}"? Esta acción no se puede deshacer.`)) {
-      return;
-    }
     try {
       await api.deleteGuidance(row.id);
       await load();
@@ -214,7 +213,7 @@ export function GuidancePage() {
           >
             Editar
           </button>
-          <button onClick={() => handleDelete(g)} className="text-red-700 hover:underline">
+          <button onClick={() => setConfirmDelete(g)} className="text-red-700 hover:underline">
             Eliminar
           </button>
         </>
@@ -324,6 +323,18 @@ export function GuidancePage() {
         emptyMessage="No hay guías. Crea la primera para que el agente la use en sus recomendaciones."
         containerClassName="mt-6 bg-white border border-stone-200"
         rowClassName="align-top"
+      />
+      <ConfirmActionDialog
+        open={confirmDelete !== null}
+        title={confirmDelete ? `¿Eliminar la guía "${confirmDelete.title}"?` : ""}
+        description="Esta acción no se puede deshacer."
+        confirmLabel="Eliminar"
+        onConfirm={() => {
+          const row = confirmDelete;
+          setConfirmDelete(null);
+          if (row) void handleDelete(row);
+        }}
+        onCancel={() => setConfirmDelete(null)}
       />
     </div>
   );

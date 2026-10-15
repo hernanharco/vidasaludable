@@ -8,6 +8,7 @@ import {
   SegmentPatch,
   VideoStatus,
 } from "./api";
+import { ConfirmActionDialog } from "./ConfirmActionDialog";
 
 const STATUS_LABELS: Record<VideoStatus, string> = {
   draft: "Borrador",
@@ -73,6 +74,8 @@ export function VideosPage() {
   const [selectedVideoId, setSelectedVideoId] = useState<number | null>(null);
   const [segmentForm, setSegmentForm] = useState<SegmentFormState | null>(null);
   const [editingSegmentId, setEditingSegmentId] = useState<number | null>(null);
+  const [confirmVideo, setConfirmVideo] = useState<Video | null>(null);
+  const [confirmSegment, setConfirmSegment] = useState<VideoSegment | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -129,9 +132,6 @@ export function VideosPage() {
   }
 
   async function handleDeleteVideo(row: Video) {
-    if (!window.confirm(`¿Eliminar el vídeo "${row.title}"? Esta acción no se puede deshacer.`)) {
-      return;
-    }
     try {
       await api.deleteVideo(row.id);
       await load();
@@ -236,9 +236,6 @@ export function VideosPage() {
   }
 
   async function handleDeleteSegment(row: VideoSegment) {
-    if (!window.confirm(`¿Eliminar el segmento "${row.title}"? Esta acción no se puede deshacer.`)) {
-      return;
-    }
     try {
       await api.deleteVideoSegment(row.id);
       await load();
@@ -295,7 +292,7 @@ export function VideosPage() {
       align: "right",
       render: (v) => (
         <button
-          onClick={() => handleDeleteVideo(v)}
+          onClick={() => setConfirmVideo(v)}
           className="text-red-700 hover:underline"
         >
           Eliminar
@@ -390,7 +387,7 @@ export function VideosPage() {
             Editar
           </button>
           <button
-            onClick={() => handleDeleteSegment(s)}
+            onClick={() => setConfirmSegment(s)}
             className="text-red-700 hover:underline"
           >
             Eliminar
@@ -695,6 +692,30 @@ export function VideosPage() {
           rowClassName="align-top"
         />
       </div>
+      <ConfirmActionDialog
+        open={confirmVideo !== null}
+        title={confirmVideo ? `¿Eliminar el vídeo "${confirmVideo.title}"?` : ""}
+        description="Esta acción no se puede deshacer."
+        confirmLabel="Eliminar"
+        onConfirm={() => {
+          const row = confirmVideo;
+          setConfirmVideo(null);
+          if (row) void handleDeleteVideo(row);
+        }}
+        onCancel={() => setConfirmVideo(null)}
+      />
+      <ConfirmActionDialog
+        open={confirmSegment !== null}
+        title={confirmSegment ? `¿Eliminar el segmento "${confirmSegment.title}"?` : ""}
+        description="Esta acción no se puede deshacer."
+        confirmLabel="Eliminar"
+        onConfirm={() => {
+          const row = confirmSegment;
+          setConfirmSegment(null);
+          if (row) void handleDeleteSegment(row);
+        }}
+        onCancel={() => setConfirmSegment(null)}
+      />
     </div>
   );
 }

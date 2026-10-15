@@ -7,6 +7,7 @@ import type {
   AssessmentMapping,
   AssessmentResult,
 } from "./api";
+import { ConfirmActionDialog } from "./ConfirmActionDialog";
 
 type Tab = "symptoms" | "nutrients" | "mappings" | "results";
 
@@ -67,6 +68,12 @@ export function AssessmentAdminPage() {
 
   // Results
   const [results, setResults] = useState<AssessmentResult[]>([]);
+  const [confirmSymId, setConfirmSymId] = useState<number | null>(null);
+  const [confirmNutId, setConfirmNutId] = useState<string | null>(null);
+  const [confirmMap, setConfirmMap] = useState<{
+    symptomId: number;
+    nutrientId: string;
+  } | null>(null);
 
   // ─── Loaders ───────────────────────────────────────────────────────
 
@@ -148,7 +155,6 @@ export function AssessmentAdminPage() {
   }
 
   async function handleDeleteSym(id: number) {
-    if (!confirm("¿Eliminar este síntoma? Se verificará que no esté en uso.")) return;
     try {
       await api.deleteAssessmentSymptom(id);
       await loadSymptoms();
@@ -194,7 +200,6 @@ export function AssessmentAdminPage() {
   }
 
   async function handleDeleteNut(id: string) {
-    if (!confirm("¿Eliminar este nutriente? Se verificará que no esté en uso.")) return;
     try {
       await api.deleteAssessmentNutrient(id);
       await loadNutrients();
@@ -253,7 +258,6 @@ export function AssessmentAdminPage() {
   }
 
   async function handleDeleteMap(symptomId: number, nutrientId: string) {
-    if (!confirm("¿Eliminar este mapeo?")) return;
     try {
       await api.deleteAssessmentMapping({ symptomId, nutrientId });
       await loadMappings();
@@ -296,7 +300,7 @@ export function AssessmentAdminPage() {
             Editar
           </button>
           <button
-            onClick={() => handleDeleteSym(s.id)}
+            onClick={() => setConfirmSymId(s.id)}
             className="text-xs text-red-500 hover:text-red-700"
           >
             Eliminar
@@ -339,7 +343,7 @@ export function AssessmentAdminPage() {
             Editar
           </button>
           <button
-            onClick={() => handleDeleteNut(n.id)}
+            onClick={() => setConfirmNutId(n.id)}
             className="text-xs text-red-500 hover:text-red-700"
           >
             Eliminar
@@ -433,7 +437,7 @@ export function AssessmentAdminPage() {
               Editar peso
             </button>
             <button
-              onClick={() => handleDeleteMap(m.symptomId, m.nutrientId)}
+              onClick={() => setConfirmMap({ symptomId: m.symptomId, nutrientId: m.nutrientId })}
               className="text-xs text-red-500 hover:text-red-700"
             >
               Eliminar
@@ -778,6 +782,39 @@ export function AssessmentAdminPage() {
           />
         </div>
       )}
+      <ConfirmActionDialog
+        open={confirmSymId !== null}
+        title="¿Eliminar este síntoma? Se verificará que no esté en uso."
+        confirmLabel="Eliminar"
+        onConfirm={() => {
+          const id = confirmSymId;
+          setConfirmSymId(null);
+          if (id !== null) void handleDeleteSym(id);
+        }}
+        onCancel={() => setConfirmSymId(null)}
+      />
+      <ConfirmActionDialog
+        open={confirmNutId !== null}
+        title="¿Eliminar este nutriente? Se verificará que no esté en uso."
+        confirmLabel="Eliminar"
+        onConfirm={() => {
+          const id = confirmNutId;
+          setConfirmNutId(null);
+          if (id !== null) void handleDeleteNut(id);
+        }}
+        onCancel={() => setConfirmNutId(null)}
+      />
+      <ConfirmActionDialog
+        open={confirmMap !== null}
+        title="¿Eliminar este mapeo?"
+        confirmLabel="Eliminar"
+        onConfirm={() => {
+          const map = confirmMap;
+          setConfirmMap(null);
+          if (map) void handleDeleteMap(map.symptomId, map.nutrientId);
+        }}
+        onCancel={() => setConfirmMap(null)}
+      />
     </div>
   );
 }

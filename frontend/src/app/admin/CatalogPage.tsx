@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api, Product, ProductInput } from "./api";
 import { DataTable, type DataTableColumn } from "./DataTable";
 import { ErrorBanner, toErrorState, type ErrorState } from "./ErrorBanner";
+import { ConfirmActionDialog } from "./ConfirmActionDialog";
 
 const EMPTY: ProductInput = {
   reference: "",
@@ -19,6 +20,7 @@ export function CatalogPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [error, setError] = useState<ErrorState | null>(null);
   const [deleteError, setDeleteError] = useState<ErrorState | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<ProductInput | null>(null);
   const [saving, setSaving] = useState(false);
@@ -105,16 +107,7 @@ export function CatalogPage() {
             Editar
           </button>
           <button
-            onClick={async () => {
-              if (!confirm(`¿Eliminar el producto ${p.reference}?`)) return;
-              try {
-                await api.deleteProduct(p.reference);
-                setDeleteError(null);
-                await load();
-              } catch (err) {
-                setDeleteError(toErrorState(err));
-              }
-            }}
+            onClick={() => setConfirmDelete(p)}
             className="text-red-500 hover:text-red-700"
           >
             Eliminar
@@ -267,6 +260,27 @@ export function CatalogPage() {
         getRowKey={(p) => p.reference}
         emptyMessage="No hay productos en el catálogo todavía."
         containerClassName="mt-6 bg-white border border-stone-200"
+      />
+      <ConfirmActionDialog
+        open={confirmDelete !== null}
+        title={confirmDelete ? `¿Eliminar el producto ${confirmDelete.reference}?` : ""}
+        description="Esta acción no se puede deshacer."
+        confirmLabel="Eliminar"
+        onConfirm={() => {
+          const row = confirmDelete;
+          setConfirmDelete(null);
+          if (!row) return;
+          void (async () => {
+            try {
+              await api.deleteProduct(row.reference);
+              setDeleteError(null);
+              await load();
+            } catch (err) {
+              setDeleteError(toErrorState(err));
+            }
+          })();
+        }}
+        onCancel={() => setConfirmDelete(null)}
       />
     </div>
   );

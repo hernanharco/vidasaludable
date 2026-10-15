@@ -3,11 +3,13 @@ import { Link } from "react-router";
 import { api, Customer } from "./api";
 import { DataTable, type DataTableColumn } from "./DataTable";
 import { ErrorBanner, toErrorState, type ErrorState } from "./ErrorBanner";
+import { ConfirmActionDialog } from "./ConfirmActionDialog";
 
 export function CustomersPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [error, setError] = useState<ErrorState | null>(null);
   const [deleteError, setDeleteError] = useState<ErrorState | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<Customer | null>(null);
   const [loading, setLoading] = useState(true);
   const [reload, setReload] = useState(0);
 
@@ -81,16 +83,7 @@ export function CustomersPage() {
             Ver ficha
           </Link>
           <button
-            onClick={async () => {
-              if (!confirm(`¿Eliminar a ${c.name}?`)) return;
-              try {
-                await api.deleteCustomer(c.id);
-                setCustomers((prev) => prev.filter((x) => x.id !== c.id));
-                setDeleteError(null);
-              } catch (e) {
-                setDeleteError(toErrorState(e));
-              }
-            }}
+            onClick={() => setConfirmDelete(c)}
             className="text-xs text-red-500 hover:text-red-700"
           >
             Eliminar
@@ -119,6 +112,27 @@ export function CustomersPage() {
         getRowKey={(c) => String(c.id)}
         emptyMessage="No hay clientes registrados todavía."
         containerClassName="mt-6 bg-white border border-stone-200"
+      />
+      <ConfirmActionDialog
+        open={confirmDelete !== null}
+        title={confirmDelete ? `¿Eliminar a ${confirmDelete.name}?` : ""}
+        description="Esta acción no se puede deshacer."
+        confirmLabel="Eliminar"
+        onConfirm={() => {
+          const row = confirmDelete;
+          setConfirmDelete(null);
+          if (!row) return;
+          void (async () => {
+            try {
+              await api.deleteCustomer(row.id);
+              setCustomers((prev) => prev.filter((x) => x.id !== row.id));
+              setDeleteError(null);
+            } catch (e) {
+              setDeleteError(toErrorState(e));
+            }
+          })();
+        }}
+        onCancel={() => setConfirmDelete(null)}
       />
     </div>
   );
