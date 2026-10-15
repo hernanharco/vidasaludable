@@ -39,6 +39,26 @@ interface ChatSessionProps {
 
 const GREETING = "¡Hola! ¿En qué te puedo ayudar hoy con tu bienestar?";
 
+/**
+ * S5 (odd/tasks/chat-intake-ux.md) — the first agent message once the
+ * questionnaire is finished. A fixed, profile-aware opener written by the
+ * frontend (no `/assistant/ask` round-trip, so it cannot fail or stall) that
+ * asks which ailments the customer wants to talk about, in a friendly and
+ * plain tone.
+ */
+function buildIntakeGreeting(profile: IntakeProfile): string {
+  const facts: string[] = [];
+  const age = profile.age.trim();
+  if (age !== "") facts.push(`${age} años`);
+  if (profile.goal !== "") facts.push(`objetivo ${profile.goal}`);
+  const detail = facts.length > 0 ? ` (${facts.join(" · ")})` : "";
+  return (
+    `¡Hola! Ya guardé tu ficha inicial${detail}. ` +
+    "¿Qué dolencias o molestias te gustaría conversar conmigo? " +
+    "Cuéntamelo con tus palabras y arrancamos."
+  );
+}
+
 const EMPTY_PROFILE: IntakeProfile = {
   sex: "",
   age: "",
@@ -415,15 +435,17 @@ export function ChatSession({ onOpenAssessment, onClose }: ChatSessionProps) {
         consentedVersion.current = consent.version;
         const keepConv = consentReentry && conversationId != null ? conversationId : null;
         persistIdentity(data.customer_id, keepConv);
-        if (keepConv == null) {
-          setMessages([{ sender: "agent", text: GREETING }]);
-        }
         setChatError(null);
         // A freshly registered customer has no intake profile yet, so the
         // questionnaire runs next; only a confirmed profile skips it. If the
         // check fails we still run the intake: a new registration cannot have
-        // a profile and re-submitting one is a harmless upsert.
+        // a profile and re-submitting one is a harmless upsert. The opening
+        // bubble is seeded only when chat opens directly — the questionnaire
+        // path posts its own profile-aware greeting (S5).
         const hasProfile = await fetchProfileExists(data.customer_id);
+        if (hasProfile === true && keepConv == null) {
+          setMessages([{ sender: "agent", text: GREETING }]);
+        }
         setPhase(hasProfile === true ? "chat" : "intake");
       } else if (res.status === 409) {
         setConsentError(
@@ -473,8 +495,11 @@ export function ChatSession({ onOpenAssessment, onClose }: ChatSessionProps) {
     }
     setProfile(next);
     setChatError(null);
-    // Keep an already-restored conversation; otherwise seed the greeting.
-    setMessages((prev) => (prev.length > 0 ? prev : [{ sender: "agent", text: GREETING }]));
+    // Keep an already-restored conversation; otherwise open with the
+    // profile-aware S5 greeting that asks about the customer's ailments.
+    setMessages((prev) =>
+      prev.length > 0 ? prev : [{ sender: "agent", text: buildIntakeGreeting(next) }],
+    );
     setPhase("chat");
     return true;
   };
