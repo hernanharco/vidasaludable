@@ -160,7 +160,6 @@ describe("VideosPage admin CRM", () => {
     vi.clearAllMocks();
     videosState = VIDEOS.map((v) => ({ ...v }));
     segmentsState = SEGMENTS.map((s) => ({ ...s }));
-    window.confirm = vi.fn(() => true);
     installFetchMock();
   });
 
@@ -321,6 +320,9 @@ describe("VideosPage admin CRM", () => {
 
     const row = screen.getAllByText("Magnesio y sueño")[0]!.closest("tr") as HTMLElement;
     await user.click(within(row).getByRole("button", { name: "Eliminar" }));
+    // ConfirmActionDialog opens instead of window.confirm
+    const dialog = await screen.findByRole("alertdialog");
+    await user.click(within(dialog).getByRole("button", { name: "Eliminar" }));
 
     expect(await screen.findByText("video has segments")).toBeInTheDocument();
     // Video still listed — deletion was refused, not silently ignored
@@ -339,9 +341,11 @@ describe("VideosPage admin CRM", () => {
     expect(screen.getByText("Introducción a la vitamina D")).toBeInTheDocument();
     expect(screen.queryByText("Magnesio antes de dormir")).not.toBeInTheDocument();
 
-    // Delete the filtered video (confirm mocked true; mock DELETE succeeds)
+    // Delete the filtered video (confirmed via ConfirmActionDialog; mock DELETE succeeds)
     const row = screen.getAllByText("Vitamina D y huesos")[0]!.closest("tr") as HTMLElement;
     await user.click(within(row).getByRole("button", { name: "Eliminar" }));
+    const filterDialog = await screen.findByRole("alertdialog");
+    await user.click(within(filterDialog).getByRole("button", { name: "Eliminar" }));
 
     // The filter must not stay pointed at the deleted video: the select shows
     // "Todos los vídeos" again and the unfiltered segment list is rendered.
@@ -383,6 +387,28 @@ describe("VideosPage admin CRM", () => {
     expect(await screen.findByText("Título editado")).toBeInTheDocument();
   });
 
+  it("cancelling the confirm dialog deletes nothing and closes the dialog", async () => {
+    const user = userEvent.setup();
+    render(<VideosPage />);
+    const row = (await screen.findByText("Introducción a la vitamina D")).closest(
+      "tr",
+    ) as HTMLElement;
+    await user.click(within(row).getByRole("button", { name: "Eliminar" }));
+
+    const dialog = await screen.findByRole("alertdialog");
+    await user.click(within(dialog).getByRole("button", { name: "Cancelar" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    });
+    expect(
+      mockFetch.mock.calls.some(
+        ([url, init]) => (init as RequestInit | undefined)?.method === "DELETE",
+      ),
+    ).toBe(false);
+    expect(screen.getAllByText("Introducción a la vitamina D").length).toBeGreaterThan(0);
+  });
+
   it("segment delete: DELETE /admin/video-segments/:id and the list reloads without it", async () => {
     const user = userEvent.setup();
     render(<VideosPage />);
@@ -390,6 +416,8 @@ describe("VideosPage admin CRM", () => {
       "tr",
     ) as HTMLElement;
     await user.click(within(row).getByRole("button", { name: "Eliminar" }));
+    const segmentDialog = await screen.findByRole("alertdialog");
+    await user.click(within(segmentDialog).getByRole("button", { name: "Eliminar" }));
 
     expect(
       mockFetch.mock.calls.some(
@@ -411,6 +439,8 @@ describe("VideosPage admin CRM", () => {
 
     const row = screen.getAllByText("Vitamina D y huesos")[0]!.closest("tr") as HTMLElement;
     await user.click(within(row).getByRole("button", { name: "Eliminar" }));
+    const videoDialog = await screen.findByRole("alertdialog");
+    await user.click(within(videoDialog).getByRole("button", { name: "Eliminar" }));
 
     expect(
       mockFetch.mock.calls.some(

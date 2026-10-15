@@ -4,6 +4,7 @@ import { api, type ReferrerWithStats } from "./api";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { DataTable, type DataTableColumn } from "./DataTable";
+import { ConfirmActionDialog } from "./ConfirmActionDialog";
 
 /**
  * CRM Referrers page — CRUD for access codes + stats.
@@ -14,6 +15,7 @@ export function ReferrersPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editName, setEditName] = useState("");
   const [editPhone, setEditPhone] = useState("");
@@ -81,7 +83,6 @@ export function ReferrersPage() {
   };
 
   const handleDelete = async (id: number) => {
-    if (!confirm("¿Desactivar este referente?")) return;
     try {
       await api.deleteReferrer(id);
       await loadReferrers();
@@ -461,7 +462,7 @@ export function ReferrersPage() {
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => handleDelete(r.id)}
+                      onClick={() => setConfirmDeleteId(r.id)}
                       className="flex-1 text-red-500 hover:text-red-700 hover:border-red-300"
                     >
                       Eliminar
@@ -474,6 +475,18 @@ export function ReferrersPage() {
         </div>
         </>
       )}
+      <ConfirmActionDialog
+        open={confirmDeleteId !== null}
+        title="¿Desactivar este referente?"
+        description="Esta acción no se puede deshacer."
+        confirmLabel="Desactivar"
+        onConfirm={() => {
+          const id = confirmDeleteId;
+          setConfirmDeleteId(null);
+          if (id !== null) void handleDelete(id);
+        }}
+        onCancel={() => setConfirmDeleteId(null)}
+      />
     </div>
   );
 }

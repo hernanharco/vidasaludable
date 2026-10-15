@@ -3,12 +3,14 @@ import { Link } from "react-router";
 import { api, Conversation, Customer } from "./api";
 import { DataTable, type DataTableColumn } from "./DataTable";
 import { ErrorBanner, toErrorState, type ErrorState } from "./ErrorBanner";
+import { ConfirmActionDialog } from "./ConfirmActionDialog";
 
 export function ConversationsPage() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [error, setError] = useState<ErrorState | null>(null);
   const [deleteError, setDeleteError] = useState<ErrorState | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<Conversation | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = async () => {
@@ -59,16 +61,7 @@ export function ConversationsPage() {
             Ver mensajes
           </Link>
           <button
-            onClick={async () => {
-              if (!confirm(`¿Eliminar la conversación #${c.id}?`)) return;
-              try {
-                await api.deleteConversation(c.id);
-                setDeleteError(null);
-                await load();
-              } catch (err) {
-                setDeleteError(toErrorState(err));
-              }
-            }}
+            onClick={() => setConfirmDelete(c)}
             className="text-red-500 hover:text-red-700"
           >
             Eliminar
@@ -100,6 +93,27 @@ export function ConversationsPage() {
         getRowKey={(c) => String(c.id)}
         emptyMessage="No hay conversaciones todavía."
         containerClassName="mt-6 bg-white border border-stone-200"
+      />
+      <ConfirmActionDialog
+        open={confirmDelete !== null}
+        title={confirmDelete ? `¿Eliminar la conversación #${confirmDelete.id}?` : ""}
+        description="Se eliminarán todos sus mensajes. Esta acción no se puede deshacer."
+        confirmLabel="Eliminar"
+        onConfirm={() => {
+          const row = confirmDelete;
+          setConfirmDelete(null);
+          if (!row) return;
+          void (async () => {
+            try {
+              await api.deleteConversation(row.id);
+              setDeleteError(null);
+              await load();
+            } catch (err) {
+              setDeleteError(toErrorState(err));
+            }
+          })();
+        }}
+        onCancel={() => setConfirmDelete(null)}
       />
     </div>
   );
