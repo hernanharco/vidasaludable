@@ -19,3 +19,6 @@ backend/data/
 *.swp
 # Local Pi runtime state
 .atl/
+
+# Local code-graph index (session state, never tracked)
+.codegraph/
