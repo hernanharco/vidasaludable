@@ -92,7 +92,7 @@ sin llamado a `/api/assistant/ask` para ese mensaje.
 | T4 | Cierre: suite frontend completa, typecheck y build | S1-S5 | inline | done | `pnpm test`: 23 archivos / **171 tests en verde**; `pnpm typecheck` sin errores; `pnpm build` ✓ (9.8s). E2E Playwright local completo (código → registro → 5 pasos → chat → respuesta de Gemini). |
 | T5 | Verificador independiente (`gentle_review assess` falló → riesgo tratado como alto) | S1-S5 | subagente `gentle-ai-verify` | done | ASSESS devolvió `unassessable` ("untracked files require an explicit declaration", por el `.codegraph/` local) → se verifica como alto. Verificador independiente, task `mv8uck1r-1-y4h0`: **APPROVE**, S1-S5 PASS con evidencia file:line; corrió el test centrado (16/16) y typecheck. Un hallazgo menor: los caminos que abren chat sin cuestionario solo estaban verificados por código → cerrado en T6. |
 | T6 | Suite completa + typecheck tras los tests de regresión | S1-S5 | inline | done | `pnpm test`: 23 archivos / **172 tests en verde**; `pnpm typecheck` sin errores. Commit `7ee1c1a8` (tests que fijan el saludo genérico en los dos caminos sin cuestionario). |
-| T7 | Cierre: doc + espejo Engram + memoria de sesión | S1-S5 | inline | in_progress | |
+| T7 | Cierre: doc + espejo Engram + memoria de sesión | S1-S5 | inline | done | Doc cerrado (L6), espejo Engram `odd/chat-intake-ux/tasks`, resumen de sesión. Entrega (push/issue/PR) autorizada por el usuario: "Entregar ambas ahora". |
 
 ## Log
 
@@ -143,3 +143,8 @@ sin llamado a `/api/assistant/ask` para ese mensaje.
   (`review-400dc75d78846e78`, "written by a newer gentle-ai than the one
   reading it"), ajena a este cambio — requiere subir `gentle-ai` para poder
   leerla. Commits de la rama: `07156a2b`, `da6f3533`, `8c7e9caf`, `7ee1c1a8`.
+- L6 (2026-10-15, entrega autorizada): el usuario eligió "Entregar ambas
+  ahora" (chat-intake-ux + mobile-ui-p2). T7 cerrada; issue **#38**
+  (`status:approved`) creado para esta rama; push de `feat/chat-intake-ux`
+  y PR con label `type:chore` (único `type:*` del repo). Merge queda como
+  decisión del usuario.
