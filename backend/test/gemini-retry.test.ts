@@ -4,6 +4,7 @@ import {
   RETRY_BACKOFF_MS,
   DEFAULT_GEMINI_MODEL,
   DEFAULT_FALLBACK_MODEL,
+  DEFAULT_MODEL_CHAIN,
 } from "../src/agent/gemini.js";
 
 const base = {
@@ -86,9 +87,9 @@ describe("gemini retry/backoff + model fallback + graceful no-key fallback", () 
     expect(sleep.mock.calls.map((c) => c[0])).toEqual([2000, 5000, 10000]);
   });
 
-  it("throws after both models are exhausted", async () => {
+  it("throws after every model of an exact chain is exhausted", async () => {
     const sleep = vi.fn(async () => undefined);
-    const { fetch } = scriptedFetch([
+    const { fetch, calls } = scriptedFetch([
       { status: 503 },
       { status: 429 },
       { status: 503 },
@@ -100,8 +101,7 @@ describe("gemini retry/backoff + model fallback + graceful no-key fallback", () 
     ]);
     const gemini = createGeminiClient({
       apiKey: "test-key",
-      model: "gemini-primary-test",
-      fallbackModel: "gemini-fallback-test",
+      models: ["gemini-primary-test", "gemini-fallback-test"],
       fetch,
       sleep,
     });
@@ -109,6 +109,9 @@ describe("gemini retry/backoff + model fallback + graceful no-key fallback", () 
     await expect(gemini.generate(base)).rejects.toThrow(/gemini/);
     // 3 retry sleeps on the primary + 3 on the fallback.
     expect(sleep.mock.calls.map((c) => c[0])).toEqual([2000, 5000, 10000, 2000, 5000, 10000]);
+    // Both models of the exact chain were tried, in order.
+    expect(calls[0]!.url).toContain("/models/gemini-primary-test:");
+    expect(calls[4]!.url).toContain("/models/gemini-fallback-test:");
   });
 
   it("throws immediately on a non-retryable status (no fallback)", async () => {
@@ -141,5 +144,100 @@ describe("gemini retry/backoff + model fallback + graceful no-key fallback", () 
   it("defaults to free-tier-friendly models (3.5 Flash Lite → 3.1 Flash Lite)", () => {
     expect(DEFAULT_GEMINI_MODEL).toBe("gemini-3.5-flash-lite");
     expect(DEFAULT_FALLBACK_MODEL).toBe("gemini-3.1-flash-lite");
+  });
+});
+
+describe("model rotation chain (S: si un modelo se llena, rota al siguiente)", () => {
+  it("rotates past two exhausted models to the third one in the chain", async () => {
+    const sleep = vi.fn(async () => undefined);
+    const { fetch, calls } = scriptedFetch([
+      { status: 429 },
+      { status: 429 },
+      { status: 429 },
+      { status: 429 }, // model 1 exhausted (4 attempts)
+      { status: 429 },
+      { status: 429 },
+      { status: 429 },
+      { status: 429 }, // model 2 exhausted
+      { status: 200, body: { candidates: [{ content: { parts: [{ text: "ok" }] } }] } },
+    ]);
+    const gemini = createGeminiClient({
+      apiKey: "test-key",
+      models: ["gemini-one", "gemini-two", "gemini-three"],
+      fetch,
+      sleep,
+    });
+
+    const reply = await gemini.generate(base);
+
+    expect(reply).toBe("ok");
+    // 4 attempts per exhausted model, then the third model succeeds.
+    expect(calls.length).toBe(9);
+    expect(calls[0]!.url).toContain("/models/gemini-one:");
+    expect(calls[4]!.url).toContain("/models/gemini-two:");
+    expect(calls[8]!.url).toContain("/models/gemini-three:");
+    // Backoff only inside each model's own retries; rotation itself is immediate.
+    expect(sleep.mock.calls.map((c) => c[0])).toEqual([
+      2000, 5000, 10000, 2000, 5000, 10000,
+    ]);
+  });
+
+  it("does not rotate on a non-retryable status", async () => {
+    const sleep = vi.fn(async () => undefined);
+    const { fetch, calls } = scriptedFetch([{ status: 400 }]);
+    const gemini = createGeminiClient({
+      apiKey: "test-key",
+      models: ["gemini-one", "gemini-two"],
+      fetch,
+      sleep,
+    });
+
+    await expect(gemini.generate(base)).rejects.toThrow(/non-retryable HTTP 400/);
+    expect(calls.length).toBe(1);
+    expect(sleep).not.toHaveBeenCalled();
+  });
+
+  it("builds the chain from GEMINI_MODELS, trimming and dropping blanks", async () => {
+    process.env.GEMINI_MODELS = " gemini-env-a ,, gemini-env-b ";
+    try {
+      const sleep = vi.fn(async () => undefined);
+      const { fetch, calls } = scriptedFetch([
+        { status: 429 },
+        { status: 429 },
+        { status: 429 },
+        { status: 429 }, // first env model exhausted
+        { status: 200, body: { candidates: [{ content: { parts: [{ text: "ok" }] } }] } },
+      ]);
+      const gemini = createGeminiClient({ apiKey: "test-key", fetch, sleep });
+
+      const reply = await gemini.generate(base);
+
+      expect(reply).toBe("ok");
+      expect(calls[0]!.url).toContain("/models/gemini-env-a:");
+      expect(calls[4]!.url).toContain("/models/gemini-env-b:");
+      // Only two models in the env chain: no third default model is tried.
+      expect(calls.length).toBe(5);
+    } finally {
+      delete process.env.GEMINI_MODELS;
+    }
+  });
+
+  it("defaults to the full free-tier rotation chain, primary first and Gemma last", () => {
+    expect(DEFAULT_MODEL_CHAIN[0]).toBe(DEFAULT_GEMINI_MODEL);
+    expect(DEFAULT_MODEL_CHAIN[1]).toBe(DEFAULT_FALLBACK_MODEL);
+    // Lite models with 500 RPD first, quality Flash models in the middle,
+    // the 16K-TPM Gemma models as the last resort.
+    expect(DEFAULT_MODEL_CHAIN.length).toBeGreaterThanOrEqual(8);
+    expect(DEFAULT_MODEL_CHAIN.slice(2, 8)).toEqual([
+      "gemini-3.8-flash",
+      "gemini-3.7-flash",
+      "gemini-3.6-flash",
+      "gemini-3-flash",
+      "gemini-2.5-flash",
+      "gemini-2.5-flash-lite",
+    ]);
+    expect(DEFAULT_MODEL_CHAIN.slice(-2)).toEqual(["gemma-4-31b", "gemma-4-26b"]);
+    // No duplicates anywhere in the default chain.
+    expect(new Set(DEFAULT_MODEL_CHAIN).size).toBe(DEFAULT_MODEL_CHAIN.length);
   });
 });
