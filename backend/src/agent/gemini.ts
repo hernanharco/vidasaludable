@@ -1,24 +1,52 @@
 import type { ChatMessage } from "./prompt.js";
 
 /**
- * Gemini REST client (v1beta) with retry/backoff, model fallback and graceful
+ * Gemini REST client (v1beta) with retry/backoff, model rotation and graceful
  * no-key fallback.
  *
- * - Reads `GEMINI_API_KEY`, `GEMINI_MODEL` and `GEMINI_FALLBACK_MODEL` from the
- *   environment. The key is NEVER hard-coded or committed (see .env.example).
- *   Ownership: the active `GEMINI_API_KEY` belongs to Eliana Rincon Ossa's
- *   account (set in the server env / local .env, never in git).
- * - Retries HTTP 429 / 503 on the primary model with backoff 2s / 5s / 10s
- *   (three attempts total).
- * - When the primary model is exhausted on a rate limit (429), retries once on
- *   the fallback model (free-tier-friendly: 3.5 Flash Lite → 3.1 Flash Lite).
+ * - Reads `GEMINI_API_KEY`, `GEMINI_MODELS` (comma-separated rotation chain),
+ *   `GEMINI_MODEL` and `GEMINI_FALLBACK_MODEL` from the environment. The key is
+ *   NEVER hard-coded or committed (see .env.example). Ownership: the active
+ *   `GEMINI_API_KEY` belongs to Eliana Rincon Ossa's account (set in the server
+ *   env / local .env, never in git).
+ * - Retries HTTP 429 / 503 per model with backoff 2s / 5s / 10s (three retries
+ *   after the first attempt).
+ * - When a model is exhausted on a rate limit (429), rotates to the NEXT model
+ *   of the chain — every model has its own free-tier quota bucket ("si un
+ *   modelo se llena, rota"). Non-retryable statuses never rotate. A full-chain
+ *   exhaustion is the pathological case and can take one backoff cycle per
+ *   model (~17s each); it only happens when every bucket of the account is
+ *   spent.
+ * - Chain resolution: `deps.models` → exact chain; else `GEMINI_MODELS` env →
+ *   exact chain; else `[primary, fallback, ...DEFAULT_MODEL_CHAIN]` deduped
+ *   (primary/fallback from deps/env, defaulting to the first two entries).
  * - When no API key is configured, returns a graceful fallback instead of
  *   erroring (spec: "Missing API key" scenario).
  * - `fetch` and `sleep` are injectable for tests.
  */
 
-export const DEFAULT_GEMINI_MODEL = "gemini-3.5-flash-lite";
-export const DEFAULT_FALLBACK_MODEL = "gemini-3.1-flash-lite";
+/**
+ * Free-tier rotation order (Google AI Studio quotas, as of 2026-10):
+ * 1-2  Gemini 3.5/3.1 Flash Lite — 15 RPM / 250K TPM / 500 RPD (primary buckets)
+ * 3-7  Gemini 3.8/3.7/3.6/3/2.5 Flash — 5 RPM / 250K TPM / 20 RPD (quality step)
+ * 8    Gemini 2.5 Flash Lite — 10 RPM / 250K TPM / 20 RPD (short-burst overflow)
+ * 9-10 Gemma 4 31B/26B — 30 RPM but only 16K TPM (last resort, short outputs)
+ */
+export const DEFAULT_MODEL_CHAIN: readonly string[] = [
+  "gemini-3.5-flash-lite",
+  "gemini-3.1-flash-lite",
+  "gemini-3.8-flash",
+  "gemini-3.7-flash",
+  "gemini-3.6-flash",
+  "gemini-3-flash",
+  "gemini-2.5-flash",
+  "gemini-2.5-flash-lite",
+  "gemma-4-31b",
+  "gemma-4-26b",
+];
+
+export const DEFAULT_GEMINI_MODEL = DEFAULT_MODEL_CHAIN[0]!;
+export const DEFAULT_FALLBACK_MODEL = DEFAULT_MODEL_CHAIN[1]!;
 
 /** Retry/backoff schedule in milliseconds for transient errors (429/503). */
 export const RETRY_BACKOFF_MS = [2000, 5000, 10000];
@@ -42,8 +70,21 @@ export interface GeminiDeps {
   apiKey?: string;
   model?: string;
   fallbackModel?: string;
+  /** Exact rotation chain; wins over `GEMINI_MODEL`/`GEMINI_FALLBACK_MODEL`. */
+  models?: string[];
   fetch?: FetchLike;
   sleep?: SleepLike;
+}
+
+/** Parses a comma-separated chain ("a, b,, c" → [a, b, c]); empty → undefined. */
+function parseChain(raw: string | undefined): string[] | undefined {
+  const items = raw?.split(",").map((s) => s.trim()).filter(Boolean);
+  return items?.length ? items : undefined;
+}
+
+/** Preserves order, drops blanks and duplicates (first occurrence wins). */
+function dedupeChain(items: string[]): string[] {
+  return [...new Set(items.filter(Boolean))];
 }
 
 const sleepDefault: SleepLike = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -58,6 +99,11 @@ export function createGeminiClient(deps: GeminiDeps = {}): GeminiClient {
   const model = deps.model ?? process.env.GEMINI_MODEL ?? DEFAULT_GEMINI_MODEL;
   const fallbackModel =
     deps.fallbackModel ?? process.env.GEMINI_FALLBACK_MODEL ?? DEFAULT_FALLBACK_MODEL;
+  // Rotation chain: exact chain from deps/env, else primary + fallback + the
+  // free-tier defaults (deduped) so a configured primary still rotates on 429.
+  const chain: string[] = deps.models?.length
+    ? dedupeChain(deps.models)
+    : (parseChain(process.env.GEMINI_MODELS) ?? dedupeChain([model, fallbackModel, ...DEFAULT_MODEL_CHAIN]));
   const fetchFn: FetchLike =
     deps.fetch ?? ((url, init) => globalThis.fetch(url as string, init as RequestInit) as ReturnType<FetchLike>);
   const sleepFn: SleepLike = deps.sleep ?? sleepDefault;
@@ -117,17 +163,23 @@ export function createGeminiClient(deps: GeminiDeps = {}): GeminiClient {
         contents,
         generationConfig: { temperature: 0.3 },
       };
-      try {
-        return await requestWithRetry(body, model);
-      } catch (err) {
-        // Rate-limit exhaustion on the primary model → try the fallback model
-        // once. A different model has its own quota bucket ("si se llena").
-        const status = (err as { status?: number }).status;
-        if (status === 429 && fallbackModel && fallbackModel !== model) {
-          return await requestWithRetry(body, fallbackModel);
+      let lastRateLimit: unknown = null;
+      for (const targetModel of chain) {
+        try {
+          return await requestWithRetry(body, targetModel);
+        } catch (err) {
+          // Rate-limit exhaustion on this model → rotate to the next one; each
+          // model has its own quota bucket ("si un modelo se llena, rota").
+          // Non-retryable errors (400, …) keep the legacy behavior: throw.
+          const status = (err as { status?: number }).status;
+          if (status === 429) {
+            lastRateLimit = err;
+            continue;
+          }
+          throw err;
         }
-        throw err;
       }
+      throw (lastRateLimit as Error) ?? new Error("gemini: request failed");
     },
   };
 }
