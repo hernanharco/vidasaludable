@@ -224,3 +224,20 @@ suite backend completa **270/270**. Assess del nuevo candidato
 (`baseRef=9b6e6b2d`, committed-only, 3 archivos / 49 líneas) → **risk medium,
 reviewDue=false (under_budget)**: sin segunda revisión; self-verification ya
 cubierta por la suite.
+
+**L10** (2026-10-19, tercera revisión nativa, rango completo): el recordatorio
+de RDD informó otro candidato sin revisar (target `sha256:d926f3a7…`, 13
+archivos / 1087 líneas — ahora incluye `backend/src/index.ts`,
+`backend/src/routes/assistant.ts` y `test/reconsent.integration.test.ts`, o
+sea el fix de la deuda). El usuario no lo había dejado sin revisar, así que se
+corrió el ciclo: linaje `review-982adb35c5c0ecd5`, riesgo **medium**, lente
+`review-reliability`. El consentimiento lo resolvió el host. Forecast de 1
+corrida autorizado → **approved** al primer evento admitido. Acknowledge →
+autoridad **quemada** (`store_revision edc986b5…`). Hallazgos **advisory, no
+bloqueantes** (ninguno abrió corrección, ninguno reabre este candidato):
+- `R3-PDF-Layout-Overflow` (SUGGESTION) `scoring.ts:168` — el riesgo cosmético
+  ya anotado en L4: más productos y categorías con prefijo largo en el PDF.
+- `R3-Reference-Trim-Defensive` (SUGGESTION) `AssessmentResults.tsx:130` —
+  el guard del href ya hace `.trim()`; el revisor sugiere defensa adicional.
+Son trabajo posterior aparte. Feature completa: **3 revisiones nativas
+aprobadas y quemadas** (reco-consistency + advisories + rango completo).
