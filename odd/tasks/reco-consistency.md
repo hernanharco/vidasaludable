@@ -126,3 +126,23 @@ Comprobación: suites backend y frontend completas en verde, `typecheck` y
   `121576+100930+100305`. PDF de su assessment: 13 nutrientes en falta/urgentes
   → solo 8 con "Tomar:"; glucosamina y proteína vegetal urgentes sin producto.
   `/search?q=` de amway.es sin resultados vs `/p/<ref>` con ficha completa.
+
+- L4 (2026-10-19, cierre T1-T5): rama `fix/reco-consistency` con commits
+  `a2143072` (S1), `cc2bff49` (S2+S3 — firma y llamadores aterrizan juntos
+  para que el árbol compile) y `53a2816b` (doc). RED observado antes de cada
+  implementación (S1: 2/2 en rojo; scoring: 6/8; API: 3/3) y GREEN final:
+  backend **267/267** (25 archivos), frontend **212/212** (29 archivos),
+  ambos `tsc --noEmit` exit 0 y `pnpm build` ✓ (13.3s). Verificador
+  independiente `gentle-ai-verify` (task `mvfkl5gn-1-18zo`) → **APPROVE**,
+  S1-S4 PASS con evidencia file:line, suites re-ejecutadas dos veces por él,
+  diff del mapa confirmado como exactamente las 4 filas de S3 y
+  `assistant.ts`/`prompt.ts`/`ProductRefs.tsx` intactos. Hallazgo residual del
+  verificador: solo cosmético — el PDF ahora puede mostrar hasta 6 productos
+  y categorías con el prefijo "Complementos alimenticios — ", sin verificación
+  visual del layout.
+
+  **Risk: item 3 (contratos que otros consumen)** — el contenido del PDF y de
+  su adjunto por email, y los valores del wire de `/assessment/calculate`,
+  pasan a salir de la tabla `products`; los nombres/tipos de campo no cambian.
+  Es el fix pedido, cubierto por tests y por verificación independiente. Push /
+  PR / deploy quedan como decisión del usuario.
