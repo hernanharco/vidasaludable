@@ -80,4 +80,15 @@ describe("AssessmentResults — 'Consultar precio' link", () => {
       "https://www.amway.es/p/121576",
     ]);
   });
+
+  it("renders no purchase link at all when the reference is empty (advisory R3-EmptyReference-Link)", () => {
+    // An empty reference used to render `href="https://www.amway.es/p/"` — a
+    // dead link to a non-product page. With no reference there is nothing to
+    // link to, so the card keeps its data and drops the button entirely.
+    renderResults([{ ...PRODUCT, reference: "" }]);
+    expect(screen.queryByRole("link", { name: /Consultar precio/i })).toBeNull();
+    // The product information itself must still be visible.
+    expect(screen.getByText("Nutrilite™ Cal Mag D Plus")).toBeInTheDocument();
+    expect(screen.getByText(/Tomar 3 comprimidos por día/)).toBeInTheDocument();
+  });
 });

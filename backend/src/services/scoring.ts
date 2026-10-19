@@ -230,8 +230,19 @@ export function getProductRecommendations(
     const product = byReference.get(ref);
     if (!product) continue;
 
+    // Pick the declared wire fields explicitly (advisory R3-Wire-Extra-Fields):
+    // the `products` row also carries `ingredients`/`disclaimer`, which the
+    // assessment wire does NOT declare. Spreading the row smuggled them into
+    // the calculate/save/PDF payloads; a fresh object keeps the payload
+    // exactly the shape the frontend types describe.
     recommendations.push({
-      ...product,
+      reference: product.reference,
+      name: product.name,
+      category: product.category,
+      size: product.size,
+      price: product.price,
+      benefits: product.benefits,
+      dosage: product.dosage,
       addressesNutrients: nutrients,
     });
   }

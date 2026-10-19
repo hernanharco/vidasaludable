@@ -207,3 +207,40 @@ describe("getProductRecommendations — obvious missing mappings (S3)", () => {
     expect(recs).toEqual([]);
   });
 });
+
+describe("getProductRecommendations — wire payload stays minimal (advisory R3-Wire-Extra-Fields)", () => {
+  it("never leaks row-only columns (ingredients, disclaimer) into the wire", () => {
+    // The `products` table carries `ingredients` and `disclaimer`; the chat
+    // card renders `disclaimer`, but the assessment wire declares neither.
+    // Spreading the row used to smuggle both into calculate/save/PDF payloads.
+    const rowsFromTable = [
+      {
+        ...CATALOG.find((p) => p.reference === "121576")!,
+        ingredients: "Vitaminas, minerales y fitonutrientes.",
+        disclaimer: "Complemento alimenticio. No exceder la dosis.",
+      },
+    ];
+
+    const recs = getProductRecommendations(
+      [res("magnesio", "Magnesio", "deficient")],
+      rowsFromTable,
+    );
+
+    expect(recs).toHaveLength(1);
+    expect(recs[0]).not.toHaveProperty("ingredients");
+    expect(recs[0]).not.toHaveProperty("disclaimer");
+    // Exactly the declared wire shape, nothing else.
+    expect(Object.keys(recs[0]).sort()).toEqual(
+      [
+        "addressesNutrients",
+        "benefits",
+        "category",
+        "dosage",
+        "name",
+        "price",
+        "reference",
+        "size",
+      ].sort(),
+    );
+  });
+});

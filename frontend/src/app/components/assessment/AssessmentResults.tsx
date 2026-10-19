@@ -123,21 +123,27 @@ export function AssessmentResults({
                     })}
                   </div>
                 </CardContent>
-                <CardFooter className="pt-0 pb-4">
-                  <a
-                    // Direct product page by REFERENCE (reco-consistency S1):
-                    // `amway.es/search?q=<name>` renders no results, and a
-                    // name-based query breaks whenever the catalog name drifts
-                    // from Amway's. `/p/<ref>` is verified for every ref.
-                    href={`https://www.amway.es/p/${encodeURIComponent(product.reference)}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 w-full justify-center bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium py-2 px-4 rounded-lg transition-colors"
-                  >
-                    <ShoppingCart size={14} />
-                    Consultar precio
-                  </a>
-                </CardFooter>
+                {/* Advisory R3-EmptyReference-Link: with no reference there is
+                    nothing to link to, so the button is omitted entirely
+                    rather than emitting a dead `…/p/` URL. The product data
+                    above still renders. */}
+                {product.reference.trim() !== "" && (
+                  <CardFooter className="pt-0 pb-4">
+                    <a
+                      // Direct product page by REFERENCE (reco-consistency S1):
+                      // `amway.es/search?q=<name>` renders no results, and a
+                      // name-based query breaks whenever the catalog name drifts
+                      // from Amway's. `/p/<ref>` is verified for every ref.
+                      href={`https://www.amway.es/p/${encodeURIComponent(product.reference)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 w-full justify-center bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium py-2 px-4 rounded-lg transition-colors"
+                    >
+                      <ShoppingCart size={14} />
+                      Consultar precio
+                    </a>
+                  </CardFooter>
+                )}
               </Card>
             ))}
           </div>
