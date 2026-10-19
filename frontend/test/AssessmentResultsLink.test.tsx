@@ -81,6 +81,16 @@ describe("AssessmentResults — 'Consultar precio' link", () => {
     ]);
   });
 
+  it("trims the reference once and uses it for the href too (advisory R3-Reference-Trim-Defensive)", () => {
+    // The empty-reference guard already trimmed, but the href used the RAW
+    // reference, so " 110606 " passed the check and produced the dead URL
+    // `…/p/%20110606%20`. One trimmed value must feed both the guard and the
+    // link.
+    renderResults([{ ...PRODUCT, reference: " 110606 " }]);
+    const link = screen.getByRole("link", { name: /Consultar precio/i });
+    expect(link).toHaveAttribute("href", "https://www.amway.es/p/110606");
+  });
+
   it("renders no purchase link at all when the reference is empty (advisory R3-EmptyReference-Link)", () => {
     // An empty reference used to render `href="https://www.amway.es/p/"` — a
     // dead link to a non-product page. With no reference there is nothing to

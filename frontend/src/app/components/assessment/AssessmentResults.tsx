@@ -88,7 +88,14 @@ export function AssessmentResults({
         <div>
           <h3 className="font-medium text-stone-800 mb-3">Productos Recomendados</h3>
           <div className="space-y-3">
-            {productRecommendations.map((product) => (
+            {productRecommendations.map((product) => {
+              // Advisory R3-Reference-Trim-Defensive: trim ONCE and reuse it.
+              // The empty-reference guard already trimmed, but the href used
+              // the RAW reference, so a value like " 110606 " passed the check
+              // and produced a dead `…/p/%20110606%20` URL. One trimmed value
+              // feeds both the guard and the link.
+              const reference = product.reference.trim();
+              return (
               <Card key={product.reference} className="overflow-hidden">
                 <CardHeader className="pb-2">
                   <div className="flex items-start justify-between">
@@ -127,14 +134,14 @@ export function AssessmentResults({
                     nothing to link to, so the button is omitted entirely
                     rather than emitting a dead `…/p/` URL. The product data
                     above still renders. */}
-                {product.reference.trim() !== "" && (
+                {reference !== "" && (
                   <CardFooter className="pt-0 pb-4">
                     <a
                       // Direct product page by REFERENCE (reco-consistency S1):
                       // `amway.es/search?q=<name>` renders no results, and a
                       // name-based query breaks whenever the catalog name drifts
                       // from Amway's. `/p/<ref>` is verified for every ref.
-                      href={`https://www.amway.es/p/${encodeURIComponent(product.reference)}`}
+                      href={`https://www.amway.es/p/${encodeURIComponent(reference)}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-2 w-full justify-center bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium py-2 px-4 rounded-lg transition-colors"
@@ -145,7 +152,8 @@ export function AssessmentResults({
                   </CardFooter>
                 )}
               </Card>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
