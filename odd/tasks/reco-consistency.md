@@ -210,3 +210,17 @@ reviewDue=false (under_budget)**: el rango de advisories queda bajo el umbral
 y no requiere una segunda revisión nativa; el plan exige solo
 writerSelfVerification (las suites y typechecks de cierre). Feature cerrada;
 falta únicamente el PR, que es decisión del usuario.
+
+**L9** (2026-10-19, deuda de test cerrada): el usuario pidió arreglar el test
+intermitente `reconsent.integration.test.ts` (causaba 269/270 por timeout de
+5s sobre una llamada REAL a Gemini). Commit `866d1955`. Causa raíz:
+`createAssistantRouter(db)` no tenía seam de inyección, así que `/assistant/ask`
+construía el cliente Gemini real. Arreglo: mismo patrón que `createAdminRouter`
+ya usaba — `createAssistantRouter` acepta `deps.geminiClient?` y `buildApp`
+lo propaga (`BuildAppDeps`); el test inyecta un fake que captura el input y
+responde fijo. Producción no pasa nada y sigue con el cliente real.
+Verificado **SIN `GEMINI_API_KEY`**: 4/4 en 58ms (antes 7.6s), `tsc` exit 0,
+suite backend completa **270/270**. Assess del nuevo candidato
+(`baseRef=9b6e6b2d`, committed-only, 3 archivos / 49 líneas) → **risk medium,
+reviewDue=false (under_budget)**: sin segunda revisión; self-verification ya
+cubierta por la suite.
