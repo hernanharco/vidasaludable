@@ -241,3 +241,22 @@ bloqueantes** (ninguno abrió corrección, ninguno reabre este candidato):
   el guard del href ya hace `.trim()`; el revisor sugiere defensa adicional.
 Son trabajo posterior aparte. Feature completa: **3 revisiones nativas
 aprobadas y quemadas** (reco-consistency + advisories + rango completo).
+
+**L11** (2026-10-19, advisories de la revisión #3 cerrados): siguiendo la
+instrucción "continuar", se cerraron los 2 advisories de L10.
+- `R3-Reference-Trim-Defensive` (SUGGESTION, `AssessmentResults.tsx`): el guard
+  de referencia vacía ya hacía `.trim()` pero el href usaba la referencia
+  CRUDA — `" 110606 "` pasaba el check y producía `…/p/%20110606%20`. Ahora un
+  único valor `reference` (trimmed) alimenta guard y href. RED→GREEN: test que
+  afirma `…/p/110606` con `" 110606 "` (RED recibía `%20110606%20`) → GREEN 4/4.
+  Commit `b2ebb763`.
+- `R3-PDF-Layout-Overflow` (SUGGESTION, `scoring.ts:168`): cerrado por
+  **VERIFICACIÓN sin fix**. El riesgo era la tarjeta de "Detalle de Productos"
+  con altura fija 85pt y textos de largo variable. Se generó un PDF con **6
+  productos y textos largos** (peor caso razonable: Double X con benefits de 2
+  líneas + dosis de 2 líneas, categorías con el prefijo "Complementos
+  alimenticios — "), se renderizó a PNG con `pdftoppm` y se leyó la imagen: las
+  6 tarjetas contienen todo el texto sin solapamiento ni desborde. Riesgo
+  teórico, no materializado con datos reales.
+Checks de cierre: frontend **214/214** (+1 = test de trim), backend **270/270**,
+frontend `tsc` 0, `build` ✓ 10.4s.
