@@ -260,3 +260,22 @@ instrucción "continuar", se cerraron los 2 advisories de L10.
   teórico, no materializado con datos reales.
 Checks de cierre: frontend **214/214** (+1 = test de trim), backend **270/270**,
 frontend `tsc` 0, `build` ✓ 10.4s.
+
+**L12** (2026-10-19, cuarta revisión nativa): el recordatorio de RDD informó
+otro candidato sin revisar (target `sha256:e6ab7ba7…`, 13 archivos / 1145
+líneas — el rango completo tras T14-T15). El usuario no lo había dejado sin
+revisar, así que se corrió el ciclo: linaje `review-aa7910133107f98b`, riesgo
+**medium**, lente `review-reliability`. Consentimiento resuelto por el host.
+Forecast de 1 corrida autorizado → **approved** al primer evento admitido.
+Acknowledge → autoridad **quemada** (`consumed_revision cd79264f…`). Hallazgos
+**advisory, no bloqueantes** (ninguno abrió corrección, ninguno reabre este
+candidato):
+- `R3-Catalog-PerCall-Read` (SUGGESTION) `assessmentService.ts:132` —
+  `loadCatalog()` lee la tabla `products` entera en cada llamada (calculate /
+  getById). El revisor sugiere eficiencia; comportamiento correcto hoy.
+- `R3-Key-Uses-Raw-Reference` (SUGGESTION) `AssessmentResults.tsx:99` — el
+  `key` del `<Card>` usa `product.reference` crudo mientras el href usa el
+  trimmed. Un duplicado con espacios distintos generaría dos keys distintas;
+  cosmético, sin efecto visible con datos reales.
+Son trabajo posterior aparte. **4 revisiones nativas aprobadas y quemadas**
+en total sobre esta feature.
