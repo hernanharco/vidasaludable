@@ -8,6 +8,7 @@ import type { Db } from "./db/client.js";
 import { createDatabase } from "./db/client.js";
 import { migrate } from "./db/migrate.js";
 import { createAssistantRouter } from "./routes/assistant.js";
+import type { GeminiClient } from "./agent/gemini.js";
 import { createRegisterRouter } from "./routes/register.js";
 import { createAdminRouter } from "./routes/admin.js";
 import { createAssessmentRouter } from "./routes/assessment.js";
@@ -75,7 +76,16 @@ async function adminGuard(c: Context, next: Next) {
   return next();
 }
 
-export function buildApp(db: Db): Hono {
+/**
+ * Optional deps for `buildApp`, mirroring the per-router seams. Tests inject a
+ * fake `geminiClient` so integration tests stay deterministic (no network, no
+ * key, no free-tier quota burn). Production passes nothing.
+ */
+export interface BuildAppDeps {
+  geminiClient?: GeminiClient;
+}
+
+export function buildApp(db: Db, deps: BuildAppDeps = {}): Hono {
   const app = new Hono();
 
   app.use(
@@ -113,7 +123,7 @@ export function buildApp(db: Db): Hono {
   app.use("/admin/*", adminGuard);
 
   app.route("/assistant", createRegisterRouter(db));
-  app.route("/assistant", createAssistantRouter(db));
+  app.route("/assistant", createAssistantRouter(db, { geminiClient: deps.geminiClient }));
   app.route("/admin", createAdminRouter(db));
   app.route("/assessment", createAssessmentRouter(db));
   app.route("/referrer", createReferrerRouter(db));

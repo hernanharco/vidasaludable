@@ -7,7 +7,7 @@ import { createCatalogService } from "../services/catalogService.js";
 import { createGuidanceService } from "../services/guidanceService.js";
 import { createVideoService, parseSegmentProductList } from "../services/videoService.js";
 import { createProfileService } from "../services/profileService.js";
-import { createGeminiClient } from "../agent/gemini.js";
+import { createGeminiClient, type GeminiClient } from "../agent/gemini.js";
 import { buildSystemPrompt, buildHistoryMessages, extractProductRefs, extractVideoRefs, pairSegmentProducts } from "../agent/prompt.js";
 import { guardReply } from "../agent/guard.js";
 import { getCurrentConsent } from "../config/consent.js";
@@ -43,7 +43,17 @@ import type { Product } from "../db/schema.js";
  * Product not-found is internal, never a 404 to the client: only valid catalog
  * refs are injected, so the agent never invents details.
  */
-export function createAssistantRouter(db: Db): Hono {
+/**
+ * Optional injection seam mirroring `createAdminRouter`'s: tests can pass a
+ * fake `geminiClient` so integration tests stay deterministic (no network,
+ * no key, no free-tier quota burn). Production callers pass nothing and get
+ * the real client.
+ */
+export interface AssistantRouterDeps {
+  geminiClient?: GeminiClient;
+}
+
+export function createAssistantRouter(db: Db, deps: AssistantRouterDeps = {}): Hono {
   const app = new Hono();
   const customers = createCustomerService(db);
   const conversations = createConversationService(db);
@@ -52,7 +62,7 @@ export function createAssistantRouter(db: Db): Hono {
   const guidance = createGuidanceService(db);
   const videos = createVideoService(db);
   const profiles = createProfileService(db);
-  const gemini = createGeminiClient();
+  const gemini = deps.geminiClient ?? createGeminiClient();
 
   app.get("/consent", (c) => {
     return c.json(getCurrentConsent());
