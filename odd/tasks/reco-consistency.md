@@ -334,3 +334,22 @@ verde: Backend (test+typecheck) pass 22s, Frontend (test+typecheck+build)
 pass 58s, GitGuardian pass, Vercel pass (Canceled by Ignored Build Step,
 esperado). Estado: PR OPEN y MERGEABLE; el merge queda como decisión del
 usuario.
+
+**L16** (2026-10-20, advisories de la revisión #5 cerrados): el usuario pidió
+"seguir tu recomendacion", así que los 3 advisories de L14 se cierran como
+**reasoned-won't-fix**, SIN código:
+- `R3-CatalogDuplicateRefLastWins` (`scoring.ts:223`): el `Map` indexado por
+  referencia solo vería un duplicado si la tabla tuviera dos filas con la misma
+  `reference`, y esa columna es **PRIMARY KEY** — el duplicado es imposible por
+  diseño. Agregar dedup sería código muerto sobre una garantía que ya da la BD.
+- `R3-PdfRuntimeUnguarded` (`pdfService.ts:130`): el campo es **requerido en el
+  tipo** (`PdfOptions.productRecommendations`), así que un call site sin él no
+  compila; las dos rutas lo pasan y eso está fijado por
+  `assessment-pdf-passthrough.test.ts`. Un guard en runtime duplicaría una
+  garantía que ya dan el tipo y el test.
+- `R3-ReadTimeCatalogDrift` (`assessmentService.ts:281-285`): recalcular al
+  leer es **el comportamiento deseado de S2** — el PDF re-generado debe ver el
+  mismo catálogo fresco que el chat. "Arreglarlo" persistiendo los productos al
+  guardar recrearía exactamente el bug de deriva que esta feature eliminó.
+Total: **10 advisories en 5 revisiones, todos cerrados** — 7 con fix o
+verificación, 3 con rationale. El PR #56 queda con 17 commits y CI verde.
