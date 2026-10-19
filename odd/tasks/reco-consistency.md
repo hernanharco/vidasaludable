@@ -108,8 +108,13 @@ Comprobación: suites backend y frontend completas en verde, `typecheck` y
 | T1 | Frontend: `AssessmentResults` → `href="https://www.amway.es/p/<ref>"` + test RED | S1 | inline | done | RED: 2/2 en rojo (mostraba `/search?q=Nutrilite%E2%84%...`) → GREEN: `frontend/test/AssessmentResultsLink.test.tsx` 2/2. Commit `a2143072`. |
 | T2 | Backend: `getProductRecommendations(results, catalog)` + eliminar `PRODUCT_CATALOG` + mapeos S3 + tests RED | S2, S3 | inline | done | RED: 6/8 en rojo (`[ '121576' ]` sin `110606`, glucosamina/proteína vacías) → GREEN: `test/product-recommendations.test.ts` 8/8. Commit `cc2bff49` (compartido con T3: firma + llamadores deben aterrizar juntos para que compile). |
 | T3 | Backend: `assessmentService` lee `products`, `pdfService` sin fallback, rutas pasan productos + tests RED | S2 | inline | done | RED: 3/3 en rojo (GET /:id sin `productRecommendations`; calculate devolvía "Tomar 2 tabletas amarillas…") → GREEN: `test/assessment-product-catalog.test.ts` 3/3. Commit `cc2bff49`. |
-| T4 | Cierre: suites backend+frontend, `typecheck`, `build` | S1-S4 | inline | pending | |
-| T5 | Verificador independiente (`gentle-ai-verify`, riesgo alto por contratos) | S1-S4 | subagente `gentle-ai-verify` | pending | |
+| T4 | Cierre: suites backend+frontend, `typecheck`, `build` | S1-S4 | inline | done | Backend **267/267** + `tsc --noEmit` exit 0; frontend **212/212** + `typecheck` exit 0 + `build` ✓ (13.3s). |
+| T5 | Verificador independiente (`gentle-ai-verify`, riesgo alto por contratos) | S1-S4 | subagente `gentle-ai-verify` | done | Task `mvfkl5gn-1-18zo`: **APPROVE**, S1-S4 PASS con evidencia file:line; re-corrí suites por su cuenta; mapa = exactamente las 4 filas de S3; `assistant.ts`/`prompt.ts`/`ProductRefs.tsx` intactos. |
+| T6 | Revisión nativa (RDD on) | S1-S4 | inline `gentle_review` | done | Linaje `review-f7ed7c50fd7db7ac`, tier **medium**, lente `review-reliability`. 3 START con `consent-binding-expired` (sin mutación); el 4to resolvió. Forecast autorizado → **approved**. Acknowledge → autoridad **quemada**. |
+| T7 | Advisory `R3-Wire-Extra-Fields`: no arrastrar `ingredients`/`disclaimer` al wire | — | inline | done | RED 1/9 (filtraba `ingredients`) → pick explícito de campos en `scoring.ts` → GREEN 9/9. Commit `3084dd88`. |
+| T8 | Advisory `R3-EmptyReference-Link`: sin ancla con referencia vacía | — | inline | done | RED 1/3 (renderizaba `href="…/p/"`) → render condicional en `AssessmentResults.tsx` → GREEN 3/3. Commit `3084dd88`. |
+| T9 | Advisory `R3-PdfRoute-Uncovered-Passthrough`: test de passthrough de la ruta PDF | — | inline | done | `assessment-pdf-passthrough.test.ts` (mock de `pdfService`): 2/2 VERDE sin fix — era cobertura faltante. Commit `3084dd88`. |
+| T10 | Cierre: suites + checks + doc/espejo + revisión del nuevo candidato + PR | S1-S4 | inline | in_progress | Checks: frontend **213/213** (+1 = T8), frontend tsc 0, build ✓ 8.7s, backend tsc 0. Backend **269/270**: único fallo `reconsent.integration.test.ts` por timeout de 5s sobre una llamada REAL a Gemini (pasa 4/4 con `--testTimeout=30000`) — fragilidad pre-existente, sin relación con este cambio. Falta: revisión del candidato nuevo + PR (usuario). |
 
 ## Log
 
@@ -162,3 +167,26 @@ bloqueantes** (ninguno abrió corrección):
 - `R3-PdfRoute-Uncovered-Passthrough` (SUGGESTION) `routes/assessment.ts:116` — el passthrough de `productRecommendations` a la ruta PDF no tiene test propio de la ruta.
 - `R3-Wire-Extra-Fields` (WARNING) `scoring.ts:231` — el spread de la fila de `products` arrastra campos extra (p.ej. `disclaimer`, `ingredients`) al wire.
 Son trabajo posterior aparte, nunca motivo de re-abrir este candidato.
+
+**L6** (2026-10-19, advisories T7-T9 cerrados): el usuario pidió "dejamos todo
+correctamente", así que se cerraron los 3 hallazgos advisory en el commit
+`3084dd88`, cada uno con su RED previo:
+- `R3-Wire-Extra-Fields` (WARNING): `getProductRecommendations` esparcía la
+  fila de `products` y filtraba `ingredients`/`disclaimer` al wire; ahora arma
+  el objeto con los campos declarados a mano.
+- `R3-EmptyReference-Link`: con referencia vacía se renderizaba
+  `href="…/p/"`; ahora el ancla no se emite y la card conserva sus datos.
+- `R3-PdfRoute-Uncovered-Passthrough`: test nuevo que fija que la ruta PDF sí
+  envía `productRecommendations` (verde sin fix: era cobertura faltante).
+Checks de cierre: frontend **213/213** (+1 = T8), frontend tsc 0, build ✓ 8.7s,
+backend tsc 0. **Backend 269/270** — el único fallo es
+`reconsent.integration.test.ts` por timeout de 5s sobre una llamada REAL a
+Gemini (la key viene de `.env` vía dotenv; la llamada tardó 7.6s; pasa 4/4 con
+`--testTimeout=30000`). Fragilidad pre-existente del test, sin relación con
+estos cambios: queda reportada, no arreglada (otro alcance).
+
+**Risk: item 3 (contratos consumidos, parcialmente mitigado)** — al cerrar
+`R3-Wire-Extra-Fields` el wire de `productRecommendations` deja de incluir
+`ingredients`/`disclaimer`: ningún consumidor los usaba (el frontend no los
+lee y el PDF solo consume los campos declarados), pero es un ajuste de
+contrato observable y está cubierto por el test nuevo.
