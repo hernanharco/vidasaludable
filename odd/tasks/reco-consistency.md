@@ -114,7 +114,7 @@ Comprobación: suites backend y frontend completas en verde, `typecheck` y
 | T7 | Advisory `R3-Wire-Extra-Fields`: no arrastrar `ingredients`/`disclaimer` al wire | — | inline | done | RED 1/9 (filtraba `ingredients`) → pick explícito de campos en `scoring.ts` → GREEN 9/9. Commit `3084dd88`. |
 | T8 | Advisory `R3-EmptyReference-Link`: sin ancla con referencia vacía | — | inline | done | RED 1/3 (renderizaba `href="…/p/"`) → render condicional en `AssessmentResults.tsx` → GREEN 3/3. Commit `3084dd88`. |
 | T9 | Advisory `R3-PdfRoute-Uncovered-Passthrough`: test de passthrough de la ruta PDF | — | inline | done | `assessment-pdf-passthrough.test.ts` (mock de `pdfService`): 2/2 VERDE sin fix — era cobertura faltante. Commit `3084dd88`. |
-| T10 | Cierre: suites + checks + doc/espejo + revisión del nuevo candidato + PR | S1-S4 | inline | in_progress | Checks: frontend **213/213** (+1 = T8), frontend tsc 0, build ✓ 8.7s, backend tsc 0. Backend **269/270**: único fallo `reconsent.integration.test.ts` por timeout de 5s sobre una llamada REAL a Gemini (pasa 4/4 con `--testTimeout=30000`) — fragilidad pre-existente, sin relación con este cambio. Falta: revisión del candidato nuevo + PR (usuario). |
+| T10 | Cierre: suites + checks + doc/espejo + assess del nuevo candidato + PR | S1-S4 | inline | done | Checks: frontend **213/213** (+1 = T8), frontend tsc 0, build ✓ 8.7s, backend tsc 0. Backend **269/270**: único fallo `reconsent.integration.test.ts` por timeout de 5s sobre una llamada REAL a Gemini (pasa 4/4 con `--testTimeout=30000`) — fragilidad pre-existente, sin relación con este cambio. Assess post-quema (`baseRef=d03c0b32`, committed-only): **risk medium, reviewDue=false (under_budget)** → sin revisión nativa requerida para este candidato; solo writerSelfVerification. PR = decisión del usuario. |
 
 ## Log
 
@@ -190,3 +190,10 @@ estos cambios: queda reportada, no arreglada (otro alcance).
 `ingredients`/`disclaimer`: ningún consumidor los usaba (el frontend no los
 lee y el PDF solo consume los campos declarados), pero es un ajuste de
 contrato observable y está cubierto por el test nuevo.
+
+**L7** (2026-10-19, cierre total): assess nativo del candidato post-quema
+(`baseRef=d03c0b32`, committed-only, 6 archivos / 252 líneas) → **risk medium,
+reviewDue=false (under_budget)**: el rango de advisories queda bajo el umbral
+y no requiere una segunda revisión nativa; el plan exige solo
+writerSelfVerification (las suites y typechecks de cierre). Feature cerrada;
+falta únicamente el PR, que es decisión del usuario.
