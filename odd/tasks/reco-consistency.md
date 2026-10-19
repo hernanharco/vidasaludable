@@ -146,3 +146,19 @@ Comprobación: suites backend y frontend completas en verde, `typecheck` y
   pasan a salir de la tabla `products`; los nombres/tipos de campo no cambian.
   Es el fix pedido, cubierto por tests y por verificación independiente. Push /
   PR / deploy quedan como decisión del usuario.
+
+**L5** (2026-10-19, revisión nativa aprobada): RDD on → `gentle_review`
+sobre el rango `main...HEAD` (target `sha256:493f741a…`, 9 archivos / 752
+líneas). Tres intentos de START con el consentimiento vencido
+(`consent-binding-expired`, `lineage_created: false` — sin mutación); el
+reintento autorizado por el usuario resolvió y creó el linaje
+`review-f7ed7c50fd7db7ac` (tier **medium**, lente `review-reliability`,
+presupuesto de corrección 200). Forecast de 1 corrida de modelo autorizado →
+**state: approved** en el primer evento admitido. Acknowledge ejecutado con la
+continuación exacta → **autoridad quemada** (`native-approved-acknowledgement-
+completed`, `delivery: ordinary-repository-policy`). Hallazgos **advisory, no
+bloqueantes** (ninguno abrió corrección):
+- `R3-EmptyReference-Link` (SUGGESTION) `AssessmentResults.tsx:128` — link `/p/<ref>` con referencia vacía renderizaría `/p/`.
+- `R3-PdfRoute-Uncovered-Passthrough` (SUGGESTION) `routes/assessment.ts:116` — el passthrough de `productRecommendations` a la ruta PDF no tiene test propio de la ruta.
+- `R3-Wire-Extra-Fields` (WARNING) `scoring.ts:231` — el spread de la fila de `products` arrastra campos extra (p.ej. `disclaimer`, `ingredients`) al wire.
+Son trabajo posterior aparte, nunca motivo de re-abrir este candidato.
