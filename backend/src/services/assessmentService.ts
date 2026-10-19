@@ -8,6 +8,7 @@ import {
   assessmentResponses,
   assessmentResults,
 } from "../db/assessmentSchema.js";
+import { products } from "../db/schema.js";
 import {
   calculateNutrientStatus,
   calculateAllNutrients,
@@ -16,6 +17,7 @@ import {
   type NutrientMapping,
   type ScoringResult,
   type ProductRecommendation,
+  type CatalogProduct,
 } from "./scoring.js";
 import { randomUUID } from "node:crypto";
 
@@ -66,6 +68,12 @@ export interface SavedAssessment {
 export interface AssessmentDetail extends SavedAssessment {
   results: ScoringResult[];
   responses: Array<{ symptomId: number; answered: boolean }>;
+  /**
+   * Product recommendations for this assessment, sourced from the `products`
+   * table (reco-consistency S2). The PDF and email routes render exactly
+   * this field, so calculate/save/read and the reports all agree.
+   */
+  productRecommendations: ProductRecommendation[];
 }
 
 export function createAssessmentService(db: Db) {
@@ -117,6 +125,15 @@ export function createAssessmentService(db: Db) {
   }
 
   /**
+   * The `products` table, as the catalog shape scoring expects
+   * (reco-consistency S2). Same table `catalog.listAll()` serves to the chat,
+   * so both recommendation surfaces read one source of truth.
+   */
+  function loadCatalog(): CatalogProduct[] {
+    return db.select().from(products).all();
+  }
+
+  /**
    * Calculate scores for given responses (pure calculation, no persistence).
    */
   function calculate(responses: CalculateRequest[]): CalculateResponse {
@@ -126,7 +143,10 @@ export function createAssessmentService(db: Db) {
     const mappings = loadNutrientMappings();
     const results = calculateAllNutrients(responseMap, mappings);
     const recommendations = getRecommendations(results);
-    const productRecommendations = getProductRecommendations(results);
+    const productRecommendations = getProductRecommendations(
+      results,
+      loadCatalog(),
+    );
     return { results, recommendations, productRecommendations };
   }
 
@@ -258,6 +278,14 @@ export function createAssessmentService(db: Db) {
       answered: r.answered,
     }));
 
+    // Products for the reports, computed from the PERSISTED results (same
+    // status/score the PDF shows) against the current products table
+    // (reco-consistency S2).
+    const productRecommendations = getProductRecommendations(
+      results as ScoringResult[],
+      loadCatalog(),
+    );
+
     return {
       id: assessment.id,
       patientName: assessment.patientName,
@@ -268,6 +296,7 @@ export function createAssessmentService(db: Db) {
       completedAt: assessment.completedAt,
       results,
       responses,
+      productRecommendations,
     };
   }
 

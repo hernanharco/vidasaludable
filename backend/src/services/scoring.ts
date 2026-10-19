@@ -136,7 +136,21 @@ export interface ProductRecommendation {
   addressesNutrients: AddressedNutrient[];
 }
 
-/** Maps each nutrient ID to the product references that supplement it. */
+/**
+ * One catalog row as the caller supplies it — the `products` table shape
+ * (see db/schema.ts). There is deliberately NO built-in catalog here anymore:
+ * the assessment flow and the chat must share the same single source of
+ * truth, otherwise the same client sees two different product names/doses
+ * (feature reco-consistency, S2).
+ */
+export type CatalogProduct = Omit<ProductRecommendation, "addressesNutrients">;
+
+/**
+ * Maps each nutrient ID to the product references that supplement it.
+ * Ownership note (reco-consistency S3): rows marked [S3] are the obvious
+ * direct matches added so urgent nutrients stop rendering empty; everything
+ * else is untouched.
+ */
 const NUTRIENT_PRODUCT_MAP: Record<string, string[]> = {
   // Biotina C Plus
   biotina: ["100305"],
@@ -154,52 +168,19 @@ const NUTRIENT_PRODUCT_MAP: Record<string, string[]> = {
   acido_folico: ["100930", "121576"],
 
   // Double X — minerals
-  calcio: ["121576"],
-  magnesio: ["121576"],
+  // [S3] Cal Mag D Plus also covers these two; Double X keeps its row first
+  // (the coverage sort still leads with whichever product addresses more).
+  calcio: ["121576", "110606"],
+  magnesio: ["121576", "110606"],
   zinc: ["121576"],
   selenio: ["121576"],
   cromo: ["121576"],
   manganesio: ["121576"],
   ferro: ["121576"],
-};
 
-/** Static product catalog (only complete products from curatedProducts.ts). */
-const PRODUCT_CATALOG: Record<
-  string,
-  Omit<ProductRecommendation, "addressesNutrients">
-> = {
-  "100305": {
-    reference: "100305",
-    name: "Nutrilite™ Biotina C Plus",
-    category: "Cabello y piel",
-    size: "90 comprimidos",
-    price: 24.04,
-    benefits:
-      "Mantiene cabello y piel sanos. Aporta protección antioxidante contra el daño de los radicales libres.",
-    dosage: "2 comprimidos al día, preferiblemente con las comidas.",
-  },
-  "100930": {
-    reference: "100930",
-    name: "Nutrilite™ Multivitaminas Masticable",
-    category: "Multivitamínicos",
-    size: "120 comprimidos",
-    price: 33.18,
-    benefits:
-      "Cubre vacíos nutricionales con vitaminas, minerales y betacaroteno. Sabor a naranja, ideal para toda la familia.",
-    dosage:
-      "Masticar 2 comprimidos al día con las comidas.",
-  },
-  "121576": {
-    reference: "121576",
-    name: "Nutrilite™ Double X",
-    category: "Multivitamínicos / Multiminerales / Fitonutrientes",
-    size: "186 comprimidos",
-    price: 86.87, // calibrated price-list column (was 72.39, pre-calibration VN)
-    benefits:
-      "Cobertura completa de vitaminas, minerales y fitonutrientes con extractos botánicos concentrados.",
-    dosage:
-      "Tomar 2 tabletas amarillas, 1 tableta naranja y 1 tableta verde dos veces al día con las comidas.",
-  },
+  // [S3] direct catalog matches that previously rendered empty.
+  glucosamina_boswellia: ["100108"],
+  proteina_vegetal: ["110415"],
 };
 
 /**
@@ -208,9 +189,14 @@ const PRODUCT_CATALOG: Record<
  * Filters results for non-OK statuses, maps each to products via
  * NUTRIENT_PRODUCT_MAP, deduplicates products, and returns them
  * sorted by how many deficiencies they address (most first).
+ *
+ * `catalog` is REQUIRED and is the caller's copy of the `products` table
+ * (reco-consistency S2): a mapped reference absent from it is skipped, so an
+ * empty table yields `[]` instead of falling back to stale hard-coded data.
  */
 export function getProductRecommendations(
   results: ScoringResult[],
+  catalog: CatalogProduct[],
 ): ProductRecommendation[] {
   const deficient = results.filter((r) => r.status !== "OK");
   if (deficient.length === 0) return [];
@@ -234,15 +220,18 @@ export function getProductRecommendations(
     }
   }
 
-  // Build recommendations, skip products with no catalog entry
+  // Build recommendations, skipping mapped refs the caller's catalog lacks.
+  // Index the supplied rows once: lookup stays O(1) per ref and the
+  // caller-owned `products` copy is the ONLY source (no built-in fallback).
+  const byReference = new Map(catalog.map((p) => [p.reference, p]));
   const recommendations: ProductRecommendation[] = [];
 
   for (const [ref, nutrients] of productNutrients) {
-    const catalog = PRODUCT_CATALOG[ref];
-    if (!catalog) continue;
+    const product = byReference.get(ref);
+    if (!product) continue;
 
     recommendations.push({
-      ...catalog,
+      ...product,
       addressesNutrients: nutrients,
     });
   }

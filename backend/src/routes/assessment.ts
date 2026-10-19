@@ -113,6 +113,9 @@ export function createAssessmentRouter(db: Db): Hono {
       patientSex: data.patientSex,
       patientAge: data.patientAge,
       results: data.results,
+      // S2: products come from the service (products table), never from a
+      // private catalog inside the PDF builder.
+      productRecommendations: data.productRecommendations,
       createdAt: data.createdAt,
     });
 
@@ -147,12 +150,13 @@ export function createAssessmentRouter(db: Db): Hono {
       return c.json({ error: "Assessment not found" }, 404);
     }
 
-    // Generate PDF
+    // Generate PDF (products resolved by the service from the products table)
     const pdfBuffer = await generateAssessmentPdf({
       patientName: data.patientName,
       patientSex: data.patientSex,
       patientAge: data.patientAge,
       results: data.results,
+      productRecommendations: data.productRecommendations,
       createdAt: data.createdAt,
     });
 
