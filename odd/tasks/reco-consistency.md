@@ -300,3 +300,37 @@ respondió "1. si / 2. si" — cerrar los 2 advisories y abrir el PR.
   `SELECT` de 16 filas por request. El costo de la optimización supera su
   beneficio; se deja el read directo y el advisory queda cerrado con esta
   rationale documentada (mismo criterio que R3-PDF-Layout-Overflow en L11).
+
+**L14** (2026-10-20, quinta revisión nativa + PR abierto): el recordatorio de
+RDD informó otro candidato sin revisar (target `sha256:46664554…`, 13 archivos
+/ 1187 líneas — el mismo rango, con el doc actualizado). El usuario no lo había
+dejado sin revisar, así que se corrió el ciclo: linaje
+`review-5dfffd5cb7b31018`, riesgo **medium**, lente `review-reliability`.
+Consentimiento resuelto por el host. Forecast de 1 corrida autorizado →
+**approved** al primer evento admitido. Acknowledge → autoridad **quemada**
+(`consumed_revision 0236fa17…`). Hallazgos **advisory, no bloqueantes**
+(ninguno abrió corrección, ninguno reabre este candidato):
+- `R3-CatalogDuplicateRefLastWins` (SUGGESTION) `scoring.ts:223` — un `Map`
+  indexado por referencia: si la tabla tuviera dos filas con la misma
+  referencia (imposible hoy: `reference` es PRIMARY KEY), la última ganaría.
+- `R3-PdfRuntimeUnguarded` (SUGGESTION) `pdfService.ts:130` — el builder
+  asume `productRecommendations` definido; el tipo lo exige en compile y las
+  rutas siempre lo pasan (test de passthrough).
+- `R3-ReadTimeCatalogDrift` (SUGGESTION) `assessmentService.ts:281-285` —
+  `getById` recalcula al leer, así que un PDF re-generado tras editar el
+  catálogo reflejaría el dato nuevo. Ese es el COMPORTAMIENTO DESEADO de S2
+  (misma frescura que el chat), no un defecto.
+Son trabajo posterior aparte. **5 revisiones nativas aprobadas y quemadas**
+en total sobre esta feature.
+
+**L15** (2026-10-20, entrega): el usuario respondió "1. si / 2. si" — cerrar
+los advisories de la revisión #4 y abrir el PR. Se cerraron (L13) y se abrió
+el PR respetando la convención issue-first del repo: se creó el issue **#55**
+SIN `status:approved` (la aprobación es señal del humano, no se infiere), el
+usuario autorizó con `approve_and_open`, se aplicó el label, se hizo push de
+la rama y se abrió el PR **#56** con label `type:chore` (único `type:*`
+existente) y cuerpo armado a mano (no hay `PULL_REQUEST_TEMPLATE.md`). CI
+verde: Backend (test+typecheck) pass 22s, Frontend (test+typecheck+build)
+pass 58s, GitGuardian pass, Vercel pass (Canceled by Ignored Build Step,
+esperado). Estado: PR OPEN y MERGEABLE; el merge queda como decisión del
+usuario.
