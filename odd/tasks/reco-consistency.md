@@ -191,6 +191,19 @@ estos cambios: queda reportada, no arreglada (otro alcance).
 lee y el PDF solo consume los campos declarados), pero es un ajuste de
 contrato observable y está cubierto por el test nuevo.
 
+**L8** (2026-10-19, segunda revisión nativa sobre el candidato completo): el
+recordatorio de RDD informó un candidato sin revisar (target
+`sha256:6b0813fc…`, 10 archivos / 1011 líneas, ahora incluye el test de
+passthrough). El usuario no lo había dejado sin revisar (pidió “dejamos todo
+correctamente”), así que se corrió el ciclo: linaje `review-97bf63cc98390ec9`,
+riesgo **medium**, lente `review-reliability`. El consentimiento lo resolvió
+el host sin relay manual. La primera captura fue **rechazada en admisión**
+(`submission-refused`: el payload del revisor no traía los arrays `findings` y
+`evidence` explícitos; sin mutación, slot no consumido); con STATUS fresco se
+reofreció el mismo slot y el reintento cerró en **approved**. Acknowledge →
+autoridad **quemada**. **Sin hallazgos** que abrir. Feature completa y revisada
+en su totalidad; el único paso restante es el PR, decisión del usuario.
+
 **L7** (2026-10-19, cierre total): assess nativo del candidato post-quema
 (`baseRef=d03c0b32`, committed-only, 6 archivos / 252 líneas) → **risk medium,
 reviewDue=false (under_budget)**: el rango de advisories queda bajo el umbral
