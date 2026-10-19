@@ -279,3 +279,24 @@ candidato):
   cosmético, sin efecto visible con datos reales.
 Son trabajo posterior aparte. **4 revisiones nativas aprobadas y quemadas**
 en total sobre esta feature.
+
+**L13** (2026-10-20, advisories de la revisión #4 cerrados): el usuario
+respondió "1. si / 2. si" — cerrar los 2 advisories y abrir el PR.
+- `R3-Key-Uses-Raw-Reference` (SUGGESTION, `AssessmentResults.tsx:99`): cerrado
+  con **fix** — el `key` del `<Card>` pasó de `product.reference` (crudo) a
+  `reference` (trimmed), el mismo valor que alimenta al guard y al href.
+  Nota de proceso: un `key` de React **no es observable en el DOM**, así que
+  no hay RED honesto posible (antes y después renderizan idéntico). En vez de
+  inventar un test que no distingue el cambio, se cerró con verificación
+  estructural: `grep` confirma `key={reference}` en la línea 99, `tsc` exit 0
+  y suite frontend completa **214/214**.
+- `R3-Catalog-PerCall-Read` (SUGGESTION, `assessmentService.ts:132`): cerrado
+  como **reasoned-won't-fix**, SIN código. Al verificar el hallazgo: ningún
+  camino de request llama a `loadCatalog()` más de una vez — `calculate()` lo
+  llama una vez y `getById()` lo llama una vez, y son **endpoints distintos**
+  (no hay request que ejecute ambos). Memoizar entre requests agregaría un
+  estado cacheado que puede servir un producto VIEJO tras una edición en el
+  CRM (rompería la garantía de frescura de S2) a cambio de evitar **un**
+  `SELECT` de 16 filas por request. El costo de la optimización supera su
+  beneficio; se deja el read directo y el advisory queda cerrado con esta
+  rationale documentada (mismo criterio que R3-PDF-Layout-Overflow en L11).

@@ -96,7 +96,7 @@ export function AssessmentResults({
               // feeds both the guard and the link.
               const reference = product.reference.trim();
               return (
-              <Card key={product.reference} className="overflow-hidden">
+              <Card key={reference} className="overflow-hidden">
                 <CardHeader className="pb-2">
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
