@@ -6,6 +6,7 @@ import { migrate } from "../src/db/migrate.js";
 import { buildApp } from "../src/index.js";
 import { customers } from "../src/db/schema.js";
 import type { Hono } from "hono";
+import type { GeminiClient, GeminiGenerateInput } from "../src/agent/gemini.js";
 
 /**
  * Integration: registration upsert + consent versioning (re-consent).
@@ -15,10 +16,26 @@ import type { Hono } from "hono";
  * (id preserved, prior records kept) instead of hitting a 409 dead-end, and can
  * keep using /ask afterwards. This is what keeps the whole base usable when
  * CURRENT_CONSENT_VERSION is bumped (the WU3 corrective fix).
+ *
+ * The last test exercises /assistant/ask, which would otherwise call the REAL
+ * Gemini API — a real network round-trip that made this file time out at the
+ * default 5s test timeout and burn free-tier quota. We inject a fake client
+ * through buildApp's deps seam so the file is deterministic and offline.
  */
+
 describe("register + consent versioning (integration)", () => {
   let db: Db;
   let app: Hono;
+
+  /** Fake Gemini: captures inputs, returns a fixed reply. No network, no key. */
+  const fakeGeminiCalls: GeminiGenerateInput[] = [];
+  const fakeGemini: GeminiClient = {
+    isConfigured: () => true,
+    generate: async (input: GeminiGenerateInput) => {
+      fakeGeminiCalls.push(input);
+      return "[fake] Consulta tu médico. Te sugiero un complejo multivitamínico.";
+    },
+  };
 
   const post = (path: string, body: unknown) =>
     app.request(path, {
@@ -30,7 +47,7 @@ describe("register + consent versioning (integration)", () => {
   beforeAll(async () => {
     db = createDatabase(":memory:");
     await migrate(db);
-    app = buildApp(db);
+    app = buildApp(db, { geminiClient: fakeGemini });
   });
 
   it("registers a new customer and returns their id", async () => {

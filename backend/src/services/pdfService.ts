@@ -1,6 +1,5 @@
 import PDFDocument from "pdfkit";
 import type { ScoringResult, ProductRecommendation } from "./scoring.js";
-import { getProductRecommendations } from "./scoring.js";
 
 /**
  * PDF generation for assessment results.
@@ -10,6 +9,11 @@ import { getProductRecommendations } from "./scoring.js";
  * - Summary (OK/Deficient/Urgent counts)
  * - Recommendations with Nutrilite products
  * - Product details
+ *
+ * `productRecommendations` is REQUIRED (reco-consistency S2): the service no
+ * longer computes products from a private fallback catalog — the caller
+ * (assessmentService) resolves them from the `products` table, the same
+ * source the chat injects, so the report and the chat cannot disagree.
  */
 
 interface PdfOptions {
@@ -17,7 +21,7 @@ interface PdfOptions {
   patientSex: string;
   patientAge: number;
   results: ScoringResult[];
-  productRecommendations?: ProductRecommendation[];
+  productRecommendations: ProductRecommendation[];
   createdAt: string;
 }
 
@@ -123,7 +127,7 @@ export function generateAssessmentPdf(options: PdfOptions): Promise<Buffer> {
       .filter((r) => r.status !== "OK")
       .sort((a, b) => (a.status === "urgent" && b.status !== "urgent" ? -1 : 1));
 
-    const productRecs = options.productRecommendations ?? getProductRecommendations(options.results);
+    const productRecs = options.productRecommendations;
 
     // Build nutrient-to-product map
     const nutrientProductMap = new Map<string, ProductRecommendation>();
