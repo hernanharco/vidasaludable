@@ -48,6 +48,15 @@ export const DEFAULT_MODEL_CHAIN: readonly string[] = [
 export const DEFAULT_GEMINI_MODEL = DEFAULT_MODEL_CHAIN[0]!;
 export const DEFAULT_FALLBACK_MODEL = DEFAULT_MODEL_CHAIN[1]!;
 
+/**
+ * Generation temperature. Raised from the original 0.3 to 0.6
+ * (agent-persona-memory T1, S5): 0.3 made every reply read robotic. The legal
+ * risk stays covered by the layers that do NOT depend on temperature — the
+ * deterministic guardReply (legal wording) and the catalog/segment filters
+ * (invented `[REF]` / `[VIDEO:id]` markers are dropped server-side).
+ */
+export const TEMPERATURE = 0.6;
+
 /** Retry/backoff schedule in milliseconds for transient errors (429/503). */
 export const RETRY_BACKOFF_MS = [2000, 5000, 10000];
 
@@ -161,7 +170,7 @@ export function createGeminiClient(deps: GeminiDeps = {}): GeminiClient {
       const body = {
         systemInstruction: { parts: [{ text: input.systemPrompt }] },
         contents,
-        generationConfig: { temperature: 0.3 },
+        generationConfig: { temperature: TEMPERATURE },
       };
       let lastRateLimit: unknown = null;
       for (const targetModel of chain) {
