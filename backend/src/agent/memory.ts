@@ -44,7 +44,7 @@ const SUMMARY_SYSTEM_PROMPT = `${SUMMARY_SYSTEM_PROMPT_MARKER}
 Eres el archivista del asistente de bienestar. Te dan el resumen previo de un
 cliente (puede estar vacío) y el transcurso reciente de su conversación.
 Devuelve UN resumen actualizado en español, máximo 60 palabras, que responda:
-quién es el cliente, qué le preocupa, qué productos o videos ya se mencionon
+quién es el cliente, qué le preocupa, qué productos o videos ya se mencionaron
 y qué quedó acordado. Conserva solo lo que sirva para retomar la conversación
 en una futura sesión. Responde SOLO con el resumen: sin saludo, sin encabezado,
 sin comillas.`;

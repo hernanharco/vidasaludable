@@ -349,32 +349,36 @@ export function createAssistantRouter(db: Db, deps: AssistantRouterDeps = {}): H
 
     conversations.saveMessage(conversationId, "assistant", guarded.reply);
 
-    // agent-persona-memory T2 (S1) — long-term memory, BEST-EFFORT. Every
-    // MEMORY_SUMMARIZE_EVERY messages of THIS conversation the reply is
-    // summarized (cheap call) and UPSERTed for the customer; a new
-    // conversation restarts the counter. Every failure is swallowed: the
-    // customer's reply above is already final and must never depend on memory.
-    try {
-      const storedUpTo =
-        memory && memory.sourceConversationId === conversationId ? memory.upToCount : 0;
-      const messageCount = conversations.loadMessages(conversationId).length;
-      if (messageCount - storedUpTo >= MEMORY_SUMMARIZE_EVERY) {
-        const summary = await summarizeConversation(
-          gemini,
-          memory?.content ?? null,
-          conversations.loadHistory(conversationId),
-        );
-        if (summary) {
-          memories.upsert(customerId, {
-            content: summary,
-            sourceConversationId: conversationId,
-            upToCount: messageCount,
-          });
+    // agent-persona-memory T2 (S1) — long-term memory, BEST-EFFORT and
+    // OFF the request path. Every MEMORY_SUMMARIZE_EVERY messages of THIS
+    // conversation the reply is summarized (cheap call) and UPSERTed for the
+    // customer; a new conversation restarts the counter. The promise is NOT
+    // awaited — the customer's reply above is already final, so a slow
+    // summarizer never delays the response — and every failure is swallowed
+    // inside the task (memory is an enhancement, never a chat dependency).
+    void (async () => {
+      try {
+        const storedUpTo =
+          memory && memory.sourceConversationId === conversationId ? memory.upToCount : 0;
+        const messageCount = conversations.loadMessages(conversationId).length;
+        if (messageCount - storedUpTo >= MEMORY_SUMMARIZE_EVERY) {
+          const summary = await summarizeConversation(
+            gemini,
+            memory?.content ?? null,
+            conversations.loadHistory(conversationId),
+          );
+          if (summary) {
+            memories.upsert(customerId, {
+              content: summary,
+              sourceConversationId: conversationId,
+              upToCount: messageCount,
+            });
+          }
         }
+      } catch {
+        // Memory is an enhancement, never a chat dependency.
       }
-    } catch {
-      // Memory is an enhancement, never a chat dependency.
-    }
+    })();
 
     return c.json({
       conversation_id: conversationId,

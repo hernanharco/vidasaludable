@@ -147,10 +147,12 @@ describe("chat long-term memory (integration)", () => {
     expect(db.select().from(customerMemories).where(eq(customerMemories.customerId, customerId)).all()).toHaveLength(0);
 
     // Next ask → message #8: exactly one summarize call, row stored.
+    // The summarizer runs OFF the request path (fire-and-forget), so the
+    // assertions wait for the background task instead of racing it.
     const res = await ask(customerId, "necesito más energía", conversationId);
     expect(res.status).toBe(200);
     expect(chatCalls).toBe(4);
-    expect(summaryCalls).toBe(1);
+    await vi.waitFor(() => expect(summaryCalls).toBe(1));
 
     const rows = db
       .select()
@@ -171,7 +173,7 @@ describe("chat long-term memory (integration)", () => {
     for (let turn = 0; turn < ASKS_TO_THRESHOLD; turn += 1) {
       await ask(customerId, `turno ${turn}`, conversationId);
     }
-    expect(summaryCalls).toBe(1);
+    await vi.waitFor(() => expect(summaryCalls).toBe(1));
 
     // Next ask (turn 5): the chat prompt carries the memory block.
     const promptCountBefore = capturedRequestBodies.length;
@@ -192,7 +194,7 @@ describe("chat long-term memory (integration)", () => {
     for (let turn = 0; turn < ASKS_TO_THRESHOLD; turn += 1) {
       await ask(customerId, `tema nuevo ${turn}`, newConversationId);
     }
-    expect(summaryCalls).toBe(2);
+    await vi.waitFor(() => expect(summaryCalls).toBe(2));
 
     const rows = db
       .select()
@@ -222,7 +224,7 @@ describe("chat long-term memory (integration)", () => {
       // The deterministic legal guard appends its disclaimer to every reply.
       expect(body.reply).toContain(CHAT_REPLY);
     }
-    expect(summaryCalls).toBe(1);
+    await vi.waitFor(() => expect(summaryCalls).toBe(1));
     expect(
       db.select().from(customerMemories).where(eq(customerMemories.customerId, customerId)).all(),
     ).toHaveLength(0);
