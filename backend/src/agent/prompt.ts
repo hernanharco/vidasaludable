@@ -90,6 +90,30 @@ const HARD_LIMIT = `ERES UN ASISTENTE PREVENTIVO DE NUTRILITE™. LÍMITE DURO E
    cites ninguno.`;
 
 /**
+ * agent-persona-memory T1 (S3-S5) — conversational personality. Always
+ * injected, right after the HARD_LIMIT (which it never weakens): the agent
+ * talks like a close wellness companion instead of a robotic catalog bot.
+ * Covers the user's complaints: "se siente muy robotico" (mechanical
+ * openings, fixed rhythm) and "sin importar que se le escribe siempre esta
+ * enviando los productos" (never push products regardless of the message).
+ */
+const PERSONA = `TU PERSONALIDAD (cómo hablas; no cambia ninguna regla de arriba):
+- Eres una compañera cercana de bienestar que charla, no un catálogo andante.
+  Usa tuteo natural, frases cortas y un tono cálido; nada de aberturas
+  mecánicas tipo «Como asistente de Nutrilite, con gusto te ayudo».
+- Adapta el ritmo al mensaje del usuario: si escribe poco, responde corto; si
+  pregunta algo concreto, ve al grano.
+- Antes de cualquier sugerencia, reconoce lo que el usuario siente o cuenta
+  («suena agotador ese día»). Máximo 1 pregunta de seguimiento por respuesta,
+  salvo el flujo de intake inicial.
+- NO recomiendes productos por recomendar. Solo sugiere productos cuando el
+  tema lo pide y encaja con lo que preguntó el usuario. Un saludo, una duda
+  general o una despedida reciben respuesta conversacional, sin lista de
+  productos.
+- Si el usuario solo quiere charlar, charla. La recomendación llega cuando
+  encaja, no antes.`;
+
+/**
  * T2 chat-intake — guided flow over the injected profile. Always present in
  * the prompt (legal HARD_LIMIT rules above stay untouched); its steps apply
  * only when the "PERFIL DEL USUARIO" block is actually injected. The
@@ -100,9 +124,11 @@ const GUIDED_FLOW = `FLUJO GUIADO CON EL PERFIL INICIAL DEL USUARIO (aplica solo
 1. ABRE tu respuesta con 2-3 preguntas cortas y abiertas de seguimiento basadas
    en el perfil (p. ej. su rutina, sus horarios o sus preferencias). NO vuelvas a
    preguntar datos que el perfil ya responde.
-2. DESPUÉS da tus recomendaciones preventivas personalizadas con el perfil,
-   citando las referencias [REF] y los videos [VIDEO:id] con las mismas reglas
-   de siempre.
+2. INCLUYE una sugerencia preventiva personalizada con el perfil solo si encaja
+   con lo que el usuario preguntó o compartió, citando las referencias [REF] y
+   los videos [VIDEO:id] con las mismas reglas de siempre. Si la charla es un
+   saludo o una duda general, responde como compañera: SIN lista de productos ni
+   recomendaciones forzadas.
 3. AL FINAL de tu primera recomendación completa, ofrece de forma OPCIONAL el
    chequeo completo de 95 síntomas escribiendo el marcador exacto [ASSESSMENT]
    en una línea propia (el frontend lo renderiza como botón). Escríbelo
@@ -154,6 +180,18 @@ export function profileBlock(profile: ProfileContext | null): string {
 
   if (lines.length === 0) return "";
   return `PERFIL DEL USUARIO (datos de su ficha inicial — personaliza siempre tus recomendaciones con ellos):\n${lines.join("\n")}`;
+}
+
+/**
+ * agent-persona-memory T2 (S1) — long-term per-customer memory block.
+ * Same convention as guidanceBlock/profileBlock/videoSegmentsBlock: null OR
+ * blank content renders "" (no stale header). The phrasing tells the agent to
+ * resume the topic naturally and NEVER in database-flavored language.
+ */
+export function memoryBlock(content: string | null | undefined): string {
+  const text = content?.trim();
+  if (!text) return "";
+  return `LO QUE RECUERDAS DE CONVERSACIONES ANTERIORES (retoma el tema con naturalidad, sin decir «según mis registros» ni volver a preguntar lo que ya respondió):\n- ${text}`;
 }
 
 function catalogBlock(ctx: CatalogContext): string {
@@ -341,13 +379,18 @@ export function buildSystemPrompt(
   // T2 chat-intake: optional (backwards-compatible) so existing 4-arg calls
   // keep working; null/undefined ⇒ no profile block injected.
   profile?: ProfileContext | null,
+  // agent-persona-memory T2: optional (backwards-compatible) long-term
+  // memory summary; null/undefined/blank ⇒ no memory block injected.
+  memory?: string | null,
 ): string {
   const blocks = [
     HARD_LIMIT,
+    PERSONA,
     GUIDED_FLOW,
     "",
     "CONTEXTO DE ESTA CONVERSACIÓN:",
     profileBlock(profile ?? null),
+    memoryBlock(memory ?? null),
     purchasesBlock(purchases),
     "",
     catalogBlock(ctx),
