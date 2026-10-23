@@ -92,6 +92,17 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 CREATE INDEX IF NOT EXISTS messages_conversation_id_idx ON messages (conversation_id);
 
+-- agent-persona-memory T2: long-term per-customer chat memory (one row per
+-- customer. up_to_count is the message-count cursor of source_conversation_id
+-- that drives the every-8-messages summarization trigger).
+CREATE TABLE IF NOT EXISTS customer_memories (
+  customer_id INTEGER PRIMARY KEY REFERENCES customers(id),
+  content TEXT NOT NULL,
+  source_conversation_id INTEGER REFERENCES conversations(id),
+  up_to_count INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS recommendations (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   conversation_id INTEGER NOT NULL REFERENCES conversations(id),

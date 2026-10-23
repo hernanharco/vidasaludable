@@ -137,6 +137,36 @@ export const conversations = sqliteTable(
   (t) => [index("conversations_customer_id_idx").on(t.customerId)],
 );
 
+/**
+ * agent-persona-memory T2 (S1): long-term per-customer chat memory. One row
+ * per customer (customer_id PRIMARY KEY, UPSERT-replaced on every summary):
+ * the current summary, the conversation it was built from and the message
+ * count cursor (`upToCount`) that drives the every-N-messages trigger. A new
+ * conversation restarts the counter (sourceConversationId differs) and the
+ * previous summary is part of the next summarizer input, so continuity is
+ * preserved. Injected into the prompt via `memoryBlock`; failures are
+ * best-effort (never block the chat reply).
+ */
+export const customerMemories = sqliteTable(
+  "customer_memories",
+  {
+    customerId: integer("customer_id")
+      .primaryKey()
+      .references(() => customers.id),
+    content: text("content").notNull(),
+    sourceConversationId: integer("source_conversation_id").references(
+      () => conversations.id,
+    ),
+    upToCount: integer("up_to_count").notNull().default(0),
+    updatedAt: text("updated_at")
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+);
+
+export type CustomerMemory = typeof customerMemories.$inferSelect;
+export type NewCustomerMemory = typeof customerMemories.$inferInsert;
+
 export const messages = sqliteTable(
   "messages",
   {

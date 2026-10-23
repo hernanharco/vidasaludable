@@ -7,7 +7,9 @@ import { createCatalogService } from "../services/catalogService.js";
 import { createGuidanceService } from "../services/guidanceService.js";
 import { createVideoService, parseSegmentProductList } from "../services/videoService.js";
 import { createProfileService } from "../services/profileService.js";
+import { createMemoryService } from "../services/memoryService.js";
 import { createGeminiClient, type GeminiClient } from "../agent/gemini.js";
+import { summarizeConversation, MEMORY_SUMMARIZE_EVERY } from "../agent/memory.js";
 import { buildSystemPrompt, buildHistoryMessages, extractProductRefs, extractVideoRefs, pairSegmentProducts } from "../agent/prompt.js";
 import { guardReply } from "../agent/guard.js";
 import { getCurrentConsent } from "../config/consent.js";
@@ -62,6 +64,7 @@ export function createAssistantRouter(db: Db, deps: AssistantRouterDeps = {}): H
   const guidance = createGuidanceService(db);
   const videos = createVideoService(db);
   const profiles = createProfileService(db);
+  const memories = createMemoryService(db);
   const gemini = deps.geminiClient ?? createGeminiClient();
 
   app.get("/consent", (c) => {
@@ -278,6 +281,9 @@ export function createAssistantRouter(db: Db, deps: AssistantRouterDeps = {}): H
     // T2 chat-intake: the customer's intake profile (T1) personalizes the
     // prompt — absent row or all-empty fields ⇒ no profile block injected.
     const profile = profiles.getByCustomer(customerId) ?? null;
+    // agent-persona-memory T2 (S1): the long-term per-customer summary so the
+    // bot remembers across conversations. Absent/blank ⇒ no block injected.
+    const memory = memories.getByCustomer(customerId) ?? null;
     const systemPrompt = buildSystemPrompt(
       { products: catalogProducts },
       { refs: purchaseRefs },
@@ -308,6 +314,7 @@ export function createAssistantRouter(db: Db, deps: AssistantRouterDeps = {}): H
         })),
       },
       profile,
+      memory?.content ?? null,
     );
 
     let rawReply: string;
@@ -341,6 +348,33 @@ export function createAssistantRouter(db: Db, deps: AssistantRouterDeps = {}): H
     });
 
     conversations.saveMessage(conversationId, "assistant", guarded.reply);
+
+    // agent-persona-memory T2 (S1) — long-term memory, BEST-EFFORT. Every
+    // MEMORY_SUMMARIZE_EVERY messages of THIS conversation the reply is
+    // summarized (cheap call) and UPSERTed for the customer; a new
+    // conversation restarts the counter. Every failure is swallowed: the
+    // customer's reply above is already final and must never depend on memory.
+    try {
+      const storedUpTo =
+        memory && memory.sourceConversationId === conversationId ? memory.upToCount : 0;
+      const messageCount = conversations.loadMessages(conversationId).length;
+      if (messageCount - storedUpTo >= MEMORY_SUMMARIZE_EVERY) {
+        const summary = await summarizeConversation(
+          gemini,
+          memory?.content ?? null,
+          conversations.loadHistory(conversationId),
+        );
+        if (summary) {
+          memories.upsert(customerId, {
+            content: summary,
+            sourceConversationId: conversationId,
+            upToCount: messageCount,
+          });
+        }
+      }
+    } catch {
+      // Memory is an enhancement, never a chat dependency.
+    }
 
     return c.json({
       conversation_id: conversationId,
