@@ -41,6 +41,10 @@ CREATE TABLE IF NOT EXISTS customer_profile (
   sleep TEXT,
   stress TEXT,
   open_note TEXT,
+  weight REAL,
+  height REAL,
+  conditions TEXT,
+  allergies TEXT,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -237,6 +241,11 @@ export async function migrate(db: ReturnType<typeof createDatabase>): Promise<vo
     // predate the columns; the CREATE TABLE above covers fresh files.
     `ALTER TABLE video_segments ADD COLUMN mentioned_products TEXT`,
     `ALTER TABLE video_segments ADD COLUMN product_references TEXT`,
+    // intake-health-data — optional body data + health block on the profile.
+    `ALTER TABLE customer_profile ADD COLUMN weight REAL`,
+    `ALTER TABLE customer_profile ADD COLUMN height REAL`,
+    `ALTER TABLE customer_profile ADD COLUMN conditions TEXT`,
+    `ALTER TABLE customer_profile ADD COLUMN allergies TEXT`,
   ];
   for (const stmt of alterStatements) {
     try {

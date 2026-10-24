@@ -167,4 +167,53 @@ describe("assistant profile (integration: 5-step intake persistence)", () => {
     expect(get.status).toBe(200);
     expect(await get.json()).toEqual({ profile: null });
   });
+
+  it("round-trips weight/height/conditions/allergies (intake-health-data S1/S3/S4)", async () => {
+    const customerId = await register("salud1@x.com", "4004");
+
+    const res = await post("/assistant/profile", {
+      customer_id: customerId,
+      sex: "F",
+      age: 38,
+      weight: 65.5,
+      height: 1.7,
+      conditions: "Tiroides, Diabetes",
+      allergies: "frutos secos",
+    });
+    expect(res.status).toBe(200);
+
+    const get = await getProfile(customerId);
+    const data = (await get.json()) as { profile: Record<string, unknown> | null };
+    expect(data.profile).toMatchObject({
+      weight: 65.5,
+      height: 1.7,
+      conditions: "Tiroides, Diabetes",
+      allergies: "frutos secos",
+    });
+  });
+
+  it("keeps previous health fields when a re-submission omits them (upsert semantics)", async () => {
+    const customerId = await register("salud2@x.com", "4005");
+
+    await post("/assistant/profile", {
+      customer_id: customerId,
+      weight: 70,
+      height: 1.75,
+      conditions: "Diabetes",
+      allergies: "marisco",
+    });
+    // Partial re-submission (e.g. old cached frontend): omitted fields keep value.
+    await post("/assistant/profile", { customer_id: customerId, sex: "M", age: 50 });
+
+    const get = await getProfile(customerId);
+    const data = (await get.json()) as { profile: Record<string, unknown> | null };
+    expect(data.profile).toMatchObject({
+      weight: 70,
+      height: 1.75,
+      conditions: "Diabetes",
+      allergies: "marisco",
+      sex: "M",
+      age: 50,
+    });
+  });
 });

@@ -58,6 +58,14 @@ export const customerProfile = sqliteTable(
     sleep: text("sleep"),
     stress: text("stress"),
     openNote: text("open_note"), // free-text answer (step 5)
+    // intake-health-data: optional body data (REAL kg / meters) and the
+    // health block — conditions is a comma-joined multi-select ("Ninguna"
+    // excluded when others are selected), allergies is free text revealed by
+    // the "Alergias" chip (S4: "¿Alergia a qué?" required in that case).
+    weight: real("weight"), // kg, 30–300 (frontend-validated)
+    height: real("height"), // meters, 1.00–2.30 (frontend-validated)
+    conditions: text("conditions"), // comma-joined chips list
+    allergies: text("allergies"), // free text
     updatedAt: text("updated_at")
       .notNull()
       .default(sql`CURRENT_TIMESTAMP`),

@@ -23,6 +23,11 @@ export interface ProfileInput {
   sleep?: string | null;
   stress?: string | null;
   openNote?: string | null;
+  // intake-health-data: optional body data + health block.
+  weight?: number | null; // kg
+  height?: number | null; // meters
+  conditions?: string | null; // comma-joined chips list
+  allergies?: string | null; // free text ("¿Alergia a qué?")
 }
 
 export interface ProfileService {
@@ -54,6 +59,10 @@ export function createProfileService(db: Db): ProfileService {
       if (input.sleep !== undefined) patch.sleep = input.sleep;
       if (input.stress !== undefined) patch.stress = input.stress;
       if (input.openNote !== undefined) patch.openNote = input.openNote;
+      if (input.weight !== undefined) patch.weight = input.weight;
+      if (input.height !== undefined) patch.height = input.height;
+      if (input.conditions !== undefined) patch.conditions = input.conditions;
+      if (input.allergies !== undefined) patch.allergies = input.allergies;
 
       const updatedAt = new Date().toISOString();
       return db
