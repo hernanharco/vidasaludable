@@ -86,6 +86,8 @@ describe("ChatMessages video cards", () => {
     expect(card).toHaveTextContent("Luis Collantes");
     // T4 Phase A: segment range chip in mm:ss when startS/endS are present.
     expect(card).toHaveTextContent("1:30 – 3:00");
+    // The card states explicitly that it is a short explanatory video link.
+    expect(card).toHaveTextContent("Video corto para entender qué puede estar pasando");
     // Surrounding text intact, marker token gone
     expect(screen.getByText(/Mira este video/)).toBeInTheDocument();
     expect(screen.queryByText(/VIDEO:/)).not.toBeInTheDocument();
