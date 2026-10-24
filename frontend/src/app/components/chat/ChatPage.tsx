@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router";
 import { ChatSession } from "./ChatSession";
+import { ErrorBoundary } from "./ErrorBoundary";
 import { AssessmentWidget } from "../assessment";
 
 /**
@@ -28,6 +29,10 @@ export function ChatPage() {
   // T4/T2 — ChatSession emits the `[ASSESSMENT]` marker card inside the
   // conversation; clicking it opens the prevention wizard on this page too.
   const [assessmentOpen, setAssessmentOpen] = useState(false);
+  // intake-health-data S6 — a render error inside the chat used to blank the
+  // whole page. The boundary shows a retry/reload fallback instead; retry
+  // bumps the counter, which re-keys (re-mounts) a fresh ChatSession.
+  const [chatRetryCount, setChatRetryCount] = useState(0);
   return (
     <div
       className="min-h-[100dvh] h-[100vh] supports-[height:100dvh]:h-[100dvh] flex flex-col bg-stone-50 font-sans text-stone-900 pb-[env(safe-area-inset-bottom)]"
@@ -36,10 +41,15 @@ export function ChatPage() {
       // chat input clear of it. Declared as a class so it survives in the
       // DOM everywhere; the declaration is a no-op without env() support.
     >
-      <ChatSession
-        onOpenAssessment={() => setAssessmentOpen(true)}
-        onClose={() => navigate("/")}
-      />
+      <ErrorBoundary
+        key={`chat-${chatRetryCount}`}
+        onRecover={() => setChatRetryCount((n) => n + 1)}
+      >
+        <ChatSession
+          onOpenAssessment={() => setAssessmentOpen(true)}
+          onClose={() => navigate("/")}
+        />
+      </ErrorBoundary>
       <AssessmentWidget open={assessmentOpen} onClose={() => setAssessmentOpen(false)} />
     </div>
   );
