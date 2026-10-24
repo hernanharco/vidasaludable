@@ -54,6 +54,29 @@ describe("profileBlock", () => {
     expect(block).not.toContain("Sueño");
   });
 
+  it("renders health fields: weight/height, conditions and allergies (S5)", () => {
+    const block = profileBlock({
+      weight: 70,
+      height: 1.7,
+      conditions: "Tiroides, Diabetes",
+      allergies: "frutos secos",
+    });
+    expect(block).toContain("Peso: 70 kg");
+    expect(block).toContain("Altura: 1,70 m");
+    expect(block).toContain("Condiciones: Tiroides, Diabetes");
+    expect(block).toContain("Alergias: frutos secos");
+    expect(block).not.toContain("undefined");
+    expect(block).not.toContain("null");
+  });
+
+  it("omits health lines when the fields are absent", () => {
+    const block = profileBlock({ goal: "sueño" });
+    expect(block).not.toContain("Peso");
+    expect(block).not.toContain("Altura");
+    expect(block).not.toContain("Condiciones");
+    expect(block).not.toContain("Alergias");
+  });
+
   it("returns \"\" for null (no stale header, same convention as guidanceBlock)", () => {
     expect(profileBlock(null)).toBe("");
   });
