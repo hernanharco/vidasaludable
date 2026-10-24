@@ -24,6 +24,14 @@ export interface IntakeProfile {
   sleep: string;
   stress: string;
   openNote: string;
+  /** intake-health-data S1 — optional kg, raw string ("Ej: 70"). */
+  weight: string;
+  /** intake-health-data S1 — optional meters, accepts "1,70" or "1.70". */
+  height: string;
+  /** intake-health-data S3 — comma-joined conditions chips ("Ninguna" exclusive). */
+  conditions: string;
+  /** intake-health-data S4 — free text revealed by the "Alergias" chip. */
+  allergies: string;
 }
 
 /**

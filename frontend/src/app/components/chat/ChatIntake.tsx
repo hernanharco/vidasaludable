@@ -19,16 +19,38 @@ interface ChatIntakeProps {
   onComplete: (profile: IntakeProfile) => Promise<boolean>;
 }
 
-const TOTAL_STEPS = 5;
+const TOTAL_STEPS = 6;
 
 const AGE_PLACEHOLDER = "Ej: 34";
+const WEIGHT_PLACEHOLDER = "Ej: 70";
+const HEIGHT_PLACEHOLDER = "Ej: 1,70";
+const ALLERGY_PLACEHOLDER = "¿Alergia a qué?";
 const OPEN_NOTE_PLACEHOLDER = "¿Hay algo que te preocupe hoy? (opcional)";
 
 const GOALS = ["Energía", "Inmunidad", "Huesos", "Piel y cabello", "Digestión", "Sueño"];
 const DIETS = ["Omnívora", "Vegetariana", "Vegana"];
+// intake-health-data S2 — the chips read everyday language; the wire VALUE
+// stays "Omnívora" (stored rows, prompt and upsert semantics untouched).
+const DIET_LABELS: Record<string, string> = {
+  Omnívora: "Como de todo (carne, pescado, verduras)",
+};
 const ACTIVITIES = ["Sedentaria", "Leve", "Moderada", "Intensa"];
 const SLEEP_RANGES = ["<5 h", "5-6 h", "7-8 h", "+8 h"];
 const STRESS_LEVELS = ["Bajo", "Medio", "Alto"];
+// intake-health-data S3 — health conditions (multi-select) + allergies.
+// "Ninguna" is exclusive both ways (see handleSelect below).
+const CONDITIONS = [
+  "Tensión alta",
+  "Tiroides",
+  "Problemas de colon",
+  "Diabetes",
+  "Hipoglisemia",
+  "Fatiga muscular",
+  "Ninguna",
+  "Alergias",
+];
+const NO_CONDITION = "Ninguna";
+const ALLERGY_CONDITION = "Alergias";
 
 const inputCls =
   "w-full px-3 py-2 bg-white border border-stone-200 rounded-lg text-base md:text-sm text-stone-800 placeholder:text-stone-400 focus:outline-none focus:ring-1 focus:ring-emerald-900 transition-shadow";
@@ -62,6 +84,25 @@ function isValidAge(raw: string): boolean {
 }
 
 /**
+ * intake-health-data S1 — optional numeric fields. Empty is always valid
+ * (they must never block the flow); a filled value must parse (comma or
+ * point decimal) and fall inside its range.
+ */
+function isValidWeight(raw: string): boolean {
+  const trimmed = raw.trim();
+  if (trimmed === "") return true;
+  const n = Number(trimmed.replace(",", "."));
+  return Number.isFinite(n) && n >= 30 && n <= 300;
+}
+
+function isValidHeight(raw: string): boolean {
+  const trimmed = raw.trim();
+  if (trimmed === "") return true;
+  const n = Number(trimmed.replace(",", "."));
+  return Number.isFinite(n) && n >= 1 && n <= 2.3;
+}
+
+/**
  * What each gated step still needs, phrased for the customer. The disabled
  * `Siguiente` button and the visible nudge both read this list, so they can
  * never disagree (S3 — "no deja avanzar"): the button was grey with no clue
@@ -73,6 +114,9 @@ function missingFields(step: number, profile: IntakeProfile): string[] {
       const missing: string[] = [];
       if (!isValidAge(profile.age)) missing.push("tu edad (entre 1 y 120 años)");
       if (profile.sex !== "M" && profile.sex !== "F") missing.push("tu sexo (Mujer u Hombre)");
+      // intake-health-data S1 — optional, but a filled value must be valid.
+      if (!isValidWeight(profile.weight)) missing.push("tu peso en kg (entre 30 y 300)");
+      if (!isValidHeight(profile.height)) missing.push("tu altura en metros (entre 1,00 y 2,30)");
       return missing;
     }
     case 2:
@@ -89,8 +133,17 @@ function missingFields(step: number, profile: IntakeProfile): string[] {
       if (profile.stress === "") missing.push("tu nivel de estrés");
       return missing;
     }
+    case 5: {
+      // intake-health-data S4 — the ONLY gated field of the health step:
+      // choosing the "Alergias" chip obliges the customer to say what to.
+      const selected = profile.conditions.split(", ").filter(Boolean);
+      if (selected.includes(ALLERGY_CONDITION) && profile.allergies.trim() === "") {
+        return ["la alergia a qué (escribe el detalle)"];
+      }
+      return [];
+    }
     default:
-      return []; // step 5: free text is optional
+      return []; // step 6: free text is optional
   }
 }
 
@@ -114,6 +167,7 @@ function ChipGroup({
   labels,
   hideLabel,
   multi,
+  exclusiveTag,
 }: {
   label: string;
   options: string[];
@@ -125,6 +179,12 @@ function ChipGroup({
   hideLabel?: boolean;
   /** Multi-select: `value` is a comma-joined list (", ") that toggles per chip. */
   multi?: boolean;
+  /**
+   * intake-health-data S3 — a multi-select option that excludes every other
+   * selection both ways: choosing it clears the rest, choosing any other
+   * clears it. ("Ninguna" vs the health conditions.)
+   */
+  exclusiveTag?: string;
 }) {
   const selected = multi ? new Set(value.split(", ").filter(Boolean)) : null;
   const isSelected = (option: string) => (multi ? selected!.has(option) : value === option);
@@ -134,8 +194,20 @@ function ChipGroup({
       return;
     }
     const next = new Set(selected!);
-    if (next.has(option)) next.delete(option);
-    else next.add(option);
+    if (next.has(option)) {
+      next.delete(option);
+    } else {
+      next.add(option);
+      if (exclusiveTag && option === exclusiveTag) {
+        // "Ninguna" wipes every other selection.
+        for (const other of options) {
+          if (other !== exclusiveTag) next.delete(other);
+        }
+      } else if (exclusiveTag) {
+        // Any real condition wipes "Ninguna".
+        next.delete(exclusiveTag);
+      }
+    }
     // Options order, not click order: the stored list stays stable.
     const joined = options.filter((o) => next.has(o)).join(", ");
     onSelect(joined);
@@ -208,6 +280,34 @@ export function ChatIntake({ profile, onChange, onComplete }: ChatIntakeProps) {
             {/* S4 — this rule belongs to the age field; it used to sit under
                 the Sexo chips, where it read as a non sequitur. */}
             <p className="mt-1 text-[11px] text-stone-400">Edad entre 1 y 120 años.</p>
+            {/* intake-health-data S1 — optional body data, same input style.
+                A filled value must be in range (see missingFields), empty is
+                always valid: these fields never block the flow. */}
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <label className="text-xs text-stone-600">
+                Peso (kg)
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={profile.weight}
+                  onChange={(e) => update({ weight: e.target.value })}
+                  placeholder={WEIGHT_PLACEHOLDER}
+                  className={inputCls}
+                />
+              </label>
+              <label className="text-xs text-stone-600">
+                Altura (m)
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={profile.height}
+                  onChange={(e) => update({ height: e.target.value })}
+                  placeholder={HEIGHT_PLACEHOLDER}
+                  className={inputCls}
+                />
+              </label>
+            </div>
+            <p className="mt-1 text-[11px] text-stone-400">Peso y altura opcionales.</p>
             <div className="mt-3">
               <ChipGroup
                 label="Sexo"
@@ -243,6 +343,7 @@ export function ChatIntake({ profile, onChange, onComplete }: ChatIntakeProps) {
             <ChipGroup
               label="Dieta"
               options={DIETS}
+              labels={DIET_LABELS}
               value={profile.diet}
               onSelect={(option) => update({ diet: option })}
             />
@@ -274,6 +375,39 @@ export function ChatIntake({ profile, onChange, onComplete }: ChatIntakeProps) {
         )}
 
         {step === 5 && (
+          <div>
+            <h3 className="text-sm font-medium text-stone-800 mb-1">Salud</h3>
+            <p className="text-xs text-stone-500 mb-3">
+              ¿Tienes alguna de estas condiciones? (opcional, puedes elegir varias)
+            </p>
+            <ChipGroup
+              label="Condiciones de salud"
+              hideLabel
+              multi
+              exclusiveTag={NO_CONDITION}
+              options={CONDITIONS}
+              value={profile.conditions}
+              onSelect={(option) => update({ conditions: option })}
+            />
+            {/* intake-health-data S4 — the detail field only exists while the
+                "Alergias" chip is selected, and the health step refuses to
+                advance without it (missingFields case 5). */}
+            {profile.conditions.split(", ").includes(ALLERGY_CONDITION) && (
+              <label className="text-xs text-stone-600 block mt-1">
+                ¿Alergia a qué?
+                <input
+                  type="text"
+                  value={profile.allergies}
+                  onChange={(e) => update({ allergies: e.target.value })}
+                  placeholder={ALLERGY_PLACEHOLDER}
+                  className={inputCls}
+                />
+              </label>
+            )}
+          </div>
+        )}
+
+        {step === 6 && (
           <div>
             <h3 className="text-sm font-medium text-stone-800 mb-1">Pregunta abierta</h3>
             <p className="text-xs text-stone-500 mb-3">
