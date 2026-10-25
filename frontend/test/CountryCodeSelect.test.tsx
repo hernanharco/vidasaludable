@@ -37,7 +37,7 @@ describe("CountryCodeSelect", () => {
     );
     const trigger = screen.getByRole("combobox", { name: /indicativo del país/i });
     const flag = within(trigger).getByRole("img", { name: /bandera de españa/i });
-    expect(flag).toHaveAttribute("src", "https://flagcdn.com/w40/es.svg");
+    expect(flag).toHaveAttribute("src", "https://flagcdn.com/es.svg");
     expect(trigger).toHaveTextContent("+34");
   });
 
@@ -53,10 +53,10 @@ describe("CountryCodeSelect", () => {
     // Spot checks: Argentina (first option content) and España.
     expect(
       within(listbox).getByRole("img", { name: /bandera de argentina/i }),
-    ).toHaveAttribute("src", "https://flagcdn.com/w40/ar.svg");
+    ).toHaveAttribute("src", "https://flagcdn.com/ar.svg");
     expect(
       within(listbox).getByRole("img", { name: /bandera de españa/i }),
-    ).toHaveAttribute("src", "https://flagcdn.com/w40/es.svg");
+    ).toHaveAttribute("src", "https://flagcdn.com/es.svg");
   });
 
   it("emits the dial code (not the option key) on selection", () => {

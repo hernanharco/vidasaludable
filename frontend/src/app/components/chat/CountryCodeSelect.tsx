@@ -66,7 +66,7 @@ export function CountryCodeSelect({
     >
       <SelectTrigger
         aria-label={label}
-        className={className ?? "w-[152px] shrink-0 bg-stone-100 border-stone-200"}
+        className={className ?? "w-[168px] shrink-0 bg-stone-100 border-stone-200"}
       >
         <span className="flex items-center gap-1.5 min-w-0">
           <FlagImg country={selected} className={flagCls} />

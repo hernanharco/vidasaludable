@@ -10,9 +10,14 @@ export interface CountryCode {
   iso: string;
 }
 
-/** Flag image URL for an ISO alpha-2 code (public flagcdn.com CDN). */
+/**
+ * Flag image URL for an ISO alpha-2 code (public flagcdn.com CDN).
+ * SVGs live at the domain root (`/es.svg`); the `/w40/es.svg` path returns
+ * 404 text/html, which browsers block via OpaqueResponseBlocking instead of
+ * rendering the flag.
+ */
 export function flagUrl(iso: string): string {
-  return `https://flagcdn.com/w40/${iso.toLowerCase()}.svg`;
+  return `https://flagcdn.com/${iso.toLowerCase()}.svg`;
 }
 
 export const DEFAULT_COUNTRY_CODE = "+34";
