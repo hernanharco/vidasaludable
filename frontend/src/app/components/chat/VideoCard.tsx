@@ -38,6 +38,9 @@ export function VideoCard({ video }: { video: VideoCardInfo }) {
           ) : null}
           <span>{video.speaker}</span>
         </span>
+        <span className="mt-1 block text-[11px] font-medium text-emerald-700">
+          Video corto para entender qué puede estar pasando →
+        </span>
       </span>
     </>
   );

@@ -78,6 +78,11 @@ const EMPTY_PROFILE: IntakeProfile = {
   sleep: "",
   stress: "",
   openNote: "",
+  // intake-health-data — optional body data + health block (S1/S3/S4).
+  weight: "",
+  height: "",
+  conditions: "",
+  allergies: "",
 };
 
 /**
@@ -107,6 +112,18 @@ function readStoredNumber(key: string): number | null {
   if (!raw) return null;
   const n = Number(raw);
   return Number.isInteger(n) && n > 0 ? n : null;
+}
+
+/**
+ * intake-health-data S1 — the optional weight/height strings become wire
+ * numbers ("1,70" → 1.7). Empty or unparseable → null (the backend treats a
+ * null as "unanswered" and keeps any previous value on upsert).
+ */
+function parseOptionalNumber(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (trimmed === "") return null;
+  const n = Number(trimmed.replace(",", "."));
+  return Number.isFinite(n) ? n : null;
 }
 
 function readStoredConsentVersion(): number | null {
@@ -495,6 +512,12 @@ export function ChatSession({ onOpenAssessment, onClose }: ChatSessionProps) {
           sleep: next.sleep,
           stress: next.stress,
           open_note: next.openNote,
+          // intake-health-data S1/S3/S4 — optional numbers (comma decimal
+          // accepted) and the comma-joined conditions / allergy detail.
+          weight: parseOptionalNumber(next.weight),
+          height: parseOptionalNumber(next.height),
+          conditions: next.conditions,
+          allergies: next.conditions.split(", ").includes("Alergias") ? next.allergies : "",
         }),
       });
       if (!res.ok) return false;

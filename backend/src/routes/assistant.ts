@@ -156,6 +156,10 @@ export function createAssistantRouter(db: Db, deps: AssistantRouterDeps = {}): H
       sleep: typeof body.sleep === "string" ? body.sleep : undefined,
       stress: typeof body.stress === "string" ? body.stress : undefined,
       openNote: typeof body.open_note === "string" ? body.open_note : undefined,
+      weight: readOptionalNumber(body.weight),
+      height: readOptionalNumber(body.height),
+      conditions: typeof body.conditions === "string" ? body.conditions : undefined,
+      allergies: typeof body.allergies === "string" ? body.allergies : undefined,
     });
     return c.json({ ok: true });
   });
@@ -218,6 +222,10 @@ export function createAssistantRouter(db: Db, deps: AssistantRouterDeps = {}): H
             sleep: profile.sleep,
             stress: profile.stress,
             open_note: profile.openNote,
+            weight: profile.weight,
+            height: profile.height,
+            conditions: profile.conditions,
+            allergies: profile.allergies,
             updated_at: profile.updatedAt,
           }
         : null,
@@ -416,6 +424,17 @@ function resolveSegmentUrl(card: {
  * no hard validation beyond that (frontend sends chips values).
  */
 function readAge(raw: unknown): number | undefined {
+  if (raw == null || raw === "") return undefined;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+/**
+ * intake-health-data — optional numeric field (weight kg / height meters).
+ * Same convention as readAge: absent/empty → undefined (keeps previous
+ * value on upsert), non-finite → undefined (never persisted as garbage).
+ */
+function readOptionalNumber(raw: unknown): number | undefined {
   if (raw == null || raw === "") return undefined;
   const n = Number(raw);
   return Number.isFinite(n) ? n : undefined;

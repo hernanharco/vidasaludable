@@ -25,6 +25,11 @@ export interface SummaryPromptContext {
     sleep: string | null;
     stress: string | null;
     openNote: string | null;
+    // intake-health-data S5 — optional body data + health block.
+    weight?: number | null;
+    height?: number | null;
+    conditions?: string | null;
+    allergies?: string | null;
   } | null;
   /** ALL chat messages, chronological, across every conversation. */
   chatMessages: Array<{ role: string; content: string }>;
@@ -116,6 +121,10 @@ export function buildSummaryPrompt(context: SummaryPromptContext): string {
           ["Actividad física", profile.activity],
           ["Sueño", profile.sleep],
           ["Estrés", profile.stress],
+          ["Peso (kg)", profile.weight],
+          ["Altura (m)", profile.height],
+          ["Condiciones", profile.conditions],
+          ["Alergias", profile.allergies],
           ["Nota abierta", profile.openNote],
         ])
       : "(sin registro)",

@@ -122,6 +122,10 @@ async function openWidget(user: ReturnType<typeof userEvent.setup>) {
 
 const AGE_PLACEHOLDER = "Ej: 34";
 const OPEN_NOTE_PLACEHOLDER = "¿Hay algo que te preocupe hoy? (opcional)";
+// intake-health-data S1/S4 — placeholders shared by every describe below.
+const WEIGHT_PLACEHOLDER = "Ej: 70";
+const HEIGHT_PLACEHOLDER = "Ej: 1,70";
+const ALLERGY_PLACEHOLDER = "¿Alergia a qué?";
 
 async function fillStep1(user: ReturnType<typeof userEvent.setup>, age = "34", sex: "M" | "F" = "F") {
   await user.type(screen.getByPlaceholderText(AGE_PLACEHOLDER), age);
@@ -132,20 +136,23 @@ async function fillStep1(user: ReturnType<typeof userEvent.setup>, age = "34", s
 
 async function fillSteps2to4(user: ReturnType<typeof userEvent.setup>) {
   // Step 2 — objetivo
-  expect(await screen.findByText("Paso 2 de 5")).toBeInTheDocument();
+  expect(await screen.findByText("Paso 2 de 6")).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "Sueño" }));
   await user.click(screen.getByRole("button", { name: /Siguiente/ }));
   // Step 3 — hábitos
-  expect(await screen.findByText("Paso 3 de 5")).toBeInTheDocument();
+  expect(await screen.findByText("Paso 3 de 6")).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "Vegetariana" }));
   await user.click(screen.getByRole("button", { name: "Leve" }));
   await user.click(screen.getByRole("button", { name: /Siguiente/ }));
   // Step 4 — sueño y estrés
-  expect(await screen.findByText("Paso 4 de 5")).toBeInTheDocument();
+  expect(await screen.findByText("Paso 4 de 6")).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "7-8 h" }));
   await user.click(screen.getByRole("button", { name: "Medio" }));
   await user.click(screen.getByRole("button", { name: /Siguiente/ }));
-  expect(await screen.findByText("Paso 5 de 5")).toBeInTheDocument();
+  // Step 5 — salud: every field is optional, advance untouched.
+  expect(await screen.findByText("Paso 5 de 6")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: /Siguiente/ }));
+  expect(await screen.findByText("Paso 6 de 6")).toBeInTheDocument();
 }
 
 describe("ChatSession intake flow", () => {
@@ -161,7 +168,7 @@ describe("ChatSession intake flow", () => {
 
     await openWidget(user);
 
-    expect(await screen.findByText("Paso 1 de 5")).toBeInTheDocument();
+    expect(await screen.findByText("Paso 1 de 6")).toBeInTheDocument();
     const next = screen.getByRole("button", { name: /Siguiente/ });
     expect(next).toBeDisabled();
 
@@ -193,7 +200,7 @@ describe("ChatSession intake flow", () => {
     installFetch({ profile: null, postProfileOk: true });
 
     await openWidget(user);
-    expect(await screen.findByText("Paso 1 de 5")).toBeInTheDocument();
+    expect(await screen.findByText("Paso 1 de 6")).toBeInTheDocument();
 
     const next = screen.getByRole("button", { name: /Siguiente/ });
     await user.type(screen.getByPlaceholderText(AGE_PLACEHOLDER), "34");
@@ -208,7 +215,7 @@ describe("ChatSession intake flow", () => {
     installFetch({ profile: null, postProfileOk: true });
 
     await openWidget(user);
-    expect(await screen.findByText("Paso 1 de 5")).toBeInTheDocument();
+    expect(await screen.findByText("Paso 1 de 6")).toBeInTheDocument();
 
     await fillStep1(user, "34", "F");
     await fillSteps2to4(user);
@@ -218,7 +225,7 @@ describe("ChatSession intake flow", () => {
 
     // Chat phase: input visible, questionnaire gone
     expect(await screen.findByPlaceholderText("Escribe un mensaje...")).toBeInTheDocument();
-    expect(screen.queryByText(/Paso \d de 5/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Paso \d de 6/)).not.toBeInTheDocument();
 
     const posts = profilePostCalls();
     expect(posts).toHaveLength(1);
@@ -232,6 +239,11 @@ describe("ChatSession intake flow", () => {
       sleep: "7-8 h",
       stress: "Medio",
       open_note: "Me preocupa el cansancio.",
+      // intake-health-data — optional fields empty → null on the wire.
+      weight: null,
+      height: null,
+      conditions: "",
+      allergies: "",
     });
   });
 
@@ -241,7 +253,7 @@ describe("ChatSession intake flow", () => {
     installFetch({ profile: null, postProfileOk: true });
 
     await openWidget(user);
-    expect(await screen.findByText("Paso 1 de 5")).toBeInTheDocument();
+    expect(await screen.findByText("Paso 1 de 6")).toBeInTheDocument();
 
     await fillStep1(user, "29", "M");
     await fillSteps2to4(user);
@@ -262,6 +274,11 @@ describe("ChatSession intake flow", () => {
       sleep: "7-8 h",
       stress: "Medio",
       open_note: "",
+      // intake-health-data — optional fields empty → null on the wire.
+      weight: null,
+      height: null,
+      conditions: "",
+      allergies: "",
     });
   });
 
@@ -271,7 +288,7 @@ describe("ChatSession intake flow", () => {
     installFetch({ profile: null, postProfileOk: true });
 
     await openWidget(user);
-    expect(await screen.findByText("Paso 1 de 5")).toBeInTheDocument();
+    expect(await screen.findByText("Paso 1 de 6")).toBeInTheDocument();
     await fillStep1(user, "34", "F");
     await fillSteps2to4(user);
     await user.click(screen.getByRole("button", { name: "Mis recomendaciones" }));
@@ -299,7 +316,7 @@ describe("ChatSession intake flow", () => {
     await openWidget(user);
 
     expect(await screen.findByPlaceholderText("Escribe un mensaje...")).toBeInTheDocument();
-    expect(screen.queryByText(/Paso \d de 5/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Paso \d de 6/)).not.toBeInTheDocument();
     expect(mockFetch).toHaveBeenCalledWith("/api/assistant/profile?customer_id=42");
     expect(profilePostCalls()).toHaveLength(0);
     // Untouched path pinned: chat that skips the questionnaire still opens
@@ -325,7 +342,7 @@ describe("ChatSession intake flow", () => {
     await user.click(screen.getByRole("button", { name: /Aceptar y continuar/ }));
 
     expect(await screen.findByPlaceholderText("Escribe un mensaje...")).toBeInTheDocument();
-    expect(screen.queryByText(/Paso \d de 5/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Paso \d de 6/)).not.toBeInTheDocument();
     expect(screen.getByRole("log").textContent).toContain(
       "¡Hola! ¿En qué te puedo ayudar hoy con tu bienestar?",
     );
@@ -339,7 +356,7 @@ describe("ChatSession intake flow", () => {
     installFetch(options);
 
     await openWidget(user);
-    expect(await screen.findByText("Paso 1 de 5")).toBeInTheDocument();
+    expect(await screen.findByText("Paso 1 de 6")).toBeInTheDocument();
 
     await fillStep1(user, "41", "F");
     await fillSteps2to4(user);
@@ -348,7 +365,7 @@ describe("ChatSession intake flow", () => {
     // Failure must NOT open chat with an unsaved profile
     expect(await screen.findByText(/No pudimos guardar/)).toBeInTheDocument();
     expect(screen.queryByPlaceholderText("Escribe un mensaje...")).not.toBeInTheDocument();
-    expect(screen.getByText("Paso 5 de 5")).toBeInTheDocument();
+    expect(screen.getByText("Paso 6 de 6")).toBeInTheDocument();
 
     // Server recovers → the same button retries and succeeds
     options.postProfileOk = true;
@@ -369,6 +386,10 @@ function IntakeHarness({ onComplete }: { onComplete: (p: IntakeProfile) => Promi
     sleep: "",
     stress: "",
     openNote: "",
+    weight: "",
+    height: "",
+    conditions: "",
+    allergies: "",
   });
   return <ChatIntake profile={profile} onChange={setProfile} onComplete={onComplete} />;
 }
@@ -389,7 +410,7 @@ describe("ChatIntake component", () => {
     await user.click(screen.getByRole("button", { name: /Siguiente/ }));
 
     // Step 2: multi-select goals — Energía and Huesos stay pressed together
-    expect(await screen.findByText("Paso 2 de 5")).toBeInTheDocument();
+    expect(await screen.findByText("Paso 2 de 6")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Energía" }));
     expect(screen.getByRole("button", { name: "Energía" })).toHaveAttribute("aria-pressed", "true");
     await user.click(screen.getByRole("button", { name: "Huesos" }));
@@ -403,20 +424,20 @@ describe("ChatIntake component", () => {
     await user.click(screen.getByRole("button", { name: "Energía" }));
     await user.click(screen.getByRole("button", { name: /Siguiente/ }));
 
-    // Step 3: habits
-    expect(await screen.findByText("Paso 3 de 5")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Omnívora" }));
+    // Step 3: habits — diet chips read the plain-language label (S2).
+    expect(await screen.findByText("Paso 3 de 6")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Como de todo/ }));
     await user.click(screen.getByRole("button", { name: "Intensa" }));
 
     // Back to step 2 → both selections preserved
     await user.click(screen.getByRole("button", { name: /Atrás/ }));
-    expect(await screen.findByText("Paso 2 de 5")).toBeInTheDocument();
+    expect(await screen.findByText("Paso 2 de 6")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Huesos" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("button", { name: "Energía" })).toHaveAttribute("aria-pressed", "true");
 
     // Back to step 1 → age and sex preserved
     await user.click(screen.getByRole("button", { name: /Atrás/ }));
-    expect(await screen.findByText("Paso 1 de 5")).toBeInTheDocument();
+    expect(await screen.findByText("Paso 1 de 6")).toBeInTheDocument();
     expect(screen.getByPlaceholderText(AGE_PLACEHOLDER)).toHaveValue("37");
     expect(screen.getByRole("button", { name: "Hombre" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("button", { name: /Siguiente/ })).toBeEnabled();
@@ -424,17 +445,19 @@ describe("ChatIntake component", () => {
     // Forward again → step 3 selections still there
     await user.click(screen.getByRole("button", { name: /Siguiente/ }));
     await user.click(screen.getByRole("button", { name: /Siguiente/ }));
-    expect(await screen.findByText("Paso 3 de 5")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Omnívora" })).toHaveAttribute("aria-pressed", "true");
+    expect(await screen.findByText("Paso 3 de 6")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Como de todo/ })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("button", { name: "Intensa" })).toHaveAttribute("aria-pressed", "true");
 
     // Finish the flow → the parent receives the full profile
     await user.click(screen.getByRole("button", { name: /Siguiente/ }));
-    expect(await screen.findByText("Paso 4 de 5")).toBeInTheDocument();
+    expect(await screen.findByText("Paso 4 de 6")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "7-8 h" }));
     await user.click(screen.getByRole("button", { name: "Medio" }));
     await user.click(screen.getByRole("button", { name: /Siguiente/ }));
-    expect(await screen.findByText("Paso 5 de 5")).toBeInTheDocument();
+    expect(await screen.findByText("Paso 5 de 6")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Siguiente/ }));
+    expect(await screen.findByText("Paso 6 de 6")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Mis recomendaciones" }));
     await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(1));
     expect(onComplete).toHaveBeenCalledWith({
@@ -446,6 +469,11 @@ describe("ChatIntake component", () => {
       sleep: "7-8 h",
       stress: "Medio",
       openNote: "",
+      // intake-health-data — new optional fields default to empty.
+      weight: "",
+      height: "",
+      conditions: "",
+      allergies: "",
     });
   });
 });
@@ -465,7 +493,7 @@ describe("ChatIntake copy, layout and guidance (S2-S4)", () => {
     const onComplete = vi.fn().mockResolvedValue(true);
     render(<IntakeHarness onComplete={onComplete} />);
 
-    expect(await screen.findByText("Paso 1 de 5")).toBeInTheDocument();
+    expect(await screen.findByText("Paso 1 de 6")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Mujer" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Hombre" })).toBeInTheDocument();
     // The raw letters are no longer offered as answers.
@@ -479,11 +507,13 @@ describe("ChatIntake copy, layout and guidance (S2-S4)", () => {
     await user.click(screen.getByRole("button", { name: /Siguiente/ }));
     await user.click(screen.getByRole("button", { name: "Sueño" }));
     await user.click(screen.getByRole("button", { name: /Siguiente/ }));
-    await user.click(screen.getByRole("button", { name: "Omnívora" }));
+    await user.click(screen.getByRole("button", { name: /Como de todo/ }));
     await user.click(screen.getByRole("button", { name: "Sedentaria" }));
     await user.click(screen.getByRole("button", { name: /Siguiente/ }));
     await user.click(screen.getByRole("button", { name: "7-8 h" }));
     await user.click(screen.getByRole("button", { name: "Medio" }));
+    await user.click(screen.getByRole("button", { name: /Siguiente/ }));
+    // Step 5 — salud is fully optional.
     await user.click(screen.getByRole("button", { name: /Siguiente/ }));
     await user.click(screen.getByRole("button", { name: "Mis recomendaciones" }));
 
@@ -525,14 +555,14 @@ describe("ChatIntake copy, layout and guidance (S2-S4)", () => {
     await user.click(screen.getByRole("button", { name: /Siguiente/ }));
 
     // Step 2 — objetivo
-    expect(await screen.findByText("Paso 2 de 5")).toBeInTheDocument();
+    expect(await screen.findByText("Paso 2 de 6")).toBeInTheDocument();
     expect(screen.getByRole("status").textContent).toContain("tus objetivos principales");
     await user.click(screen.getByRole("button", { name: "Energía" }));
     await waitFor(() => expect(screen.queryByRole("status")).not.toBeInTheDocument());
     await user.click(screen.getByRole("button", { name: /Siguiente/ }));
 
     // Step 3 — dieta y actividad, una por una
-    expect(await screen.findByText("Paso 3 de 5")).toBeInTheDocument();
+    expect(await screen.findByText("Paso 3 de 6")).toBeInTheDocument();
     expect(screen.getByRole("status").textContent).toContain("tu dieta");
     expect(screen.getByRole("status").textContent).toContain("tu actividad física");
     await user.click(screen.getByRole("button", { name: "Vegetariana" }));
@@ -543,7 +573,7 @@ describe("ChatIntake copy, layout and guidance (S2-S4)", () => {
     await user.click(screen.getByRole("button", { name: /Siguiente/ }));
 
     // Step 4 — sueño y estrés
-    expect(await screen.findByText("Paso 4 de 5")).toBeInTheDocument();
+    expect(await screen.findByText("Paso 4 de 6")).toBeInTheDocument();
     expect(screen.getByRole("status").textContent).toContain("tu horario de sueño");
     await user.click(screen.getByRole("button", { name: "7-8 h" }));
     expect(screen.getByRole("status").textContent).toContain("tu nivel de estrés");
@@ -551,8 +581,15 @@ describe("ChatIntake copy, layout and guidance (S2-S4)", () => {
     await waitFor(() => expect(screen.queryByRole("status")).not.toBeInTheDocument());
     await user.click(screen.getByRole("button", { name: /Siguiente/ }));
 
-    // Step 5 — nothing is required, so there is no nag.
-    expect(await screen.findByText("Paso 5 de 5")).toBeInTheDocument();
+    // Step 5 — salud: nothing is required (unless "Alergias" is selected),
+    // so there is no nag.
+    expect(await screen.findByText("Paso 5 de 6")).toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Siguiente/ })).toBeEnabled();
+    await user.click(screen.getByRole("button", { name: /Siguiente/ }));
+
+    // Step 6 — la pregunta abierta es opcional.
+    expect(await screen.findByText("Paso 6 de 6")).toBeInTheDocument();
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Mis recomendaciones" })).toBeEnabled();
   });
@@ -565,7 +602,7 @@ describe("ChatIntake copy, layout and guidance (S2-S4)", () => {
     await user.click(screen.getByRole("button", { name: "Mujer" }));
     await user.click(screen.getByRole("button", { name: /Siguiente/ }));
 
-    expect(await screen.findByText("Paso 2 de 5")).toBeInTheDocument();
+    expect(await screen.findByText("Paso 2 de 6")).toBeInTheDocument();
     expect(screen.getAllByText("Objetivos principales")).toHaveLength(1);
     // The chip group keeps its accessible name for screen readers.
     expect(screen.getByRole("group", { name: "Objetivos principales" })).toBeInTheDocument();
@@ -581,26 +618,29 @@ describe("ChatIntake copy, layout and guidance (S2-S4)", () => {
     });
 
     await openWidget(user);
-    expect(await screen.findByText("Paso 1 de 5")).toBeInTheDocument();
+    expect(await screen.findByText("Paso 1 de 6")).toBeInTheDocument();
     await fillStep1(user, "34", "F");
 
     // Step 2 — two goals selected together (multi-select)
-    expect(await screen.findByText("Paso 2 de 5")).toBeInTheDocument();
+    expect(await screen.findByText("Paso 2 de 6")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Energía" }));
     await user.click(screen.getByRole("button", { name: "Sueño" }));
     await user.click(screen.getByRole("button", { name: /Siguiente/ }));
     // Step 3 — habits
-    expect(await screen.findByText("Paso 3 de 5")).toBeInTheDocument();
+    expect(await screen.findByText("Paso 3 de 6")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Vegetariana" }));
     await user.click(screen.getByRole("button", { name: "Leve" }));
     await user.click(screen.getByRole("button", { name: /Siguiente/ }));
     // Step 4 — sleep + stress
-    expect(await screen.findByText("Paso 4 de 5")).toBeInTheDocument();
+    expect(await screen.findByText("Paso 4 de 6")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "7-8 h" }));
     await user.click(screen.getByRole("button", { name: "Medio" }));
     await user.click(screen.getByRole("button", { name: /Siguiente/ }));
-    // Step 5 — the open note becomes the conversation topic
-    expect(await screen.findByText("Paso 5 de 5")).toBeInTheDocument();
+    // Step 5 — salud (opcional, avanzamos sin tocar nada)
+    expect(await screen.findByText("Paso 5 de 6")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Siguiente/ }));
+    // Step 6 — the open note becomes the conversation topic
+    expect(await screen.findByText("Paso 6 de 6")).toBeInTheDocument();
     await user.type(
       screen.getByPlaceholderText(OPEN_NOTE_PLACEHOLDER),
       "Me preocupa el cansancio de la tarde",
@@ -640,7 +680,7 @@ describe("ChatIntake copy, layout and guidance (S2-S4)", () => {
     installFetch({ profile: null, postProfileOk: true, askFail: true });
 
     await openWidget(user);
-    expect(await screen.findByText("Paso 1 de 5")).toBeInTheDocument();
+    expect(await screen.findByText("Paso 1 de 6")).toBeInTheDocument();
     await fillStep1(user, "34", "F");
     await fillSteps2to4(user);
     await user.type(
@@ -663,17 +703,25 @@ describe("ChatIntake copy, layout and guidance (S2-S4)", () => {
 
   it("places the age rule next to the age field, above the Sexo group", async () => {
     render(<IntakeHarness onComplete={vi.fn().mockResolvedValue(true)} />);
-    expect(await screen.findByText("Paso 1 de 5")).toBeInTheDocument();
+    expect(await screen.findByText("Paso 1 de 6")).toBeInTheDocument();
 
     const ageRule = screen.getByText("Edad entre 1 y 120 años.");
+    // intake-health-data S1 — the optional weight/height row sits between
+    // the age rule and the Sexo chips; both remain below the age field.
     const afterAgeRule = ageRule.nextElementSibling as HTMLElement;
     expect(afterAgeRule).not.toBeNull();
-    expect(within(afterAgeRule).getByRole("group", { name: "Sexo" })).toBeInTheDocument();
+    expect(within(afterAgeRule).getByPlaceholderText(WEIGHT_PLACEHOLDER)).toBeInTheDocument();
+    expect(within(afterAgeRule).getByPlaceholderText(HEIGHT_PLACEHOLDER)).toBeInTheDocument();
+    // The "optional" hint paragraph follows the inputs; Sexo comes after it.
+    const hint = afterAgeRule.nextElementSibling as HTMLElement;
+    expect(hint.textContent).toContain("Peso y altura opcionales.");
+    const sexoGroup = hint.nextElementSibling as HTMLElement;
+    expect(within(sexoGroup).getByRole("group", { name: "Sexo" })).toBeInTheDocument();
   });
 
   it("keeps the form in a centered bounded column with the button next to it", async () => {
     render(<IntakeHarness onComplete={vi.fn().mockResolvedValue(true)} />);
-    expect(await screen.findByText("Paso 1 de 5")).toBeInTheDocument();
+    expect(await screen.findByText("Paso 1 de 6")).toBeInTheDocument();
 
     const column = document.querySelector(".max-w-lg") as HTMLElement | null;
     expect(column).not.toBeNull();
@@ -684,5 +732,148 @@ describe("ChatIntake copy, layout and guidance (S2-S4)", () => {
     // No auto margin pushing the footer to the far bottom of the viewport:
     // that is what left ~700px of blank background on desktop.
     expect(document.querySelector(".mt-auto")).toBeNull();
+  });
+});
+
+/**
+ * intake-health-data (odd/tasks/intake-health-data.md) — S1 peso/altura
+ * opcionales en el paso 1, S2 etiqueta cotidiana de la dieta (valor wire
+ * intacto), S3 paso Salud con multi-selección y "Ninguna" exclusiva,
+ * S4 "Alergias" exige escribir "¿Alergia a qué?".
+ */
+describe("ChatIntake health data (S1-S4)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("offers optional weight/height on step 1 and advances without them", async () => {
+    const user = userEvent.setup();
+    const onComplete = vi.fn().mockResolvedValue(true);
+    render(<IntakeHarness onComplete={onComplete} />);
+
+    expect(screen.getByPlaceholderText(WEIGHT_PLACEHOLDER)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(HEIGHT_PLACEHOLDER)).toBeInTheDocument();
+    // Optional: age+sex alone unlock Siguiente (weight/height stay empty).
+    await user.type(screen.getByPlaceholderText(AGE_PLACEHOLDER), "38");
+    await user.click(screen.getByRole("button", { name: "Mujer" }));
+    expect(screen.getByRole("button", { name: /Siguiente/ })).toBeEnabled();
+    await user.click(screen.getByRole("button", { name: /Siguiente/ }));
+    expect(await screen.findByText("Paso 2 de 6")).toBeInTheDocument();
+  });
+
+  it("blocks Siguiente on an out-of-range weight or height and accepts a Spanish decimal comma", async () => {
+    const user = userEvent.setup();
+    const onComplete = vi.fn().mockResolvedValue(true);
+    render(<IntakeHarness onComplete={onComplete} />);
+
+    await user.type(screen.getByPlaceholderText(AGE_PLACEHOLDER), "38");
+    await user.click(screen.getByRole("button", { name: "Mujer" }));
+    await user.type(screen.getByPlaceholderText(WEIGHT_PLACEHOLDER), "25");
+    expect(screen.getByRole("button", { name: /Siguiente/ })).toBeDisabled();
+    await user.clear(screen.getByPlaceholderText(WEIGHT_PLACEHOLDER));
+    await user.type(screen.getByPlaceholderText(WEIGHT_PLACEHOLDER), "70");
+    expect(screen.getByRole("button", { name: /Siguiente/ })).toBeEnabled();
+
+    await user.type(screen.getByPlaceholderText(HEIGHT_PLACEHOLDER), "2,50");
+    expect(screen.getByRole("button", { name: /Siguiente/ })).toBeDisabled();
+    await user.clear(screen.getByPlaceholderText(HEIGHT_PLACEHOLDER));
+    await user.type(screen.getByPlaceholderText(HEIGHT_PLACEHOLDER), "1,70");
+    expect(screen.getByRole("button", { name: /Siguiente/ })).toBeEnabled();
+  });
+
+  it("shows the plain-language diet labels and keeps the 'Omnívora' wire value", async () => {
+    const user = userEvent.setup();
+    const onComplete = vi.fn().mockResolvedValue(true);
+    render(<IntakeHarness onComplete={onComplete} />);
+
+    await user.type(screen.getByPlaceholderText(AGE_PLACEHOLDER), "38");
+    await user.click(screen.getByRole("button", { name: "Mujer" }));
+    await user.click(screen.getByRole("button", { name: /Siguiente/ }));
+    expect(await screen.findByText("Paso 2 de 6")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Energía" }));
+    await user.click(screen.getByRole("button", { name: /Siguiente/ }));
+
+    expect(await screen.findByText("Paso 3 de 6")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Como de todo/ }));
+    await user.click(screen.getByRole("button", { name: "Moderada" }));
+    await user.click(screen.getByRole("button", { name: /Siguiente/ }));
+    expect(await screen.findByText("Paso 4 de 6")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "7-8 h" }));
+    await user.click(screen.getByRole("button", { name: "Medio" }));
+    await user.click(screen.getByRole("button", { name: /Siguiente/ }));
+    expect(await screen.findByText("Paso 5 de 6")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Siguiente/ }));
+    await user.click(screen.getByRole("button", { name: "Mis recomendaciones" }));
+    await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(1));
+    expect(onComplete.mock.calls[0]![0]).toMatchObject({ diet: "Omnívora" });
+  });
+
+  it("renders the Salud step with condition chips; 'Ninguna' is exclusive", async () => {
+    const user = userEvent.setup();
+    render(<IntakeHarness onComplete={vi.fn().mockResolvedValue(true)} />);
+
+    await user.type(screen.getByPlaceholderText(AGE_PLACEHOLDER), "38");
+    await user.click(screen.getByRole("button", { name: "Mujer" }));
+    await user.click(screen.getByRole("button", { name: /Siguiente/ }));
+    await user.click(screen.getByRole("button", { name: "Energía" }));
+    await user.click(screen.getByRole("button", { name: /Siguiente/ }));
+    await user.click(screen.getByRole("button", { name: /Como de todo/ }));
+    await user.click(screen.getByRole("button", { name: "Moderada" }));
+    await user.click(screen.getByRole("button", { name: /Siguiente/ }));
+    await user.click(screen.getByRole("button", { name: "7-8 h" }));
+    await user.click(screen.getByRole("button", { name: "Medio" }));
+    await user.click(screen.getByRole("button", { name: /Siguiente/ }));
+
+    expect(await screen.findByText("Paso 5 de 6")).toBeInTheDocument();
+    for (const chip of ["Tensión alta", "Tiroides", "Problemas de colon", "Diabetes", "Hipoglisemia", "Fatiga muscular", "Ninguna", "Alergias"]) {
+      expect(screen.getByRole("button", { name: chip })).toBeInTheDocument();
+    }
+    // Selecting a condition unselects "Ninguna" and vice versa.
+    await user.click(screen.getByRole("button", { name: "Ninguna" }));
+    expect(screen.getByRole("button", { name: "Ninguna" })).toHaveAttribute("aria-pressed", "true");
+    await user.click(screen.getByRole("button", { name: "Tiroides" }));
+    expect(screen.getByRole("button", { name: "Ninguna" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("button", { name: "Tiroides" })).toHaveAttribute("aria-pressed", "true");
+    await user.click(screen.getByRole("button", { name: "Ninguna" }));
+    expect(screen.getByRole("button", { name: "Tiroides" })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("requires '¿Alergia a qué?' only when the Alergias chip is selected (S4)", async () => {
+    const user = userEvent.setup();
+    const onComplete = vi.fn().mockResolvedValue(true);
+    render(<IntakeHarness onComplete={onComplete} />);
+
+    await user.type(screen.getByPlaceholderText(AGE_PLACEHOLDER), "38");
+    await user.click(screen.getByRole("button", { name: "Mujer" }));
+    await user.click(screen.getByRole("button", { name: /Siguiente/ }));
+    await user.click(screen.getByRole("button", { name: "Energía" }));
+    await user.click(screen.getByRole("button", { name: /Siguiente/ }));
+    await user.click(screen.getByRole("button", { name: /Como de todo/ }));
+    await user.click(screen.getByRole("button", { name: "Moderada" }));
+    await user.click(screen.getByRole("button", { name: /Siguiente/ }));
+    await user.click(screen.getByRole("button", { name: "7-8 h" }));
+    await user.click(screen.getByRole("button", { name: "Medio" }));
+    await user.click(screen.getByRole("button", { name: /Siguiente/ }));
+
+    expect(await screen.findByText("Paso 5 de 6")).toBeInTheDocument();
+    // No allergies field until the chip is pressed.
+    expect(screen.queryByPlaceholderText(ALLERGY_PLACEHOLDER)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Alergias" }));
+    expect(screen.getByPlaceholderText(ALLERGY_PLACEHOLDER)).toBeInTheDocument();
+    // Selected without the detail → Siguiente blocked with a nudge.
+    expect(screen.getByRole("button", { name: /Siguiente/ })).toBeDisabled();
+    expect(screen.getByRole("status")).toHaveTextContent(/alergia a qué/i);
+
+    await user.type(screen.getByPlaceholderText(ALLERGY_PLACEHOLDER), "frutos secos");
+    expect(screen.getByRole("button", { name: /Siguiente/ })).toBeEnabled();
+
+    await user.click(screen.getByRole("button", { name: /Siguiente/ }));
+    await user.click(screen.getByRole("button", { name: "Mis recomendaciones" }));
+    await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(1));
+    expect(onComplete.mock.calls[0]![0]).toMatchObject({
+      conditions: "Alergias",
+      allergies: "frutos secos",
+    });
   });
 });

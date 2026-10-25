@@ -56,6 +56,11 @@ export interface ProfileContext {
   sleep?: string | number | null;
   stress?: string | number | null;
   openNote?: string | number | null;
+  // intake-health-data S5 — optional body data + health block.
+  weight?: string | number | null; // kg
+  height?: string | number | null; // meters (rendered with 2 decimals, comma)
+  conditions?: string | number | null; // comma-joined chips list
+  allergies?: string | number | null; // free text
 }
 
 export interface ChatMessage {
@@ -146,6 +151,18 @@ function presentProfileField(value: string | number | null | undefined): string 
 }
 
 /**
+ * intake-health-data S5 — renders height meters with two decimals and the
+ * Spanish decimal comma (1.7 → "1,70 m"). A non-numeric stored value
+ * degrades to the raw trimmed string instead of NaN (defensive, mirroring
+ * presentProfileField).
+ */
+function formatMeters(value: string | number): string {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return `${value} m`;
+  return `${n.toFixed(2).replace(".", ",")} m`;
+}
+
+/**
  * T2 chat-intake — human-readable Spanish block with the customer's intake
  * profile, so Gemini personalizes every recommendation. Same convention as
  * guidanceBlock/videoSegmentsBlock: null OR an all-empty profile returns ""
@@ -161,6 +178,10 @@ export function profileBlock(profile: ProfileContext | null): string {
   const sleep = presentProfileField(profile.sleep);
   const stress = presentProfileField(profile.stress);
   const openNote = presentProfileField(profile.openNote);
+  const weight = presentProfileField(profile.weight);
+  const height = presentProfileField(profile.height);
+  const conditions = presentProfileField(profile.conditions);
+  const allergies = presentProfileField(profile.allergies);
 
   const lines: string[] = [];
   const identity = [age ? `Edad: ${age}` : null, sex ? `Sexo: ${sex}` : null].filter(
@@ -176,6 +197,15 @@ export function profileBlock(profile: ProfileContext | null): string {
     (part): part is string => part !== null,
   );
   if (recovery.length > 0) lines.push(`- ${recovery.join(" · ")}`);
+  // intake-health-data S5 — body data and health block, same render-if-present
+  // convention. Height formats to two decimals with a Spanish decimal comma.
+  const body = [
+    weight ? `Peso: ${weight} kg` : null,
+    height ? `Altura: ${formatMeters(height)}` : null,
+  ].filter((part): part is string => part !== null);
+  if (body.length > 0) lines.push(`- ${body.join(" · ")}`);
+  if (conditions) lines.push(`- Condiciones: ${conditions}`);
+  if (allergies) lines.push(`- Alergias: ${allergies}`);
   if (openNote) lines.push(`- Me contó: "${openNote}"`);
 
   if (lines.length === 0) return "";
