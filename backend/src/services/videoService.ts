@@ -115,9 +115,50 @@ export interface VideoService {
   updateSegment(id: number, patch: SegmentPatchInput): VideoSegment | null;
   /** Delete a segment. Returns whether a row was removed. */
   removeSegment(id: number): boolean;
+  /** Atomic segment swap (admin-video-analyze fix M1): deletes every current
+   * segment of the video and inserts `rows` in ONE transaction — a mid-swap
+   * failure rolls back so the video never loses its segments. Rows omit
+   * videoId (the method owns it). Returns the created rows. */
+  replaceSegments(
+    videoId: number,
+    rows: Array<Omit<SegmentCreateInput, "videoId">>,
+  ): VideoSegment[];
   /** Delete many segments in one statement (CRM bulk delete). Returns the
    * number of rows actually removed (stale ids count as 0, never error). */
   removeSegments(ids: number[]): number;
+
+  // ─── admin-video-analyze: analysis lifecycle ───────────────────────
+  /** Video by primary key; null when absent. */
+  getVideo(id: number): Video | null;
+  /** Set analysis_state='running' and clear any stale analysis_error.
+   * Returns false when the video does not exist. */
+  markAnalysisRunning(id: number): boolean;
+  /** Record a failure: analysis_state=NULL + analysis_error=message.
+   * Never touches status or segments (S3). */
+  failAnalysis(id: number, message: string): boolean;
+  /** Successful completion: analysis_state=NULL + analysis_error=NULL. */
+  clearAnalysisState(id: number): boolean;
+  /** Boot recovery: reset orphaned 'running' rows (server restarted mid-job)
+   * to NULL with an explanatory analysis_error. Returns rows recovered. */
+  recoverInterruptedAnalyses(): number;
+}
+
+/** Shared segment INSERT (used by createSegment and the transactional
+ * replaceSegments — one implementation, one field-normalization path). */
+function insertSegmentRow(db: Db, input: SegmentCreateInput): VideoSegment {
+  const now = new Date().toISOString();
+  const { mentionedProducts, productReferences, ...rest } = input;
+  return db
+    .insert(videoSegments)
+    .values({
+      ...rest,
+      mentionedProducts: normalizeProductField(mentionedProducts),
+      productReferences: normalizeProductField(productReferences),
+      createdAt: now,
+      updatedAt: now,
+    })
+    .returning()
+    .get();
 }
 
 export function createVideoService(db: Db): VideoService {
@@ -191,19 +232,21 @@ export function createVideoService(db: Db): VideoService {
     },
 
     createSegment(input: SegmentCreateInput): VideoSegment {
-      const now = new Date().toISOString();
-      const { mentionedProducts, productReferences, ...rest } = input;
-      return db
-        .insert(videoSegments)
-        .values({
-          ...rest,
-          mentionedProducts: normalizeProductField(mentionedProducts),
-          productReferences: normalizeProductField(productReferences),
-          createdAt: now,
-          updatedAt: now,
-        })
-        .returning()
-        .get();
+      return insertSegmentRow(db, input);
+    },
+
+    replaceSegments(
+      videoId: number,
+      rows: Array<Omit<SegmentCreateInput, "videoId">>,
+    ): VideoSegment[] {
+      // better-sqlite3 is synchronous, so the transaction callback covers the
+      // delete + every insert on the same connection: atomic by construction.
+      // The method OWNS the video id — rows are keyed by it, callers can't
+      // insert a swap row for the wrong video.
+      return db.transaction(() => {
+        db.delete(videoSegments).where(eq(videoSegments.videoId, videoId)).run();
+        return rows.map((row) => insertSegmentRow(db, { ...row, videoId }));
+      });
     },
 
     updateSegment(id: number, patch: SegmentPatchInput): VideoSegment | null {
@@ -234,6 +277,46 @@ export function createVideoService(db: Db): VideoService {
     removeSegments(ids: number[]): number {
       if (ids.length === 0) return 0;
       const result = db.delete(videoSegments).where(inArray(videoSegments.id, ids)).run();
+      return result.changes;
+    },
+
+    getVideo(id: number): Video | null {
+      return db.select().from(videos).where(eq(videos.id, id)).get() ?? null;
+    },
+
+    markAnalysisRunning(id: number): boolean {
+      const result = db
+        .update(videos)
+        .set({ analysisState: "running", analysisError: null })
+        .where(eq(videos.id, id))
+        .run();
+      return result.changes > 0;
+    },
+
+    failAnalysis(id: number, message: string): boolean {
+      const result = db
+        .update(videos)
+        .set({ analysisState: null, analysisError: message })
+        .where(eq(videos.id, id))
+        .run();
+      return result.changes > 0;
+    },
+
+    clearAnalysisState(id: number): boolean {
+      const result = db
+        .update(videos)
+        .set({ analysisState: null, analysisError: null })
+        .where(eq(videos.id, id))
+        .run();
+      return result.changes > 0;
+    },
+
+    recoverInterruptedAnalyses(): number {
+      const result = db
+        .update(videos)
+        .set({ analysisState: null, analysisError: "Análisis interrumpido por reinicio" })
+        .where(eq(videos.analysisState, "running"))
+        .run();
       return result.changes;
     },
   };

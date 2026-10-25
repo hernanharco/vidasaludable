@@ -17,6 +17,8 @@ import { createAdminReferrerRouter } from "./routes/adminReferrer.js";
 import { createAdminAssessmentRouter } from "./routes/adminAssessment.js";
 import { verifyJwt } from "./services/auth.js";
 import type { JwtPayload } from "./services/auth.js";
+import { createVideoService } from "./services/videoService.js";
+import type { AnalysisAnalyzeFn } from "./services/analysisRunner.js";
 
 const PORT = Number(process.env.PORT ?? 3001);
 const DB_PATH = process.env.SQLITE_PATH ?? "./data/dev.sqlite";
@@ -83,6 +85,8 @@ async function adminGuard(c: Context, next: Next) {
  */
 export interface BuildAppDeps {
   geminiClient?: GeminiClient;
+  /** admin-video-analyze: injectable analyzer threaded to the admin router. */
+  analysisAnalyze?: AnalysisAnalyzeFn;
 }
 
 export function buildApp(db: Db, deps: BuildAppDeps = {}): Hono {
@@ -124,7 +128,7 @@ export function buildApp(db: Db, deps: BuildAppDeps = {}): Hono {
 
   app.route("/assistant", createRegisterRouter(db));
   app.route("/assistant", createAssistantRouter(db, { geminiClient: deps.geminiClient }));
-  app.route("/admin", createAdminRouter(db));
+  app.route("/admin", createAdminRouter(db, { analysisAnalyze: deps.analysisAnalyze }));
   app.route("/assessment", createAssessmentRouter(db));
   app.route("/referrer", createReferrerRouter(db));
   app.route("/admin/referrers", createAdminReferrerRouter(db));
@@ -136,6 +140,9 @@ export function buildApp(db: Db, deps: BuildAppDeps = {}): Hono {
 export async function startServer(): Promise<{ server: ServerType; db: Db }> {
   const db = createDatabase(DB_PATH);
   await migrate(db);
+  // admin-video-analyze S3: a restart mid-job orphans analysis_state='running'
+  // rows (the CRM would poll forever). Reset them with an explanatory message.
+  createVideoService(db).recoverInterruptedAnalyses();
   const app = buildApp(db);
   const server = serve({ fetch: app.fetch, port: PORT });
   return { server, db };

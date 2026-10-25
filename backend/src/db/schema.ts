@@ -299,6 +299,12 @@ export const videos = sqliteTable(
     durationS: integer("duration_s"), // null while unknown
     status: text("status").notNull().default("draft"), // 'draft' | 'analyzed' | 'cut' | 'published'
     licenseNote: text("license_note"), // written owner permission, gate for clip re-upload
+    // admin-video-analyze: analysis lifecycle OUTSIDE the status enum.
+    // 'running' while a server-side analyze job is in flight (single-flight
+    // flag + CRM polling); NULL when idle. analysis_error holds the last
+    // failure message for the CRM row (NULL while healthy).
+    analysisState: text("analysis_state"),
+    analysisError: text("analysis_error"),
     createdAt: text("created_at")
       .notNull()
       .default(sql`CURRENT_TIMESTAMP`),

@@ -1,0 +1,14 @@
+# Excluded from the image build (build context = ./backend).
+# Local pnpm node_modules (symlinks) would collide with the image's own
+# `pnpm install` output at COPY . . — buildkit fails with
+# "cannot copy to non-directory". CI never hit this because a fresh checkout
+# has no node_modules.
+node_modules
+# Local build output: the image runs `pnpm build` itself.
+dist
+# SQLite files: production mounts ./data as a volume (compose), never baked in.
+data
+# Secrets: production injects them via compose env_file from the host.
+.env
+.env.*
+*.local

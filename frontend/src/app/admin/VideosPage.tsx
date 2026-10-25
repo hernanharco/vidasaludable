@@ -76,6 +76,11 @@ export function VideosPage() {
   const [segmentForm, setSegmentForm] = useState<SegmentFormState | null>(null);
   const [editingSegmentId, setEditingSegmentId] = useState<number | null>(null);
   const [confirmVideo, setConfirmVideo] = useState<Video | null>(null);
+  const [confirmAnalyzeVideo, setConfirmAnalyzeVideo] = useState<Video | null>(null);
+  // True after the FIRST successful list load — scopes the error-retry poll
+  // (fix r2): only a load that never succeeded keeps polling, so inline
+  // banners (409, form validation) are never silently eaten by a refresh.
+  const [loadedOnce, setLoadedOnce] = useState(false);
   const [confirmSegment, setConfirmSegment] = useState<VideoSegment | null>(null);
   // Bulk delete: ids selected via the row checkboxes. Only ids the user
   // actually ticked can be selected — select-all is scoped to the rows the
@@ -97,6 +102,7 @@ export function VideosPage() {
         ids.filter((id) => s.segments.some((seg) => seg.id === id)),
       );
       setError(null);
+      setLoadedOnce(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error de red");
     } finally {
@@ -107,6 +113,27 @@ export function VideosPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // admin-video-analyze S1: while any row is 'running', poll the list every
+  // 4s until the backend finishes (interval keyed on the boolean, not the
+  // videos array — no re-subscribe per refresh; effect cleanup clears it the
+  // moment no row reports running).
+  const anyAnalysisRunning = videos.some((v) => v.analysisState === "running");
+  useEffect(() => {
+    // Two reasons to poll in the background:
+    // 1. any row is 'running' → until the backend finishes (S1);
+    // 2. fix L5: the FIRST load failed (never loaded) → retry until it lands,
+    //    so a server-side running job can't stay invisible forever.
+    // A set error alone does NOT poll once the list has loaded (fix r2):
+    // a background success calls setError(null) and would auto-clear inline
+    // banners (409, form validation) seconds after the user read them.
+    const needsInitialRecovery = error !== null && !loadedOnce;
+    if (!anyAnalysisRunning && !needsInitialRecovery) return;
+    const timer = setInterval(() => {
+      void load();
+    }, 4000);
+    return () => clearInterval(timer);
+  }, [anyAnalysisRunning, error, loadedOnce, load]);
 
   const videoTitle = (id: string) =>
     videos.find((v) => String(v.id) === id)?.title ?? `vídeo #${id}`;
@@ -163,6 +190,34 @@ export function VideosPage() {
       setError(err instanceof Error ? err.message : "Error al crear el vídeo");
     } finally {
       setSaving(false);
+    }
+  }
+
+  // ─── admin-video-analyze (S1/S2) ─────────────────────────────────────
+
+  /** Draft → straight to the endpoint; analyzed → confirm first, because a
+   * re-analysis replaces every existing segment (S2). */
+  function handleAnalyzeClick(v: Video) {
+    if (v.status === "analyzed") {
+      setConfirmAnalyzeVideo(v);
+      return;
+    }
+    void runAnalyze(v);
+  }
+
+  async function runAnalyze(v: Video) {
+    try {
+      await api.analyzeVideo(v.id);
+      await load(); // row shows "Analizando…" → polling takes over
+    } catch (err) {
+      // 409 single-flight and runtime failures land inline, never silent.
+      // Fix L6: the raw backend string is English — the CRM speaks Spanish.
+      const raw = err instanceof Error ? err.message : "Error al iniciar el análisis";
+      setError(
+        raw === "analysis already running"
+          ? "Ya hay un análisis en curso: espera a que termine antes de reintentar."
+          : raw,
+      );
     }
   }
 
@@ -324,12 +379,22 @@ export function VideosPage() {
       header: "Estado",
       sortable: true,
       render: (v) => (
-        <span
-          className={`inline-block px-2 py-0.5 text-xs font-medium rounded-full ${
-            STATUS_CHIPS[v.status] ?? "bg-stone-100 text-stone-600"
-          }`}
-        >
-          {STATUS_LABELS[v.status] ?? v.status}
+        <span className="inline-block">
+          <span
+            className={`inline-block px-2 py-0.5 text-xs font-medium rounded-full ${
+              STATUS_CHIPS[v.status] ?? "bg-stone-100 text-stone-600"
+            }`}
+          >
+            {STATUS_LABELS[v.status] ?? v.status}
+          </span>
+          {v.analysisState === "running" && (
+            <span className="ml-1 inline-block px-2 py-0.5 text-xs font-medium rounded-full bg-amber-100 text-amber-800 animate-pulse">
+              Analizando…
+            </span>
+          )}
+          {v.analysisError && (
+            <span className="block mt-1 text-xs text-red-600">{v.analysisError}</span>
+          )}
         </span>
       ),
     },
@@ -350,12 +415,23 @@ export function VideosPage() {
       header: "Acción",
       align: "right",
       render: (v) => (
-        <button
-          onClick={() => setConfirmVideo(v)}
-          className="text-red-700 hover:underline"
-        >
-          Eliminar
-        </button>
+        <>
+          {v.analysisState !== "running" &&
+            (v.status === "draft" || v.status === "analyzed") && (
+              <button
+                onClick={() => handleAnalyzeClick(v)}
+                className="text-emerald-800 hover:underline mr-3"
+              >
+                {v.status === "draft" ? "Analizar" : "Re-analizar"}
+              </button>
+            )}
+          <button
+            onClick={() => setConfirmVideo(v)}
+            className="text-red-700 hover:underline"
+          >
+            Eliminar
+          </button>
+        </>
       ),
     },
   ];
@@ -818,6 +894,18 @@ export function VideosPage() {
           if (row) void handleDeleteVideo(row);
         }}
         onCancel={() => setConfirmVideo(null)}
+      />
+      <ConfirmActionDialog
+        open={confirmAnalyzeVideo !== null}
+        title={confirmAnalyzeVideo ? `¿Re-analizar "${confirmAnalyzeVideo.title}"?` : ""}
+        description="El análisis vuelve a trocear el vídeo: los segmentos existentes se reemplazarán (los activos incluidos). Esta acción no se puede deshacer."
+        confirmLabel="Re-analizar"
+        onConfirm={() => {
+          const row = confirmAnalyzeVideo;
+          setConfirmAnalyzeVideo(null);
+          if (row) void runAnalyze(row);
+        }}
+        onCancel={() => setConfirmAnalyzeVideo(null)}
       />
       <ConfirmActionDialog
         open={confirmSegment !== null}

@@ -5,6 +5,8 @@ import type { CatalogService } from "../services/catalogService.js";
 import { createGuidanceService } from "../services/guidanceService.js";
 import { createVideoService, parseSegmentProductList } from "../services/videoService.js";
 import type { SegmentCreateInput, SegmentPatchInput } from "../services/videoService.js";
+import { createAnalysisRunner } from "../services/analysisRunner.js";
+import type { AnalysisAnalyzeFn } from "../services/analysisRunner.js";
 import { matchSymptom } from "../services/symptomMatcher.js";
 import type { SymptomCandidate } from "../services/symptomMatcher.js";
 import { parseVideoId } from "../tools/parsers.js";
@@ -41,6 +43,9 @@ function isVideoStatus(value: string): value is VideoStatus {
  */
 export interface AdminRouterDeps {
   geminiClient?: GeminiClient;
+  /** admin-video-analyze: injectable analyzer (tests run the real route +
+   * runner without network/subprocesses; production uses the default). */
+  analysisAnalyze?: AnalysisAnalyzeFn;
 }
 
 /**
@@ -66,6 +71,7 @@ export function createAdminRouter(db: Db, deps: AdminRouterDeps = {}): Hono {
   const customersService = createCustomerService(db);
   const guidanceService = createGuidanceService(db);
   const videoService = createVideoService(db);
+  const analysisRunner = createAnalysisRunner(db, deps.analysisAnalyze);
   const summaries = createSummaryService(db, deps.geminiClient);
 
   // --- Catalog (products): list, create, edit. No destructive delete. ---
@@ -438,6 +444,26 @@ export function createAdminRouter(db: Db, deps: AdminRouterDeps = {}): Hono {
     const video = videoService.updateVideo(id, patch);
     if (!video) return c.json({ error: "video not found" }, 404);
     return c.json({ video });
+  });
+
+  /**
+   * admin-video-analyze S1/S2 — fire-and-forget server-side pipeline.
+   * 202: claimed and fired in the background (the CRM polls GET /videos for
+   * analysis_state); 409: another analysis is in flight (single-flight);
+   * 404/400: absent video / bad id. Status/segments update happens inside
+   * analyzeVideo only on success — failures land in analysis_error (S3).
+   */
+  app.post("/videos/:id/analyze", (c) => {
+    const id = Number(c.req.param("id"));
+    if (!Number.isInteger(id)) return c.json({ error: "invalid id" }, 400);
+    const video = videoService.getVideo(id);
+    if (!video) return c.json({ error: "video not found" }, 404);
+    if (!analysisRunner.claim(id)) {
+      return c.json({ error: "analysis already running" }, 409);
+    }
+    analysisRunner.start(video);
+    // Fresh row: analysis_state now 'running' — the 202 body drives polling.
+    return c.json({ video: videoService.getVideo(id) }, 202);
   });
 
   /**
