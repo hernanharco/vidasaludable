@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { access, mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -559,7 +559,7 @@ describe("createYtdlpClient (con runner falso, sin subprocess)", () => {
       durationS: 124, // redondeado a enteros
       speaker: "Luis Collantes",
     });
-    expect(calls[0]!.args).toEqual(["-J", YOUTUBE_URL]);
+    expect(calls[0]!.args).toEqual(["--js-runtimes", "node", "-J", YOUTUBE_URL]);
 
     const versionRunner: CommandRunner = async (cmd, args) => {
       calls.push({ cmd, args });
@@ -585,6 +585,8 @@ describe("createYtdlpClient (con runner falso, sin subprocess)", () => {
     const raw = await client.getTranscript(YOUTUBE_URL);
     expect(parseJson3Transcript(raw)).toHaveLength(3);
     expect(calls[0]!.args).toEqual([
+      "--js-runtimes",
+      "node",
       "--skip-download",
       "--write-auto-subs",
       "--sub-langs",
@@ -622,10 +624,50 @@ describe("createYtdlpClient (con runner falso, sin subprocess)", () => {
         return { code: 0, stdout: "", stderr: "" };
       };
       await createYtdlpClient(runner).downloadVideo(YOUTUBE_URL, output);
-      expect(calls[0]!.args).toEqual(["-f", "bv*+ba/b", "-o", output, YOUTUBE_URL]);
+      expect(calls[0]!.args).toEqual([
+        "--js-runtimes",
+        "node",
+        "-f",
+        "bv*+ba/b",
+        "-o",
+        output,
+        YOUTUBE_URL,
+      ]);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
+  });
+
+  it("adds --cookies from YT_COOKIES_PATH on extraction calls (yt-dlp plan B: datacenter IPs)", async () => {
+    // The prod incident: YouTube bot-checks Hetzner's datacenter IP and
+    // only authenticated sessions pass (verified probes 2026-10-25 —
+    // impersonation alone was NOT enough). The path comes from env, the
+    // file itself lives OUTSIDE git (compose secrets mount).
+    const calls: Array<{ cmd: string; args: string[] }> = [];
+    const runner: CommandRunner = async (cmd, args) => {
+      calls.push({ cmd, args });
+      return {
+        code: 0,
+        stdout: JSON.stringify({ id: "x", title: "t", duration: 10, uploader: "u" }),
+        stderr: "",
+      };
+    };
+    vi.stubEnv("YT_COOKIES_PATH", "/run/secrets/youtube-cookies.txt");
+    try {
+      await createYtdlpClient(runner).getMetadata(YOUTUBE_URL);
+      expect(calls[0]!.args).toEqual([
+        "--js-runtimes",
+        "node",
+        "--cookies",
+        "/run/secrets/youtube-cookies.txt",
+        "-J",
+        YOUTUBE_URL,
+      ]);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    // And without the env var the exact-args assertions above prove no
+    // --cookies flag leaks into the command line.
   });
 });
 

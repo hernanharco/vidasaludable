@@ -79,6 +79,22 @@ export interface YtdlpClient {
 
 /** Real yt-dlp client. `runner` is injectable for tests. */
 export function createYtdlpClient(runner: CommandRunner = execCommandRunner): YtdlpClient {
+  // yt-dlp ≥2026.10 needs a JS runtime to solve YouTube's challenges
+  // (EJS); without it extraction fails with "No supported JavaScript
+  // runtime" (the I2 finding of the admin-video-analyze verification, which
+  // surfaced as a real prod failure). `node` ships in the image and is on
+  // PATH; --version needs no runtime, extraction calls all get the flag.
+  const jsRuntime = ["--js-runtimes", "node"] as const;
+  // yt-dlp plan B for datacenter IPs (prod incident 2026-10-25): YouTube
+  // bot-checks Hetzner's IP and impersonation alone does NOT pass it —
+  // verified probes; only authenticated sessions work. When the env var
+  // points at a cookies file (compose secrets mount, NEVER in git), every
+  // extraction call authenticates with it; unset → no flag, behavior as
+  // before.
+  const cookieArgs = (): string[] => {
+    const path = process.env.YT_COOKIES_PATH?.trim();
+    return path ? ["--cookies", path] : [];
+  };
   return {
     async getVersion(): Promise<string> {
       const res = await runner("yt-dlp", ["--version"]);
@@ -91,7 +107,7 @@ export function createYtdlpClient(runner: CommandRunner = execCommandRunner): Yt
     },
 
     async getMetadata(url: string): Promise<YtDlpMetadata> {
-      const res = await runner("yt-dlp", ["-J", url]);
+      const res = await runner("yt-dlp", [...jsRuntime, ...cookieArgs(), "-J", url]);
       if (res.code !== 0) {
         throw new Error(
           `yt-dlp falló al leer los metadatos de ${url}. Verifica que la URL sea válida y que yt-dlp esté instalado. Detalle: ${tailStderr(res.stderr)}`,
@@ -123,6 +139,8 @@ export function createYtdlpClient(runner: CommandRunner = execCommandRunner): Yt
       const dir = await mkdtemp(join(tmpdir(), "video-subs-"));
       try {
         const res = await runner("yt-dlp", [
+          ...jsRuntime,
+          ...cookieArgs(),
           "--skip-download",
           "--write-auto-subs",
           "--sub-langs",
@@ -158,7 +176,15 @@ export function createYtdlpClient(runner: CommandRunner = execCommandRunner): Yt
 
     async downloadVideo(url: string, output: string): Promise<void> {
       await mkdir(dirname(output), { recursive: true });
-      const res = await runner("yt-dlp", ["-f", "bv*+ba/b", "-o", output, url]);
+      const res = await runner("yt-dlp", [
+        ...jsRuntime,
+        ...cookieArgs(),
+        "-f",
+        "bv*+ba/b",
+        "-o",
+        output,
+        url,
+      ]);
       if (res.code !== 0) {
         throw new Error(
           `yt-dlp falló al descargar el video original a ${output}. Detalle: ${tailStderr(res.stderr)}`,

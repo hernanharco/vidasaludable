@@ -22,3 +22,6 @@ backend/data/
 
 # Local code-graph index (session state, never tracked)
 .codegraph/
+
+# Secrets (YouTube cookies for yt-dlp) — never tracked
+secrets/
