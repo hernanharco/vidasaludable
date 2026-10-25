@@ -1,6 +1,6 @@
 import React from "react";
 import { AlertCircle } from "lucide-react";
-import { COUNTRY_CODES, DEFAULT_COUNTRY_CODE } from "../../lib/countryCodes";
+import { CountryCodeSelect } from "./CountryCodeSelect";
 import { ConsentInfo } from "./types";
 
 interface RegistrationGateProps {
@@ -27,9 +27,6 @@ interface RegistrationGateProps {
 
 const inputCls =
   "w-full px-3 py-2 bg-stone-100 border border-stone-200 rounded-lg text-base md:text-sm text-stone-800 placeholder:text-stone-400 focus:outline-none focus:ring-1 focus:ring-emerald-900 transition-shadow";
-
-const codeSelectCls =
-  "w-[112px] shrink-0 px-2 py-2 bg-stone-100 border border-stone-200 rounded-lg text-base md:text-sm text-stone-800 focus:outline-none focus:ring-1 focus:ring-emerald-900 transition-shadow";
 
 export function RegistrationGate({
   consent,
@@ -96,18 +93,11 @@ export function RegistrationGate({
           <label className="text-xs text-stone-600">
             Teléfono
             <div className="flex gap-2">
-              <select
+              <CountryCodeSelect
                 value={phoneCode}
-                onChange={(e) => onPhoneCodeChange(e.target.value)}
-                className={codeSelectCls}
-                aria-label="Indicativo del país"
-              >
-                {COUNTRY_CODES.map((c) => (
-                  <option key={`${c.code}-${c.name}`} value={c.code}>
-                    {c.code} {c.name}
-                  </option>
-                ))}
-              </select>
+                onChange={onPhoneCodeChange}
+                label="Indicativo del país"
+              />
               <input
                 type="tel"
                 value={phone}
@@ -120,18 +110,11 @@ export function RegistrationGate({
           <label className="text-xs text-stone-600">
             Teléfono de referido (opcional)
             <div className="flex gap-2">
-              <select
+              <CountryCodeSelect
                 value={referrerCode}
-                onChange={(e) => onReferrerCodeChange(e.target.value)}
-                className={codeSelectCls}
-                aria-label="Indicativo del país del referido"
-              >
-                {COUNTRY_CODES.map((c) => (
-                  <option key={`${c.code}-${c.name}`} value={c.code}>
-                    {c.code} {c.name}
-                  </option>
-                ))}
-              </select>
+                onChange={onReferrerCodeChange}
+                label="Indicativo del país del referido"
+              />
               <input
                 type="tel"
                 value={referrerPhone}
