@@ -24,6 +24,11 @@ import { eq, count } from "drizzle-orm";
 
 /** Allowed `videos.status` values — the pipeline lifecycle state machine. */
 const VIDEO_STATUSES = ["draft", "analyzed", "cut", "published"] as const;
+
+/** Cap for POST /admin/video-segments/bulk-delete. Far above any real segment
+ * count (a long conference yields ~20) and below SQLite's bind-parameter
+ * limit, so an oversized inArray can never surface as an unhandled 500. */
+const BULK_DELETE_MAX_IDS = 500;
 type VideoStatus = (typeof VIDEO_STATUSES)[number];
 
 function isVideoStatus(value: string): value is VideoStatus {
@@ -615,13 +620,23 @@ export function createAdminRouter(db: Db, deps: AdminRouterDeps = {}): Hono {
 
   /** CRM bulk delete (UX: checkbox selection → one request). Deletes only the
    * ids that still exist — stale ids from a stale UI count 0, never 404 — and
-   * reports the actual row count. Empty/absent/non-integer payload → 400. */
+   * reports the actual row count. Empty/absent/non-integer payload → 400.
+   * Ids must be positive and the array is capped: SQLite's bind-parameter
+   * limit (~32k) would otherwise turn a huge inArray into an unhandled 500. */
   app.post("/video-segments/bulk-delete", async (c) => {
     const body = await c.req.json().catch(() => null);
     if (!body) return c.json({ error: "invalid body" }, 400);
     const ids = body.ids;
-    if (!Array.isArray(ids) || ids.length === 0 || !ids.every((v) => Number.isInteger(v))) {
-      return c.json({ error: "ids must be a non-empty array of integers" }, 400);
+    const valid =
+      Array.isArray(ids) &&
+      ids.length > 0 &&
+      ids.length <= BULK_DELETE_MAX_IDS &&
+      ids.every((v) => Number.isInteger(v) && v > 0);
+    if (!valid) {
+      return c.json(
+        { error: `ids must be a non-empty array of positive integers (max ${BULK_DELETE_MAX_IDS})` },
+        400,
+      );
     }
     const deleted = videoService.removeSegments(ids as number[]);
     return c.json({ deleted });

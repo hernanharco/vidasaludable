@@ -77,9 +77,13 @@ export function VideosPage() {
   const [editingSegmentId, setEditingSegmentId] = useState<number | null>(null);
   const [confirmVideo, setConfirmVideo] = useState<Video | null>(null);
   const [confirmSegment, setConfirmSegment] = useState<VideoSegment | null>(null);
-  // Bulk delete: ids selected via the row checkboxes; cleared when the video
-  // filter changes so a hidden selection can never be deleted unseen.
+  // Bulk delete: ids selected via the row checkboxes. Only ids the user
+  // actually ticked can be selected — select-all is scoped to the rows the
+  // table renders (video filter AND search AND current page, via
+  // onRenderedRowsChange), and the selection is pruned on every reload so a
+  // deleted/stale id can never inflate the count.
   const [selectedSegmentIds, setSelectedSegmentIds] = useState<number[]>([]);
+  const [renderedSegmentIds, setRenderedSegmentIds] = useState<number[]>([]);
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
 
   const load = useCallback(async () => {
@@ -87,6 +91,11 @@ export function VideosPage() {
       const [v, s] = await Promise.all([api.listVideos(), api.listVideoSegments()]);
       setVideos(v.videos);
       setSegments(s.segments);
+      // Prune the bulk selection against the fresh list (verify #4): a row
+      // deleted singly (or elsewhere) must not linger as a phantom id.
+      setSelectedSegmentIds((ids) =>
+        ids.filter((id) => s.segments.some((seg) => seg.id === id)),
+      );
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error de red");
@@ -107,9 +116,11 @@ export function VideosPage() {
       ? segments
       : segments.filter((s) => s.videoId === selectedVideoId);
 
+  // Scoped to what the table ACTUALLY renders (filter + search + page) —
+  // never to `visibleSegments`, which ignores the DataTable's internals.
   const allVisibleSelected =
-    visibleSegments.length > 0 &&
-    visibleSegments.every((s) => selectedSegmentIds.includes(s.id));
+    renderedSegmentIds.length > 0 &&
+    renderedSegmentIds.every((id) => selectedSegmentIds.includes(id));
 
   function toggleSegmentSelection(id: number) {
     setSelectedSegmentIds((ids) =>
@@ -118,11 +129,11 @@ export function VideosPage() {
   }
 
   function toggleSelectAllVisible() {
-    const visibleIds = visibleSegments.map((s) => s.id);
     setSelectedSegmentIds(
-      visibleIds.length > 0 && visibleIds.every((id) => selectedSegmentIds.includes(id))
+      renderedSegmentIds.length > 0 &&
+        renderedSegmentIds.every((id) => selectedSegmentIds.includes(id))
         ? []
-        : visibleIds,
+        : renderedSegmentIds,
     );
   }
 
@@ -272,17 +283,21 @@ export function VideosPage() {
 
   async function handleBulkDeleteSelected() {
     const ids = selectedSegmentIds;
-    if (ids.length === 0) return;
+    // In-flight guard: a second confirm (or a re-click while the POST runs)
+    // must never re-send the same ids and overwrite the toast with a
+    // "0 segmentos eliminados" from the duplicate's zero-row result.
+    if (ids.length === 0 || saving) return;
     setSaving(true);
+    // Close before awaiting, mirroring the single-delete dialogs: the open
+    // state must not linger on fetch latency (verify #2).
+    setConfirmBulkDelete(false);
     try {
       const { deleted } = await api.bulkDeleteVideoSegments(ids);
       setSelectedSegmentIds([]);
-      setConfirmBulkDelete(false);
       await load();
       toast.success(deleted === 1 ? "1 segmento eliminado" : `${deleted} segmentos eliminados`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al eliminar los segmentos");
-      setConfirmBulkDelete(false);
     } finally {
       setSaving(false);
     }
@@ -354,7 +369,7 @@ export function VideosPage() {
           type="checkbox"
           aria-label="Seleccionar todos los segmentos"
           checked={allVisibleSelected}
-          disabled={visibleSegments.length === 0}
+          disabled={renderedSegmentIds.length === 0}
           onChange={toggleSelectAllVisible}
         />
       ),
@@ -787,6 +802,7 @@ export function VideosPage() {
           }
           searchable
           searchText={(s) => `${s.title} ${s.condition ?? ""} ${videoTitle(String(s.videoId))}`}
+          onRenderedRowsChange={(rows) => setRenderedSegmentIds(rows.map((s) => s.id))}
           containerClassName="mt-4 bg-white border border-stone-200"
           rowClassName="align-top"
         />

@@ -943,5 +943,22 @@ describe("video endpoints (T7)", () => {
         expect(res.status).toBe(400);
       }
     });
+
+    it("rejects negative ids and oversized arrays with 400 (never a silent 200 or a 500)", async () => {
+      const negative = await send("POST", "/admin/video-segments/bulk-delete", {
+        ids: [-1],
+      });
+      expect(negative.status).toBe(400);
+
+      const zero = await send("POST", "/admin/video-segments/bulk-delete", { ids: [0] });
+      expect(zero.status).toBe(400);
+
+      // Above the documented cap: SQLite's bind-parameter limit would otherwise
+      // make inArray throw an unhandled 500.
+      const oversized = await send("POST", "/admin/video-segments/bulk-delete", {
+        ids: Array.from({ length: 501 }, (_, i) => i + 1),
+      });
+      expect(oversized.status).toBe(400);
+    });
   });
 });
