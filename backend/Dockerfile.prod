@@ -9,11 +9,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # yt-dlp via pip WITH curl_cffi → TLS impersonation of a real browser. The
-# standalone binary has no impersonation target, and YouTube bot-checks the
-# server's datacenter IP (prod incident 2026-10-25: "Sign in to confirm
-# you're not a bot" for every extraction). Verified probe: with curl_cffi
-# the same IP extracts normally. `[default]` pulls yt-dlp's standard deps;
-# --break-system-packages because Debian 12 marks the system env
+# standalone binary has no impersonation target at all. NOTE (incident
+# diagnosis, spec Log L6): impersonation alone does NOT pass YouTube's
+# bot-check on this server's datacenter IP — that needs the authenticated
+# cookies path (YT_COOKIES_PATH + ./secrets mount below). curl_cffi stays
+# as hardening. `[default]` pulls yt-dlp's standard deps (incl. the EJS
+# solver); --break-system-packages because Debian 12 marks the system env
 # externally-managed (PEP 668). The JS runtime for yt-dlp's EJS challenges
 # is the image's own node (passed by media.ts as --js-runtimes node).
 RUN python3 -m pip install --break-system-packages --no-cache-dir \

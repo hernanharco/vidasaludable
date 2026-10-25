@@ -100,7 +100,7 @@ export function createYtdlpClient(runner: CommandRunner = execCommandRunner): Yt
       const res = await runner("yt-dlp", ["--version"]);
       if (res.code !== 0) {
         throw new Error(
-          `No se encontró el binario 'yt-dlp' o no respondió (--version). Instálalo (p. ej. "pipx install yt-dlp") e inténtalo de nuevo. Detalle: ${tailStderr(res.stderr)}`,
+          `No se encontró el binario 'yt-dlp' o no respondió (--version). Instálalo (p. ej. \"python3 -m pip install yt-dlp\") e inténtalo de nuevo. Detalle: ${tailStderr(res.stderr)}`,
         );
       }
       return res.stdout.trim();
