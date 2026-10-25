@@ -151,6 +151,13 @@ function installFetchMock() {
       segmentsState = segmentsState.filter((s) => s.id !== id);
       return ok(204, null);
     }
+    if (url === "/api/admin/video-segments/bulk-delete" && method === "POST") {
+      const body = JSON.parse(String(init?.body ?? "{}"));
+      const ids: number[] = Array.isArray(body.ids) ? body.ids : [];
+      const before = segmentsState.length;
+      segmentsState = segmentsState.filter((s) => !ids.includes(s.id));
+      return ok(200, { deleted: before - segmentsState.length });
+    }
     return bad(404, { error: `unmocked ${method} ${url}` });
   });
 }
@@ -430,6 +437,75 @@ describe("VideosPage admin CRM", () => {
     await waitFor(() => {
       expect(screen.queryByText("Introducción a la vitamina D")).not.toBeInTheDocument();
     });
+  });
+
+  it("bulk delete: selecting several segments and confirming posts all ids at once", async () => {
+    const user = userEvent.setup();
+    render(<VideosPage />);
+    await screen.findByText("Introducción a la vitamina D");
+
+    await user.click(
+      screen.getByRole("checkbox", { name: "Seleccionar segmento: Introducción a la vitamina D" }),
+    );
+    await user.click(
+      screen.getByRole("checkbox", { name: "Seleccionar segmento: Magnesio antes de dormir" }),
+    );
+
+    await user.click(screen.getByRole("button", { name: /Eliminar seleccionados \(2\)/ }));
+    const dialog = await screen.findByRole("alertdialog");
+    await user.click(within(dialog).getByRole("button", { name: "Eliminar" }));
+
+    const bulkCall = mockFetch.mock.calls.find(
+      ([url, init]) =>
+        url === "/api/admin/video-segments/bulk-delete" &&
+        (init as RequestInit | undefined)?.method === "POST",
+    );
+    expect(bulkCall).toBeTruthy();
+    expect(JSON.parse(String((bulkCall?.[1] as RequestInit)?.body))).toEqual({ ids: [7, 8] });
+
+    await waitFor(() => {
+      expect(screen.queryByText("Introducción a la vitamina D")).not.toBeInTheDocument();
+      expect(screen.queryByText("Magnesio antes de dormir")).not.toBeInTheDocument();
+    });
+  });
+
+  it("header checkbox selects every visible segment at once", async () => {
+    const user = userEvent.setup();
+    render(<VideosPage />);
+    await screen.findByText("Introducción a la vitamina D");
+
+    await user.click(screen.getByRole("checkbox", { name: "Seleccionar todos los segmentos" }));
+
+    expect(screen.getByRole("button", { name: /Eliminar seleccionados \(2\)/ })).toBeInTheDocument();
+    expect(
+      screen.getByRole("checkbox", { name: "Seleccionar segmento: Introducción a la vitamina D" }),
+    ).toBeChecked();
+    expect(
+      screen.getByRole("checkbox", { name: "Seleccionar segmento: Magnesio antes de dormir" }),
+    ).toBeChecked();
+  });
+
+  it("cancelling the bulk confirm dialog deletes nothing", async () => {
+    const user = userEvent.setup();
+    render(<VideosPage />);
+    await screen.findByText("Introducción a la vitamina D");
+
+    await user.click(
+      screen.getByRole("checkbox", { name: "Seleccionar segmento: Introducción a la vitamina D" }),
+    );
+    await user.click(screen.getByRole("button", { name: /Eliminar seleccionados \(1\)/ }));
+    const dialog = await screen.findByRole("alertdialog");
+    await user.click(within(dialog).getByRole("button", { name: "Cancelar" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    });
+    expect(
+      mockFetch.mock.calls.some(
+        ([url]) => url === "/api/admin/video-segments/bulk-delete",
+      ),
+    ).toBe(false);
+    expect(screen.getAllByText("Introducción a la vitamina D").length).toBeGreaterThan(0);
   });
 
   it("video delete success: DELETE /admin/videos/:id and the row disappears after reload", async () => {

@@ -613,6 +613,20 @@ export function createAdminRouter(db: Db, deps: AdminRouterDeps = {}): Hono {
     return c.body(null, 204);
   });
 
+  /** CRM bulk delete (UX: checkbox selection → one request). Deletes only the
+   * ids that still exist — stale ids from a stale UI count 0, never 404 — and
+   * reports the actual row count. Empty/absent/non-integer payload → 400. */
+  app.post("/video-segments/bulk-delete", async (c) => {
+    const body = await c.req.json().catch(() => null);
+    if (!body) return c.json({ error: "invalid body" }, 400);
+    const ids = body.ids;
+    if (!Array.isArray(ids) || ids.length === 0 || !ids.every((v) => Number.isInteger(v))) {
+      return c.json({ error: "ids must be a non-empty array of integers" }, 400);
+    }
+    const deleted = videoService.removeSegments(ids as number[]);
+    return c.json({ deleted });
+  });
+
   return app;
 }
 

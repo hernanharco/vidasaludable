@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import type { Db } from "../db/client.js";
 import { videos, videoSegments } from "../db/schema.js";
 import type { Video, NewVideo, VideoSegment, NewVideoSegment } from "../db/schema.js";
@@ -115,6 +115,9 @@ export interface VideoService {
   updateSegment(id: number, patch: SegmentPatchInput): VideoSegment | null;
   /** Delete a segment. Returns whether a row was removed. */
   removeSegment(id: number): boolean;
+  /** Delete many segments in one statement (CRM bulk delete). Returns the
+   * number of rows actually removed (stale ids count as 0, never error). */
+  removeSegments(ids: number[]): number;
 }
 
 export function createVideoService(db: Db): VideoService {
@@ -226,6 +229,12 @@ export function createVideoService(db: Db): VideoService {
     removeSegment(id: number): boolean {
       const result = db.delete(videoSegments).where(eq(videoSegments.id, id)).run();
       return result.changes > 0;
+    },
+
+    removeSegments(ids: number[]): number {
+      if (ids.length === 0) return 0;
+      const result = db.delete(videoSegments).where(inArray(videoSegments.id, ids)).run();
+      return result.changes;
     },
   };
 }
