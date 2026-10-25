@@ -77,6 +77,10 @@ export function VideosPage() {
   const [editingSegmentId, setEditingSegmentId] = useState<number | null>(null);
   const [confirmVideo, setConfirmVideo] = useState<Video | null>(null);
   const [confirmAnalyzeVideo, setConfirmAnalyzeVideo] = useState<Video | null>(null);
+  // True after the FIRST successful list load — scopes the error-retry poll
+  // (fix r2): only a load that never succeeded keeps polling, so inline
+  // banners (409, form validation) are never silently eaten by a refresh.
+  const [loadedOnce, setLoadedOnce] = useState(false);
   const [confirmSegment, setConfirmSegment] = useState<VideoSegment | null>(null);
   // Bulk delete: ids selected via the row checkboxes. Only ids the user
   // actually ticked can be selected — select-all is scoped to the rows the
@@ -98,6 +102,7 @@ export function VideosPage() {
         ids.filter((id) => s.segments.some((seg) => seg.id === id)),
       );
       setError(null);
+      setLoadedOnce(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error de red");
     } finally {
@@ -115,15 +120,20 @@ export function VideosPage() {
   // moment no row reports running).
   const anyAnalysisRunning = videos.some((v) => v.analysisState === "running");
   useEffect(() => {
-    // Fix L5: an ERRORED list must poll too — if the initial load fails while
-    // a job runs server-side, videos=[] would mean no chip and no polling,
-    // keeping the job invisible until some unrelated action reloaded the page.
-    if (!anyAnalysisRunning && !error) return;
+    // Two reasons to poll in the background:
+    // 1. any row is 'running' → until the backend finishes (S1);
+    // 2. fix L5: the FIRST load failed (never loaded) → retry until it lands,
+    //    so a server-side running job can't stay invisible forever.
+    // A set error alone does NOT poll once the list has loaded (fix r2):
+    // a background success calls setError(null) and would auto-clear inline
+    // banners (409, form validation) seconds after the user read them.
+    const needsInitialRecovery = error !== null && !loadedOnce;
+    if (!anyAnalysisRunning && !needsInitialRecovery) return;
     const timer = setInterval(() => {
       void load();
     }, 4000);
     return () => clearInterval(timer);
-  }, [anyAnalysisRunning, error, load]);
+  }, [anyAnalysisRunning, error, loadedOnce, load]);
 
   const videoTitle = (id: string) =>
     videos.find((v) => String(v.id) === id)?.title ?? `vídeo #${id}`;

@@ -132,3 +132,20 @@ backend en Hetzner con rebuild del contenedor (usuario lo aprobó).
     SÍ ejecutados localmente: build verde + fetch 1.33MB).
   - Suites al cierre de la ronda: backend 310/310, frontend 242/242, tsc ×2,
     build OK.
+- L4 — Verify ronda 2: **PASS** (6/6 fixes de ronda 1 confirmados, suites
+  310/310 + 242/242) con hallazgos residuales → fix ronda 2 (la última):
+  - **Medium arreglado**: el polling por error (L5) borraba los banners
+    inline (409 español, validación de formulario) a los ≤4s — ahora solo
+    hace retry de error cuando la carga NUNCA tuvo éxito (`loadedOnce`);
+    test r2 con flush determinista (setTimeout(0) real) que fallaba en
+    falso-GREEN sin él.
+  - **Low arreglado (L-2)**: la rama de video nuevo creaba la fila
+    `analyzed` antes del swap → ahora `draft` + `updateVideo(analyzed)`
+    tras swap exitoso (invariante "status untouched on failure" real).
+  - **Aceptados**: L-1 (timeout no cancela el analyzer — zombie
+    last-writer-wins inofensivo; cancelar end-to-end requiere
+    AbortController por yt-dlp/Gemini → futuro), Info (swap y update en
+    transacciones separadas: M1 cubre pérdida de segmentos, fuera de
+    alcance), poll sin backoff mientras la primera carga nunca funciona
+    (self-heal deseado), L3/L4 (single-flight por instancia).
+  - Suites al cierre: backend 310/310, frontend 243/243, tsc ×2, build OK.

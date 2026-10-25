@@ -721,6 +721,37 @@ describe("VideosPage admin CRM", () => {
     }
   });
 
+  it("does not auto-clear an inline 409 banner via background polling once the list loaded (fix r2)", async () => {
+    analyzeConflictForId = 2;
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    try {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      render(<VideosPage />);
+      await screen.findByText("Introducción a la vitamina D"); // healthy first load
+
+      const row = screen.getAllByText("Magnesio y sueño")[0]!.closest("tr") as HTMLElement;
+      await user.click(within(row).getByRole("button", { name: "Analizar" }));
+      expect(await screen.findByText(/análisis en curso/i)).toBeInTheDocument();
+
+      // The L5 error-poll must NOT run once the list has loaded successfully:
+      // a background refresh would setError(null) and silently eat the banner.
+      act(() => {
+        vi.advanceTimersByTime(12_000);
+      });
+      // Drain the background load's promise chain (only the interval pair is
+      // faked — a real setTimeout(0) macrotask flushes all queued microtasks)
+      // BEFORE asserting, or the assertion could win the race and lie.
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      await waitFor(() =>
+        expect(screen.getByText(/análisis en curso/i)).toBeInTheDocument(),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("keeps polling after a failed initial load so a running job is still discovered (fix L5)", async () => {
     failNextVideosList = true;
     videosState[0]!.analysisState = "running"; // job started elsewhere

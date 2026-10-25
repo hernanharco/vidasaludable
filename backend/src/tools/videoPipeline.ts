@@ -238,9 +238,13 @@ export async function analyzeVideo(opts: AnalyzeVideoOptions): Promise<AnalyzeRe
     url,
     title: meta.title,
     durationS: durationS > 0 ? durationS : null,
-    status: "analyzed",
+    // Fix r2-L2: draft first — 'analyzed' is only ever set AFTER a successful
+    // swap, so a failed replacement can't orphan an analyzed row with zero
+    // segments (matches the "status untouched on failure" invariant).
+    status: "draft",
   });
   const segments = svc.replaceSegments(video.id, replacementRows);
+  video = svc.updateVideo(video.id, { status: "analyzed" }) ?? video;
   return { video, segments };
 }
 
