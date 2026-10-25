@@ -79,6 +79,8 @@ let videosState: Video[];
 let segmentsState: VideoSegment[];
 /** admin-video-analyze: when set, the analyze POST answers 409 for that id. */
 let analyzeConflictForId: number | null = null;
+/** Fix L5: when set, the next videos GET fails once (initial-load failure). */
+let failNextVideosList = false;
 
 function ok(status: number, body: unknown) {
   return Promise.resolve({ ok: status < 400, status, json: () => Promise.resolve(body) });
@@ -92,6 +94,10 @@ function installFetchMock() {
   mockFetch.mockImplementation((url: string, init?: RequestInit) => {
     const method = init?.method ?? "GET";
     if (url === "/api/admin/videos" && method === "GET") {
+      if (failNextVideosList) {
+        failNextVideosList = false;
+        return bad(500, { error: "network down" });
+      }
       // Fresh copies every poll — mirrors real JSON responses (new identity
       // per fetch) so React re-renders and the polling effect can re-evaluate.
       return ok(200, { videos: videosState.map((v) => ({ ...v })) });
@@ -190,6 +196,7 @@ describe("VideosPage admin CRM", () => {
     videosState = VIDEOS.map((v) => ({ ...v }));
     segmentsState = SEGMENTS.map((s) => ({ ...s }));
     analyzeConflictForId = null;
+    failNextVideosList = false;
     installFetchMock();
   });
 
@@ -660,7 +667,7 @@ describe("VideosPage admin CRM", () => {
     const row = screen.getAllByText("Magnesio y sueño")[0]!.closest("tr") as HTMLElement;
     await user.click(within(row).getByRole("button", { name: "Analizar" }));
 
-    expect(await screen.findByText("analysis already running")).toBeInTheDocument();
+    expect(await screen.findByText(/análisis en curso/i)).toBeInTheDocument();
     // No chip: the refused trigger must not leave a phantom running state.
     expect(screen.queryByText("Analizando…")).not.toBeInTheDocument();
   });
@@ -709,6 +716,32 @@ describe("VideosPage admin CRM", () => {
         vi.advanceTimersByTime(30000);
       });
       expect(getCalls()).toBe(3); // interval cleared — no zombie polling
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps polling after a failed initial load so a running job is still discovered (fix L5)", async () => {
+    failNextVideosList = true;
+    videosState[0]!.analysisState = "running"; // job started elsewhere
+
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    try {
+      render(<VideosPage />);
+      // The first list fetch fails → error banner, no rows, no chip.
+      expect(await screen.findByText("network down")).toBeInTheDocument();
+      expect(screen.queryByText("Analizando…")).not.toBeInTheDocument();
+
+      // The error state must keep polling: the recovery fetch discovers the
+      // running job (before the fix nothing polled and it stayed invisible).
+      act(() => {
+        vi.advanceTimersByTime(4000);
+      });
+      await waitFor(() =>
+        expect(screen.getAllByText("Analizando…").length).toBeGreaterThan(0),
+      );
+      // Recovered: the banner clears once the list loads again.
+      await waitFor(() => expect(screen.queryByText("network down")).not.toBeInTheDocument());
     } finally {
       vi.useRealTimers();
     }

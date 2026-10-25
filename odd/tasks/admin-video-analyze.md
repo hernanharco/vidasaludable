@@ -111,3 +111,24 @@ backend en Hetzner con rebuild del contenedor (usuario lo aprobó).
   `video:analyze`, hoy solo por terminal + import manual a prod).
 - L2 — Decisiones: alcance "Borradores + re-analizar"; infraestructura "Sí,
   sumar dependencias" (ffmpeg + yt-dlp en la imagen Docker del backend).
+- L3 — Verificación independiente (gentle-ai-verify, ronda 1): **FAIL**
+  (2 Medium, 6 Low, 3 Info) → fix ronda 1 commit `fix(admin): harden the
+  analysis pipeline (verify round 1)`:
+  - **M1** arreglado: `videoService.replaceSegments` atómico (transaction
+    delete+insert) y usado por `analyzeVideo` ANTES de tocar status → un fallo
+    a mitad de swap ya no puede perder segmentos (tests: success + rollback).
+  - **M2** arreglado: watchdog de 10 min en el runner (`{timeoutMs}` inyectable
+    en tests) → job colgado = failure normal en español + slot libre.
+  - **L1** arreglado: `claim` libera el slot si el UPDATE truena (propaga,
+    no finge 409). **L2**: doble guard (failAnalysis + catch final) → nunca
+    unhandledRejection. **L5**: el polling también corre cuando la lista está
+    en error (carga inicial fallida descubre el job). **L6**: 409 traducido
+    al español en el CRM.
+  - **Aceptados/diferidos**: L3 (ambigüedad 409 solo alcanzable con dos
+    procesos sobre la misma SQLite — prod corre un único `api`), L4
+    (single-flight por instancia — ídem), I1 (yt-dlp unpinned, documentado),
+    I2 (`--js-runtimes node` del spec no hizo falta: el smoke real de la
+    imagen descargó subs sin él → S5 ajustado), I3 (build+smoke de la imagen
+    SÍ ejecutados localmente: build verde + fetch 1.33MB).
+  - Suites al cierre de la ronda: backend 310/310, frontend 242/242, tsc ×2,
+    build OK.

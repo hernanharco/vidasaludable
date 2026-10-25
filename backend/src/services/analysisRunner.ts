@@ -31,11 +31,17 @@ export interface AnalysisRunner {
   isRunning(): boolean;
   /** Atomically claim the single-flight slot AND mark the video running.
    * Returns false with no side effects when the slot is taken or the video
-   * no longer exists. */
+   * no longer exists. A failing state UPDATE propagates WITHOUT wedging the
+   * slot (fix L1: running is released before rethrowing). */
   claim(videoId: number): boolean;
   /** Fire the job asynchronously; resolves the analysis lifecycle itself. */
   start(video: Video): void;
 }
+
+/** Fix M2: a hung yt-dlp/Gemini call must not leave analysis_state='running'
+ * forever (button hidden, 409 on retry, polling forever). Generous — a
+ * 56-minute video analyzes in minutes — and overridable for tests. */
+export const DEFAULT_ANALYSIS_TIMEOUT_MS = 10 * 60 * 1000;
 
 /** Production analyzer: mirrors the `video:analyze` CLI wiring (env key,
  * yt-dlp, the 95-row symptom vocabulary from THIS database). */
@@ -55,9 +61,14 @@ export function createDefaultAnalysisAnalyze(db: Db): AnalysisAnalyzeFn {
   };
 }
 
-export function createAnalysisRunner(db: Db, analyze?: AnalysisAnalyzeFn): AnalysisRunner {
+export function createAnalysisRunner(
+  db: Db,
+  analyze?: AnalysisAnalyzeFn,
+  opts?: { timeoutMs?: number },
+): AnalysisRunner {
   const svc = createVideoService(db);
   const runAnalyze = analyze ?? createDefaultAnalysisAnalyze(db);
+  const timeoutMs = opts?.timeoutMs ?? DEFAULT_ANALYSIS_TIMEOUT_MS;
   let running = false;
 
   return {
@@ -66,26 +77,58 @@ export function createAnalysisRunner(db: Db, analyze?: AnalysisAnalyzeFn): Analy
     claim(videoId: number): boolean {
       if (running) return false;
       running = true;
-      if (!svc.markAnalysisRunning(videoId)) {
-        // Video disappeared between lookup and claim: release the slot.
+      try {
+        if (!svc.markAnalysisRunning(videoId)) {
+          // Video disappeared between lookup and claim: release the slot.
+          running = false;
+          return false;
+        }
+        return true;
+      } catch (err) {
+        // Fix L1: a failing UPDATE must surface as a 5xx, not be disguised as
+        // a 409 — and above all must NOT leave the slot taken forever.
         running = false;
-        return false;
+        throw err;
       }
-      return true;
     },
 
     start(video: Video): void {
       void (async () => {
+        let deadline: ReturnType<typeof setTimeout> | undefined;
         try {
-          await runAnalyze(video);
+          const analysis = runAnalyze(video);
+          const timeout = new Promise<never>((_, reject) => {
+            deadline = setTimeout(() => {
+              const minutes = Math.max(1, Math.round(timeoutMs / 60_000));
+              reject(
+                new Error(
+                  `El análisis superó el tiempo límite (${minutes} min) y fue cancelado.`,
+                ),
+              );
+            }, timeoutMs);
+          });
+          await Promise.race([analysis, timeout]);
+          // clearAnalysisState failing falls through to catch → failAnalysis,
+          // so the row can never stay 'running' with the slot released.
           svc.clearAnalysisState(video.id);
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
-          svc.failAnalysis(video.id, message);
+          try {
+            svc.failAnalysis(video.id, message);
+          } catch (stateErr) {
+            // Fix L2: a double state-update failure must never escape as an
+            // unhandledRejection (Node 22 would crash the process).
+            console.error("[analysis] failAnalysis could not record the failure:", stateErr);
+          }
         } finally {
+          if (deadline !== undefined) clearTimeout(deadline);
           running = false;
         }
-      })();
+      })().catch((err) => {
+        // Last-resort net (anything the IIFE itself could still throw).
+        console.error("[analysis] runner job failed outside its guards:", err);
+        running = false;
+      });
     },
   };
 }

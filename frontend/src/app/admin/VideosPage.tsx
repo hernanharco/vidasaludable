@@ -115,12 +115,15 @@ export function VideosPage() {
   // moment no row reports running).
   const anyAnalysisRunning = videos.some((v) => v.analysisState === "running");
   useEffect(() => {
-    if (!anyAnalysisRunning) return;
+    // Fix L5: an ERRORED list must poll too — if the initial load fails while
+    // a job runs server-side, videos=[] would mean no chip and no polling,
+    // keeping the job invisible until some unrelated action reloaded the page.
+    if (!anyAnalysisRunning && !error) return;
     const timer = setInterval(() => {
       void load();
     }, 4000);
     return () => clearInterval(timer);
-  }, [anyAnalysisRunning, load]);
+  }, [anyAnalysisRunning, error, load]);
 
   const videoTitle = (id: string) =>
     videos.find((v) => String(v.id) === id)?.title ?? `vídeo #${id}`;
@@ -198,7 +201,13 @@ export function VideosPage() {
       await load(); // row shows "Analizando…" → polling takes over
     } catch (err) {
       // 409 single-flight and runtime failures land inline, never silent.
-      setError(err instanceof Error ? err.message : "Error al iniciar el análisis");
+      // Fix L6: the raw backend string is English — the CRM speaks Spanish.
+      const raw = err instanceof Error ? err.message : "Error al iniciar el análisis";
+      setError(
+        raw === "analysis already running"
+          ? "Ya hay un análisis en curso: espera a que termine antes de reintentar."
+          : raw,
+      );
     }
   }
 

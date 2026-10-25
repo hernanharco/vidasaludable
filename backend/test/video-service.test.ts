@@ -450,4 +450,42 @@ describe("videoService", () => {
     expect(svc.listSegments().some((s) => s.id === seg.id)).toBe(false);
     expect(svc.removeSegment(99999)).toBe(false);
   });
+
+  // admin-video-analyze fix M1: re-analysis replaces every segment, so the
+  // swap must be atomic — otherwise a mid-batch failure (after the deletes,
+  // before the creates) permanently loses the video's segments.
+  it("replaceSegments swaps old rows for new ones in one call", () => {
+    const svc = createVideoService(db);
+    const video = svc.createVideo({ speaker: "Luis", youtubeId: "rep-1", url: "u", title: "t" });
+    svc.createSegment({ videoId: video.id, startS: 0, endS: 10, title: "old" });
+
+    const created = svc.replaceSegments(video.id, [
+      { startS: 0, endS: 20, title: "new", summary: "s" },
+    ]);
+
+    expect(created).toHaveLength(1);
+    const rows = svc.listSegments().filter((s) => s.videoId === video.id);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.title).toBe("new");
+  });
+
+  it("replaceSegments rolls back everything when one row fails mid-swap (M1)", () => {
+    const svc = createVideoService(db);
+    const video = svc.createVideo({ speaker: "Luis", youtubeId: "rep-2", url: "u", title: "t" });
+    const oldA = svc.createSegment({ videoId: video.id, startS: 0, endS: 10, title: "old a" });
+    const oldB = svc.createSegment({ videoId: video.id, startS: 10, endS: 20, title: "old b" });
+
+    expect(() =>
+      svc.replaceSegments(video.id, [
+        { startS: 0, endS: 10, title: "ok", summary: "" },
+        // Violates title NOT NULL at the driver → mid-swap failure.
+        { startS: 10, endS: 20, title: null as unknown as string, summary: "" },
+      ]),
+    ).toThrow();
+
+    const after = svc.listSegments().filter((s) => s.videoId === video.id);
+    expect(after.map((s) => s.id).sort((x, y) => x - y)).toEqual(
+      [oldA.id, oldB.id].sort((x, y) => x - y),
+    );
+  });
 });

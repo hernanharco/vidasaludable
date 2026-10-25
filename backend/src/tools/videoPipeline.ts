@@ -200,12 +200,27 @@ export async function analyzeVideo(opts: AnalyzeVideoOptions): Promise<AnalyzeRe
   });
 
   const svc = createVideoService(db);
+  // Fix M1: the segment swap (delete old + insert new) runs as ONE atomic
+  // replace BEFORE status/metadata updates — a mid-swap DB failure rolls
+  // back (previous segments intact) and leaves status untouched (S3).
+  const replacementRows = resolved.map((seg) => ({
+    condition: seg.condition,
+    symptomId: seg.symptomId,
+    startS: seg.startS,
+    endS: seg.endS,
+    title: seg.title,
+    summary: seg.summary,
+    enabled: 0,
+    // T5: menciones crudas (todas) y solo las refs válidas del catálogo.
+    mentionedProducts: seg.mentionedProducts,
+    productReferences: seg.productReferences,
+  }));
+
   let video = svc.getVideoByYoutubeId(youtubeId);
   if (video) {
-    // Re-análisis: reemplaza los segmentos previos para no duplicar filas.
-    for (const prev of svc.listSegments().filter((s) => s.videoId === video!.id)) {
-      svc.removeSegment(prev.id);
-    }
+    // Re-análisis: reemplaza los segmentos previos para no duplicar filas
+    // (atómico — un fallo a mitad de swap no puede perder los existentes).
+    const segments = svc.replaceSegments(video.id, replacementRows);
     video =
       svc.updateVideo(video.id, {
         speaker: meta.speaker,
@@ -214,33 +229,18 @@ export async function analyzeVideo(opts: AnalyzeVideoOptions): Promise<AnalyzeRe
         durationS: durationS > 0 ? durationS : null,
         status: "analyzed",
       }) ?? video;
-  } else {
-    video = svc.createVideo({
-      speaker: meta.speaker,
-      youtubeId,
-      url,
-      title: meta.title,
-      durationS: durationS > 0 ? durationS : null,
-      status: "analyzed",
-    });
+    return { video, segments };
   }
 
-  const segments = resolved.map((seg) =>
-    svc.createSegment({
-      videoId: video!.id,
-      condition: seg.condition,
-      symptomId: seg.symptomId,
-      startS: seg.startS,
-      endS: seg.endS,
-      title: seg.title,
-      summary: seg.summary,
-      enabled: 0,
-      // T5: service stringifies arrays → JSON columns.
-      mentionedProducts: seg.mentionedProducts,
-      productReferences: seg.productReferences,
-    }),
-  );
-
+  video = svc.createVideo({
+    speaker: meta.speaker,
+    youtubeId,
+    url,
+    title: meta.title,
+    durationS: durationS > 0 ? durationS : null,
+    status: "analyzed",
+  });
+  const segments = svc.replaceSegments(video.id, replacementRows);
   return { video, segments };
 }
 
