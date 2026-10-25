@@ -190,6 +190,8 @@ CREATE TABLE IF NOT EXISTS videos (
   duration_s INTEGER,
   status TEXT NOT NULL DEFAULT 'draft',
   license_note TEXT,
+  analysis_state TEXT,
+  analysis_error TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -246,6 +248,9 @@ export async function migrate(db: ReturnType<typeof createDatabase>): Promise<vo
     `ALTER TABLE customer_profile ADD COLUMN height REAL`,
     `ALTER TABLE customer_profile ADD COLUMN conditions TEXT`,
     `ALTER TABLE customer_profile ADD COLUMN allergies TEXT`,
+    // admin-video-analyze — server-side analysis lifecycle on videos.
+    `ALTER TABLE videos ADD COLUMN analysis_state TEXT`,
+    `ALTER TABLE videos ADD COLUMN analysis_error TEXT`,
   ];
   for (const stmt of alterStatements) {
     try {
