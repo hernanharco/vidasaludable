@@ -15,6 +15,8 @@ const VIDEO: Video = {
   durationS: 600,
   status: "analyzed",
   licenseNote: "Permiso escrito de uso",
+  analysisState: null,
+  analysisError: null,
   createdAt: "2025-01-01 10:00:00",
   updatedAt: "2025-01-01 10:00:00",
 };
@@ -149,5 +151,16 @@ describe("admin videos api client", () => {
       }),
     );
     expect(out.segment.clipYoutubeId).toBeNull();
+  });
+
+  it("analyzeVideo POSTs /videos/:id/analyze and returns the 202 body", async () => {
+    const running: Video = { ...VIDEO, analysisState: "running", analysisError: null };
+    mockFetch.mockResolvedValueOnce(ok(202, { video: running }));
+    const out = await api.analyzeVideo(1);
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/api/admin/videos/1/analyze",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(out.video.analysisState).toBe("running");
   });
 });

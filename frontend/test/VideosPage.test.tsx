@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import React from "react";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, waitFor, within, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { VideosPage } from "../src/app/admin/VideosPage";
 import type { Video, VideoSegment } from "../src/app/admin/api";
@@ -21,6 +21,8 @@ const VIDEOS: Video[] = [
     durationS: 600,
     status: "analyzed",
     licenseNote: "Permiso escrito de uso",
+    analysisState: null,
+    analysisError: null,
     createdAt: "2025-01-01 10:00:00",
     updatedAt: "2025-01-01 10:00:00",
   },
@@ -33,6 +35,8 @@ const VIDEOS: Video[] = [
     durationS: null,
     status: "draft",
     licenseNote: null,
+    analysisState: null,
+    analysisError: null,
     createdAt: "2025-01-02 10:00:00",
     updatedAt: "2025-01-02 10:00:00",
   },
@@ -73,6 +77,8 @@ const SEGMENTS: VideoSegment[] = [
 // to the subsequent GET reloads the page performs after every action.
 let videosState: Video[];
 let segmentsState: VideoSegment[];
+/** admin-video-analyze: when set, the analyze POST answers 409 for that id. */
+let analyzeConflictForId: number | null = null;
 
 function ok(status: number, body: unknown) {
   return Promise.resolve({ ok: status < 400, status, json: () => Promise.resolve(body) });
@@ -86,7 +92,21 @@ function installFetchMock() {
   mockFetch.mockImplementation((url: string, init?: RequestInit) => {
     const method = init?.method ?? "GET";
     if (url === "/api/admin/videos" && method === "GET") {
-      return ok(200, { videos: videosState });
+      // Fresh copies every poll — mirrors real JSON responses (new identity
+      // per fetch) so React re-renders and the polling effect can re-evaluate.
+      return ok(200, { videos: videosState.map((v) => ({ ...v })) });
+    }
+    const analyzeId = url.match(/^\/api\/admin\/videos\/(\d+)\/analyze$/);
+    if (analyzeId && method === "POST") {
+      const id = Number(analyzeId[1]);
+      if (analyzeConflictForId === id) {
+        return bad(409, { error: "analysis already running" });
+      }
+      const video = videosState.find((v) => v.id === id);
+      if (!video) return bad(404, { error: "video not found" });
+      video.analysisState = "running";
+      video.analysisError = null;
+      return ok(202, { video });
     }
     if (url === "/api/admin/videos" && method === "POST") {
       const body = JSON.parse(String(init?.body ?? "{}"));
@@ -99,6 +119,8 @@ function installFetchMock() {
         durationS: null,
         status: "draft",
         licenseNote: null,
+        analysisState: null,
+        analysisError: null,
         createdAt: "2025-02-01 10:00:00",
         updatedAt: "2025-02-01 10:00:00",
       };
@@ -167,6 +189,7 @@ describe("VideosPage admin CRM", () => {
     vi.clearAllMocks();
     videosState = VIDEOS.map((v) => ({ ...v }));
     segmentsState = SEGMENTS.map((s) => ({ ...s }));
+    analyzeConflictForId = null;
     installFetchMock();
   });
 
@@ -577,6 +600,118 @@ describe("VideosPage admin CRM", () => {
     expect(
       screen.queryByRole("button", { name: /Eliminar seleccionados/ }),
     ).not.toBeInTheDocument();
+  });
+
+  it("draft video: Analizar fires the analyze POST and the row shows Analizando…", async () => {
+    const user = userEvent.setup();
+    render(<VideosPage />);
+    await screen.findByText("Introducción a la vitamina D");
+
+    const row = screen.getAllByText("Magnesio y sueño")[0]!.closest("tr") as HTMLElement;
+    await user.click(within(row).getByRole("button", { name: "Analizar" }));
+
+    // S1: POST fires and the refreshed row enters the running state (chip).
+    await waitFor(() => {
+      expect(screen.getAllByText("Analizando…").length).toBeGreaterThan(0);
+    });
+    expect(
+      mockFetch.mock.calls.some(
+        ([url, init]) =>
+          url === "/api/admin/videos/2/analyze" &&
+          (init as RequestInit | undefined)?.method === "POST",
+      ),
+    ).toBe(true);
+  });
+
+  it("analyzed video: Re-analizar warns that segments are replaced and posts only on confirm", async () => {
+    const user = userEvent.setup();
+    render(<VideosPage />);
+    await screen.findByText("Introducción a la vitamina D");
+    const analyzePosts = () =>
+      mockFetch.mock.calls.filter(
+        ([url, init]) =>
+          url === "/api/admin/videos/1/analyze" &&
+          (init as RequestInit | undefined)?.method === "POST",
+      ).length;
+
+    const row = () =>
+      screen.getAllByText("Vitamina D y huesos")[0]!.closest("tr") as HTMLElement;
+    await user.click(within(row()).getByRole("button", { name: "Re-analizar" }));
+    const dialog = await screen.findByRole("alertdialog");
+    // S2: the warning must state that existing segments are replaced.
+    expect(within(dialog).getByText(/reemplaz/i)).toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole("button", { name: "Cancelar" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    expect(analyzePosts()).toBe(0); // cancel → nothing fired
+
+    await user.click(within(row()).getByRole("button", { name: "Re-analizar" }));
+    const reopened = await screen.findByRole("alertdialog");
+    await user.click(within(reopened).getByRole("button", { name: "Re-analizar" }));
+    await waitFor(() => expect(analyzePosts()).toBe(1));
+  });
+
+  it("surfaces the single-flight 409 inline (S2: only one analysis at a time)", async () => {
+    analyzeConflictForId = 2;
+    const user = userEvent.setup();
+    render(<VideosPage />);
+    await screen.findByText("Introducción a la vitamina D");
+
+    const row = screen.getAllByText("Magnesio y sueño")[0]!.closest("tr") as HTMLElement;
+    await user.click(within(row).getByRole("button", { name: "Analizar" }));
+
+    expect(await screen.findByText("analysis already running")).toBeInTheDocument();
+    // No chip: the refused trigger must not leave a phantom running state.
+    expect(screen.queryByText("Analizando…")).not.toBeInTheDocument();
+  });
+
+  it("renders the stored analysis error in the video row (S3: visible failure)", async () => {
+    videosState[1]!.analysisError = "No se encontró transcripción utilizable en el video";
+    render(<VideosPage />);
+    expect(
+      await screen.findByText("No se encontró transcripción utilizable en el video"),
+    ).toBeInTheDocument();
+    // The failed draft is still a draft — retry stays available.
+    expect(screen.getAllByRole("button", { name: "Analizar" }).length).toBeGreaterThan(0);
+  });
+
+  it("polls GET /videos every 4s while analyzing and stops once finished (S1)", async () => {
+    videosState[0]!.analysisState = "running";
+    const getCalls = () =>
+      mockFetch.mock.calls.filter(
+        ([url, init]) =>
+          url === "/api/admin/videos" &&
+          ((init as RequestInit | undefined)?.method ?? "GET") === "GET",
+      ).length;
+
+    // Only the interval pair is faked (clearInterval MUST be faked too —
+    // React's cleanup would otherwise call the real clearInterval against a
+    // fake timer id, a no-op that leaves a zombie poller); waitFor and
+    // userEvent keep their real timers.
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    try {
+      render(<VideosPage />);
+      await screen.findByText("Introducción a la vitamina D");
+      await waitFor(() => expect(getCalls()).toBe(1));
+
+      act(() => {
+        vi.advanceTimersByTime(4000);
+      });
+      await waitFor(() => expect(getCalls()).toBe(2)); // poll while running
+
+      videosState[0]!.analysisState = null; // job finished
+      act(() => {
+        vi.advanceTimersByTime(4000);
+      });
+      await waitFor(() => expect(getCalls()).toBe(3)); // final refresh sees null
+
+      act(() => {
+        vi.advanceTimersByTime(30000);
+      });
+      expect(getCalls()).toBe(3); // interval cleared — no zombie polling
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("video delete success: DELETE /admin/videos/:id and the row disappears after reload", async () => {

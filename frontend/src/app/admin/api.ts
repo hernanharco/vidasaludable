@@ -164,6 +164,10 @@ export interface Video {
   durationS: number | null;
   status: VideoStatus;
   licenseNote: string | null;
+  /** admin-video-analyze: 'running' while a server-side job is in flight. */
+  analysisState: string | null;
+  /** admin-video-analyze: last failure message (null = healthy). */
+  analysisError: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -382,6 +386,11 @@ export const api = {
     }),
   // 409 { error, count } when segments still reference the video → AdminError
   deleteVideo: (id: number) => request<null>(`/videos/${id}`, { method: "DELETE" }),
+  /** admin-video-analyze S1/S2: fire the server-side pipeline.
+   * 202 = claimed (analysisState 'running'; the CRM polls GET /videos);
+   * 409 = another analysis is in flight → AdminError. */
+  analyzeVideo: (id: number) =>
+    request<{ video: Video }>(`/videos/${id}/analyze`, { method: "POST" }),
   listVideoSegments: (videoId?: number) =>
     request<{ segments: VideoSegment[] }>(
       videoId == null ? "/video-segments" : `/video-segments?video_id=${videoId}`,
