@@ -1,9 +1,19 @@
 FROM node:22-slim
 
-# Native build tools for better-sqlite3 (node-gyp fallback when no prebuild).
+# Native build tools for better-sqlite3 (node-gyp fallback when no prebuild)
+# + runtime deps for the server-side video pipeline (admin-video-analyze S5):
+# ffmpeg (media tools) and ca-certificates (yt-dlp's HTTPS to YouTube —
+# node bundles its own CA store, the system one does not ship in slim).
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 make g++ \
+    python3 make g++ ffmpeg ca-certificates \
     && rm -rf /var/lib/apt/lists/*
+
+# yt-dlp: official standalone binary (Debian's package lags behind YouTube's
+# changes; the self-contained binary needs no Python deps). Unpinned on
+# purpose — YouTube breaks older yt-dlp frequently, latest is the working
+# version; ADD from URL keeps curl out of the image.
+ADD https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp /usr/local/bin/yt-dlp
+RUN chmod a+x /usr/local/bin/yt-dlp
 
 WORKDIR /app
 
