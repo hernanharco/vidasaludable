@@ -21,10 +21,12 @@ services:
       - "127.0.0.1:8091:8091"
     volumes:
       - ./data:/app/data
-      # admin-video-analyze: YouTube cookies for yt-dlp (datacenter-IP bot
-      # check). Host dir stays OUTSIDE git; the file reaches the container
-      # read-only and is referenced via YT_COOKIES_PATH in the host .env.
-      - ./secrets:/run/secrets:ro
+      # admin-video-analyze: YouTube cookies for yt-dlp live under the data
+      # volume (/app/data/secrets/youtube-cookies.txt, referenced by
+      # YT_COOKIES_PATH in the host .env) — NOT a dedicated ro mount:
+      # yt-dlp SAVES the cookie jar back on exit (keeps rotated cookies
+      # fresh) and an OSError 30 (read-only file system) aborts extraction.
+      # Host dirs stay OUTSIDE git (data/ and secrets/ are gitignored).
     healthcheck:
       test:
         - CMD
