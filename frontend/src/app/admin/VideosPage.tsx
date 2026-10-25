@@ -77,12 +77,25 @@ export function VideosPage() {
   const [editingSegmentId, setEditingSegmentId] = useState<number | null>(null);
   const [confirmVideo, setConfirmVideo] = useState<Video | null>(null);
   const [confirmSegment, setConfirmSegment] = useState<VideoSegment | null>(null);
+  // Bulk delete: ids selected via the row checkboxes. Only ids the user
+  // actually ticked can be selected — select-all is scoped to the rows the
+  // table renders (video filter AND search AND current page, via
+  // onRenderedRowsChange), and the selection is pruned on every reload so a
+  // deleted/stale id can never inflate the count.
+  const [selectedSegmentIds, setSelectedSegmentIds] = useState<number[]>([]);
+  const [renderedSegmentIds, setRenderedSegmentIds] = useState<number[]>([]);
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
 
   const load = useCallback(async () => {
     try {
       const [v, s] = await Promise.all([api.listVideos(), api.listVideoSegments()]);
       setVideos(v.videos);
       setSegments(s.segments);
+      // Prune the bulk selection against the fresh list (verify #4): a row
+      // deleted singly (or elsewhere) must not linger as a phantom id.
+      setSelectedSegmentIds((ids) =>
+        ids.filter((id) => s.segments.some((seg) => seg.id === id)),
+      );
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error de red");
@@ -102,6 +115,27 @@ export function VideosPage() {
     selectedVideoId == null
       ? segments
       : segments.filter((s) => s.videoId === selectedVideoId);
+
+  // Scoped to what the table ACTUALLY renders (filter + search + page) —
+  // never to `visibleSegments`, which ignores the DataTable's internals.
+  const allVisibleSelected =
+    renderedSegmentIds.length > 0 &&
+    renderedSegmentIds.every((id) => selectedSegmentIds.includes(id));
+
+  function toggleSegmentSelection(id: number) {
+    setSelectedSegmentIds((ids) =>
+      ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id],
+    );
+  }
+
+  function toggleSelectAllVisible() {
+    setSelectedSegmentIds(
+      renderedSegmentIds.length > 0 &&
+        renderedSegmentIds.every((id) => selectedSegmentIds.includes(id))
+        ? []
+        : renderedSegmentIds,
+    );
+  }
 
   // ─── Vídeos ──────────────────────────────────────────────────────
 
@@ -247,6 +281,28 @@ export function VideosPage() {
     }
   }
 
+  async function handleBulkDeleteSelected() {
+    const ids = selectedSegmentIds;
+    // In-flight guard: a second confirm (or a re-click while the POST runs)
+    // must never re-send the same ids and overwrite the toast with a
+    // "0 segmentos eliminados" from the duplicate's zero-row result.
+    if (ids.length === 0 || saving) return;
+    setSaving(true);
+    // Close before awaiting, mirroring the single-delete dialogs: the open
+    // state must not linger on fetch latency (verify #2).
+    setConfirmBulkDelete(false);
+    try {
+      const { deleted } = await api.bulkDeleteVideoSegments(ids);
+      setSelectedSegmentIds([]);
+      await load();
+      toast.success(deleted === 1 ? "1 segmento eliminado" : `${deleted} segmentos eliminados`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error al eliminar los segmentos");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   if (loading) return <p className="text-stone-500">Cargando…</p>;
 
   const videoColumns: DataTableColumn<Video>[] = [
@@ -305,6 +361,28 @@ export function VideosPage() {
   ];
 
   const segmentColumns: DataTableColumn<VideoSegment>[] = [
+    {
+      // Non-sortable on purpose: the header hosts the select-all checkbox.
+      key: "select",
+      header: (
+        <input
+          type="checkbox"
+          aria-label="Seleccionar todos los segmentos"
+          checked={allVisibleSelected}
+          disabled={renderedSegmentIds.length === 0}
+          onChange={toggleSelectAllVisible}
+        />
+      ),
+      align: "center",
+      render: (s) => (
+        <input
+          type="checkbox"
+          aria-label={`Seleccionar segmento: ${s.title}`}
+          checked={selectedSegmentIds.includes(s.id)}
+          onChange={() => toggleSegmentSelection(s.id)}
+        />
+      ),
+    },
     {
       key: "video",
       header: "Vídeo",
@@ -510,6 +588,9 @@ export function VideosPage() {
                 value={selectedVideoId == null ? "" : String(selectedVideoId)}
                 onChange={(e) => {
                   setSelectedVideoId(e.target.value === "" ? null : Number(e.target.value));
+                  // Selection is scoped to what's on screen: a filter switch
+                  // must never leave invisible ids selected.
+                  setSelectedSegmentIds([]);
                   setError(null);
                 }}
                 className="mt-1 block border border-stone-300 px-3 py-2 bg-white text-sm text-stone-800"
@@ -685,6 +766,31 @@ export function VideosPage() {
           </form>
         )}
 
+        {selectedSegmentIds.length > 0 && (
+          <div className="mt-4 flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2">
+            <span className="text-sm text-red-800">
+              {selectedSegmentIds.length}
+              {selectedSegmentIds.length === 1
+                ? " segmento seleccionado"
+                : " segmentos seleccionados"}
+            </span>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setConfirmBulkDelete(true)}
+                className="px-3 py-1.5 bg-red-700 text-white text-sm hover:bg-red-800"
+              >
+                Eliminar seleccionados ({selectedSegmentIds.length})
+              </button>
+              <button
+                onClick={() => setSelectedSegmentIds([])}
+                className="px-3 py-1.5 border border-red-300 text-red-700 text-sm hover:bg-red-100"
+              >
+                Limpiar
+              </button>
+            </div>
+          </div>
+        )}
+
         <DataTable
           columns={segmentColumns}
           rows={visibleSegments}
@@ -696,6 +802,7 @@ export function VideosPage() {
           }
           searchable
           searchText={(s) => `${s.title} ${s.condition ?? ""} ${videoTitle(String(s.videoId))}`}
+          onRenderedRowsChange={(rows) => setRenderedSegmentIds(rows.map((s) => s.id))}
           containerClassName="mt-4 bg-white border border-stone-200"
           rowClassName="align-top"
         />
@@ -723,6 +830,14 @@ export function VideosPage() {
           if (row) void handleDeleteSegment(row);
         }}
         onCancel={() => setConfirmSegment(null)}
+      />
+      <ConfirmActionDialog
+        open={confirmBulkDelete}
+        title={`¿Eliminar ${selectedSegmentIds.length} segmentos seleccionados?`}
+        description="Esta acción no se puede deshacer."
+        confirmLabel="Eliminar"
+        onConfirm={() => void handleBulkDeleteSelected()}
+        onCancel={() => setConfirmBulkDelete(false)}
       />
     </div>
   );

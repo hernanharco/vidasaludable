@@ -893,4 +893,72 @@ describe("video endpoints (T7)", () => {
       expect(((await absent.json()) as { error: string }).error).toBe("video not found");
     });
   });
+
+  // ─── Bulk segment delete (CRM UX: select many/all → one request) ──
+
+  describe("bulk segment delete", () => {
+    const seedSegments = async (youtubeId: string) => {
+      const svc = createVideoService(db);
+      const video = svc.createVideo({
+        speaker: "Luis Collantes",
+        youtubeId,
+        url: "u",
+        title: "Bulk",
+      });
+      const a = svc.createSegment({ videoId: video.id, startS: 0, endS: 10, title: "a" });
+      const b = svc.createSegment({ videoId: video.id, startS: 10, endS: 20, title: "b" });
+      const c = svc.createSegment({ videoId: video.id, startS: 20, endS: 30, title: "c" });
+      return { svc, videoId: video.id, ids: [a.id, b.id, c.id] };
+    };
+
+    it("deletes the requested segments in one call and reports the count", async () => {
+      const { svc, videoId, ids } = await seedSegments("bulkDel01");
+      const res = await send("POST", "/admin/video-segments/bulk-delete", {
+        ids: ids.slice(0, 2),
+      });
+      expect(res.status).toBe(200);
+      const data = (await res.json()) as { deleted: number };
+      expect(data.deleted).toBe(2);
+      const remaining = svc.listSegments().filter((s) => s.videoId === videoId);
+      expect(remaining.map((s) => s.id)).toEqual([ids[2]]);
+    });
+
+    it("ignores stale ids that no longer exist and deletes the rest", async () => {
+      const { svc, videoId, ids } = await seedSegments("bulkDel02");
+      const res = await send("POST", "/admin/video-segments/bulk-delete", {
+        ids: [ids[0], 999999],
+      });
+      expect(res.status).toBe(200);
+      expect(((await res.json()) as { deleted: number }).deleted).toBe(1);
+      const remaining = svc.listSegments().filter((s) => s.videoId === videoId);
+      expect(remaining.map((s) => s.id)).toEqual([ids[1], ids[2]]);
+    });
+
+    it("rejects invalid payloads with 400 (empty, non-array, non-integer, absent)", async () => {
+      const noBody = await send("POST", "/admin/video-segments/bulk-delete");
+      expect(noBody.status).toBe(400);
+      const payloads: unknown[] = [{}, { ids: [] }, { ids: [1, "x"] }, { ids: "nope" }];
+      for (const payload of payloads) {
+        const res = await send("POST", "/admin/video-segments/bulk-delete", payload);
+        expect(res.status).toBe(400);
+      }
+    });
+
+    it("rejects negative ids and oversized arrays with 400 (never a silent 200 or a 500)", async () => {
+      const negative = await send("POST", "/admin/video-segments/bulk-delete", {
+        ids: [-1],
+      });
+      expect(negative.status).toBe(400);
+
+      const zero = await send("POST", "/admin/video-segments/bulk-delete", { ids: [0] });
+      expect(zero.status).toBe(400);
+
+      // Above the documented cap: SQLite's bind-parameter limit would otherwise
+      // make inArray throw an unhandled 500.
+      const oversized = await send("POST", "/admin/video-segments/bulk-delete", {
+        ids: Array.from({ length: 501 }, (_, i) => i + 1),
+      });
+      expect(oversized.status).toBe(400);
+    });
+  });
 });

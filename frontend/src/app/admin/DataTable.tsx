@@ -1,4 +1,4 @@
-import { Fragment, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import { cn } from "../components/ui/utils";
 
 // ─── Shared admin DataTable (S4) ───────────────────────────────────
@@ -66,6 +66,12 @@ export interface DataTableProps<T> {
   searchable?: boolean;
   /** Row text extracted for the search filter; required when `searchable`. */
   searchText?: (row: T) => string;
+  /** Reports the rows actually rendered (after search, sort AND pagination).
+   * A page-scoped consumer (e.g. a select-all checkbox) must derive its
+   * "visible" set from this callback, not from the unfiltered `rows` prop —
+   * otherwise it silently covers rows the user never sees. Fires only when
+   * the rendered key set changes, so callback identity churn cannot loop. */
+  onRenderedRowsChange?: (rows: T[]) => void;
 }
 
 export const DEFAULT_PAGE_SIZE = 20;
@@ -193,6 +199,7 @@ export function DataTable<T>({
   footer,
   searchable = false,
   searchText,
+  onRenderedRowsChange,
 }: DataTableProps<T>) {
   const [sort, setSort] = useState<SortState | null>(initialSort ?? null);
   const [page, setPage] = useState(0);
@@ -222,6 +229,17 @@ export function DataTable<T>({
   const totalPages = totalPagesFor(filteredRows.length, pageSize);
   const currentPage = clampPage(page, totalPages);
   const pageRows = paginateRows(filteredRows, currentPage, pageSize);
+
+  // Report the rendered rows by a stable content key: pageRows is a fresh
+  // array every render, so depending on its identity would loop when the
+  // consumer setState()s from the callback.
+  const onRenderedRowsChangeRef = useRef(onRenderedRowsChange);
+  onRenderedRowsChangeRef.current = onRenderedRowsChange;
+  const renderedKey = pageRows.map((row, i) => getRowKey(row, i)).join("\u0000");
+  useEffect(() => {
+    onRenderedRowsChangeRef.current?.(pageRows);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- renderedKey is the content identity of pageRows
+  }, [renderedKey]);
 
   const activeQuery = query.trim();
 

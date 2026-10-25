@@ -398,4 +398,11 @@ export const api = {
     }),
   deleteVideoSegment: (id: number) =>
     request<null>(`/video-segments/${id}`, { method: "DELETE" }),
+  /** CRM bulk delete: one request for the selected ids; `deleted` counts only
+   * rows that actually existed (stale ids from a stale UI count 0). */
+  bulkDeleteVideoSegments: (ids: number[]) =>
+    request<{ deleted: number }>("/video-segments/bulk-delete", {
+      method: "POST",
+      body: JSON.stringify({ ids }),
+    }),
 };
