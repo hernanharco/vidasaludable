@@ -21,6 +21,10 @@ services:
       - "127.0.0.1:8091:8091"
     volumes:
       - ./data:/app/data
+      # admin-video-analyze: YouTube cookies for yt-dlp (datacenter-IP bot
+      # check). Host dir stays OUTSIDE git; the file reaches the container
+      # read-only and is referenced via YT_COOKIES_PATH in the host .env.
+      - ./secrets:/run/secrets:ro
     healthcheck:
       test:
         - CMD

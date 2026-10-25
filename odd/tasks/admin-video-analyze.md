@@ -149,3 +149,37 @@ backend en Hetzner con rebuild del contenedor (usuario lo aprobó).
     alcance), poll sin backoff mientras la primera carga nunca funciona
     (self-heal deseado), L3/L4 (single-flight por instancia).
   - Suites al cierre: backend 310/310, frontend 243/243, tsc ×2, build OK.
+- L5 — INCIDENTE EN PROD (2026-10-25, tras el deploy) + fix:
+  El primer clic real en "Analizar" (v7TySoNZ9q0) falló con el error en rojo
+  correcto (S3 funcionó) pero con dos causas apiladas en el mensaje:
+  (a) **I2 se materializó**: yt-dlp ≥2026.10 exige runtime JS para los
+  challenges de YouTube (`No supported JavaScript runtime`) — el flag
+  `--js-runtimes node` del spec no estaba en el código; mi smoke original
+  solo probó subtítulos y pasó sin él.
+  (b) **Challenge anti-bot por IP de datacenter**: 3 sondas desde el
+  contenedor (metadata K6lOOEbUiDI, subs v7, player_client=tv) → todas
+  "Sign in to confirm you're not a bot"; a media tarde el mismo smoke había
+  bajado 1.3MB → el challenge se activó con el uso, no es por video.
+  **Fix (decisión del usuario: "Impersonation primero")**: prueba de
+  concepto en contenedor descartable con `pip install "yt-dlp[default]"
+  curl_cffi` → extracción normal desde la misma IP →
+  - media.ts: `--js-runtimes node` en getMetadata/getTranscript/
+    downloadVideo (tests de args actualizados, RED 3/3 → GREEN 39/39);
+  - Dockerfile.prod: el binario standalone ADD no tiene target de
+    impersonation → reemplazado por `pip install --break-system-packages
+    "yt-dlp[default]" curl_cffi` (+python3-pip); node de la imagen es el
+    runtime EJS.
+  Si el impersonation no alcanzara en el futuro, el plan B documentado es
+  cookies (`--cookies`, archivo fuera de git).
+- L6 — Cierre del diagnóstico de prod (decisión del usuario: "Cookies"):
+  PoC VÁLIDO en la IP de Hetzner con la receta completa (node v20 +
+  curl_cffi + yt-dlp 2026.10 + --js-runtimes node) → **sigue el bot
+  challenge**: el impersonation NO basta para IP de datacenter (el PoC que
+  "funcionó" corrió en IP residencial, nunca bloqueada — lección: probar
+  siempre en la IP afectada). Cableado de plan B implementado:
+  `YT_COOKIES_PATH` env → flag `--cookies` en getMetadata/getTranscript/
+  downloadVideo (sin env = sin flag, comportamiento previo intacto; test
+  RED→GREEN con vi.stubEnv), compose monta `./secrets:/run/secrets:ro`,
+  `secrets/` en .gitignore (el archivo NUNCA toca git). Pendiente operativo:
+  exportación de cookies por el usuario → scp al servidor → env en .env de
+  prod → rebuild → reintento del botón Analizar.
