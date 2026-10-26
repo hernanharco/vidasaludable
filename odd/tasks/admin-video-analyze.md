@@ -210,3 +210,13 @@ backend en Hetzner con rebuild del contenedor (usuario lo aprobó).
   simulado (dump destructivo sobre la copia + master intacto + .run
   limpiado + fallback). Master restaurado en prod desde el original del
   usuario (26 cookies, 600). Suites: 41/41 pipeline, tsc OK.
+- L9 — Verify del fix L8: **PASS** (8 hallazgos Low/Info, invariante "master
+  nunca es target" probado en todos los intercalados). Fix incluido:
+  comentario de compose desactualizado (ya no "keeps rotated cookies
+  fresh" — las rotaciones caen en el `.run` descartable). **Aceptados**:
+  F2 carrera de nombre `.run` si CLI y servidor corren a la vez (el server
+  tiene single-flight; consecuencia: intento transitorio reintentable;
+  master intacto en todo intercalado — sufijo único pid+ts queda como
+  mejora futura), F3 no-cancelación tras timeout (mismo sobre), F4 gaps de
+  tests (transcript/download/rejection-dispose), F5 asserts débiles del
+  fallback, F6-F8 Info. 312/312 + tsc reproducidos por el verificador.
