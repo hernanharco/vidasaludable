@@ -652,14 +652,14 @@ describe("createYtdlpClient (con runner falso, sin subprocess)", () => {
         stderr: "",
       };
     };
-    vi.stubEnv("YT_COOKIES_PATH", "/run/secrets/youtube-cookies.txt");
+    vi.stubEnv("YT_COOKIES_PATH", "/app/data/secrets/youtube-cookies.txt");
     try {
       await createYtdlpClient(runner).getMetadata(YOUTUBE_URL);
       expect(calls[0]!.args).toEqual([
         "--js-runtimes",
         "node",
         "--cookies",
-        "/run/secrets/youtube-cookies.txt",
+        "/app/data/secrets/youtube-cookies.txt",
         "-J",
         YOUTUBE_URL,
       ]);
