@@ -12,7 +12,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # standalone binary has no impersonation target at all. NOTE (incident
 # diagnosis, spec Log L6): impersonation alone does NOT pass YouTube's
 # bot-check on this server's datacenter IP — that needs the authenticated
-# cookies path (YT_COOKIES_PATH + ./secrets mount below). curl_cffi stays
+# cookies path (YT_COOKIES_PATH on the rw data volume — see compose
+# comments). curl_cffi stays
 # as hardening. `[default]` pulls yt-dlp's standard deps (incl. the EJS
 # solver); --break-system-packages because Debian 12 marks the system env
 # externally-managed (PEP 668). The JS runtime for yt-dlp's EJS challenges

@@ -171,6 +171,15 @@ backend en Hetzner con rebuild del contenedor (usuario lo aprobó).
     runtime EJS.
   Si el impersonation no alcanzara en el futuro, el plan B documentado es
   cookies (`--cookies`, archivo fuera de git).
+- L7 — Ajuste operativo de los cookies (post-L6): yt-dlp ESCRIBE el jar al
+  salir (cookies frescas tras la rotación de Google) → un montaje ro aborta
+  con `OSError 30`; la ruta que funciona es el volumen rw `data/`:
+  `/opt/vidasaludable/data/secrets/youtube-cookies.txt` →
+  `/app/data/secrets/youtube-cookies.txt` vía `YT_COOKIES_PATH` en el .env
+  de prod. Verificado en vivo: probe devuelve `Nutrilite Luis Collantes |
+  3380`. El montaje ro de `./secrets` se eliminó de compose y todos
+  los textos/docs se alinearon (PR de docs; verify ronda 1 FAIL por bloque
+  duplicado en .env.example + textos stale → fix).
 - L6 — Cierre del diagnóstico de prod (decisión del usuario: "Cookies"):
   PoC VÁLIDO en la IP de Hetzner con la receta completa (node v20 +
   curl_cffi + yt-dlp 2026.10 + --js-runtimes node) → **sigue el bot
@@ -179,7 +188,8 @@ backend en Hetzner con rebuild del contenedor (usuario lo aprobó).
   siempre en la IP afectada). Cableado de plan B implementado:
   `YT_COOKIES_PATH` env → flag `--cookies` en getMetadata/getTranscript/
   downloadVideo (sin env = sin flag, comportamiento previo intacto; test
-  RED→GREEN con vi.stubEnv), compose monta `./secrets:/run/secrets:ro`,
+  RED→GREEN con vi.stubEnv), el montaje ro de `./secrets` quedó después
+  sin uso (yt-dlp escribe el jar — ver L7),
   `secrets/` en .gitignore (el archivo NUNCA toca git). Pendiente operativo:
   exportación de cookies por el usuario → scp al servidor → env en .env de
   prod → rebuild → reintento del botón Analizar.

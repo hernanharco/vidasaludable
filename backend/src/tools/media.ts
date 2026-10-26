@@ -88,7 +88,7 @@ export function createYtdlpClient(runner: CommandRunner = execCommandRunner): Yt
   // yt-dlp plan B for datacenter IPs (prod incident 2026-10-25): YouTube
   // bot-checks Hetzner's IP and impersonation alone does NOT pass it —
   // verified probes; only authenticated sessions work. When the env var
-  // points at a cookies file (compose secrets mount, NEVER in git), every
+  // points at a cookies file (rw data-volume path, NEVER in git), every
   // extraction call authenticates with it; unset → no flag, behavior as
   // before.
   const cookieArgs = (): string[] => {
