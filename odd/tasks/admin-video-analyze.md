@@ -193,3 +193,30 @@ backend en Hetzner con rebuild del contenedor (usuario lo aprobó).
   `secrets/` en .gitignore (el archivo NUNCA toca git). Pendiente operativo:
   exportación de cookies por el usuario → scp al servidor → env en .env de
   prod → rebuild → reintento del botón Analizar.
+- L8 — INCIDENTE 2 (2026-10-26): el primer clic real con cookies funcionó
+  a medias — la PRIMERA extracción con `--cookies <master>` tuvo éxito
+  (probe: "Nutrilite Luis Collantes | 3380"), pero yt-dlp **reescribió el
+  jar a la salida PODÁNDOLO**: 26→13 cookies, desaparecieron SID,
+  __Secure-1PSID, LOGIN_INFO, SAPISID, SIDCC (familia de autenticación) →
+  todo análisis posterior volvió al bot check (el error rojo del CRM era
+  el registro del intento post-poda). El `--help` lo confirma: `--cookies
+  FILE` es "read cookies from AND dump cookie jar in"; el archivo ro
+  aborta (OSError 30) y el rw se pudra — no hay flag "no-dump".
+  **Fix**: `prepareCookies()` en media.ts — copia master→`<path>.run`
+  descartable por corrida, `--cookies` con la copia, dispose(rm) en
+  finally; master NUNCA es el target (queda byte-idéntico run tras run).
+  Si la copia falla (master ausente) → corre SIN cookies (error honesto)
+  y warn, sin crear nada en la ruta maestra. Tests con el incidente
+  simulado (dump destructivo sobre la copia + master intacto + .run
+  limpiado + fallback). Master restaurado en prod desde el original del
+  usuario (26 cookies, 600). Suites: 41/41 pipeline, tsc OK.
+- L9 — Verify del fix L8: **PASS** (8 hallazgos Low/Info, invariante "master
+  nunca es target" probado en todos los intercalados). Fix incluido:
+  comentario de compose desactualizado (ya no "keeps rotated cookies
+  fresh" — las rotaciones caen en el `.run` descartable). **Aceptados**:
+  F2 carrera de nombre `.run` si CLI y servidor corren a la vez (el server
+  tiene single-flight; consecuencia: intento transitorio reintentable;
+  master intacto en todo intercalado — sufijo único pid+ts queda como
+  mejora futura), F3 no-cancelación tras timeout (mismo sobre), F4 gaps de
+  tests (transcript/download/rejection-dispose), F5 asserts débiles del
+  fallback, F6-F8 Info. 312/312 + tsc reproducidos por el verificador.

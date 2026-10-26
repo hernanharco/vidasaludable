@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { access, mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { createDatabase } from "../src/db/client.js";
@@ -638,11 +638,53 @@ describe("createYtdlpClient (con runner falso, sin subprocess)", () => {
     }
   });
 
-  it("adds --cookies from YT_COOKIES_PATH on extraction calls (yt-dlp plan B: datacenter IPs)", async () => {
-    // The prod incident: YouTube bot-checks Hetzner's datacenter IP and
-    // only authenticated sessions pass (verified probes 2026-10-25 —
-    // impersonation alone was NOT enough). The path comes from env, the
-    // file itself lives OUTSIDE git (compose secrets mount).
+  it("cookies: the master is copied to a disposable .run jar — yt-dlp's destructive dump never touches it", async () => {
+    // Prod incident 2026-10-26: `--cookies FILE` is read-AND-DUMP; the dump
+    // pruned the Google auth family (26→13) and the NEXT run was bot-checked
+    // again. The runner must pass a disposable copy and keep the master
+    // byte-identical run after run.
+    const root = await mkdtemp(join(tmpdir(), "vp-cookies-"));
+    const master = join(root, "youtube-cookies.txt");
+    const masterBody = ".youtube.com\tTRUE\t/\tTRUE\t1826396979\tSID\tabc123\n";
+    await writeFile(master, masterBody, "utf8");
+    const calls: Array<{ cmd: string; args: string[] }> = [];
+    const runner: CommandRunner = async (cmd, args) => {
+      calls.push({ cmd, args });
+      // Simulate yt-dlp's exit dump: overwrite the --cookies target with a
+      // pruned jar (exactly what poisoned prod).
+      const idx = args.indexOf("--cookies");
+      await writeFile(args[idx + 1]!, "pruned-by-ytdlp\n", "utf8");
+      return {
+        code: 0,
+        stdout: JSON.stringify({ id: "x", title: "t", duration: 10, uploader: "u" }),
+        stderr: "",
+      };
+    };
+    vi.stubEnv("YT_COOKIES_PATH", master);
+    try {
+      const meta = await createYtdlpClient(runner).getMetadata(YOUTUBE_URL);
+      expect(meta.title).toBe("t");
+      // argv carries the disposable .run path, never the master itself:
+      expect(calls[0]!.args).toEqual([
+        "--js-runtimes",
+        "node",
+        "--cookies",
+        `${master}.run`,
+        "-J",
+        YOUTUBE_URL,
+      ]);
+      // The destructive dump hit the COPY…
+      // …the master survived byte-identical…
+      expect(await readFile(master, "utf8")).toBe(masterBody);
+      // …and the copy was removed afterwards.
+      await expect(access(`${master}.run`)).rejects.toThrow();
+    } finally {
+      vi.unstubAllEnvs();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("cookies: missing master → runs WITHOUT --cookies (honest bot-check, master path never created)", async () => {
     const calls: Array<{ cmd: string; args: string[] }> = [];
     const runner: CommandRunner = async (cmd, args) => {
       calls.push({ cmd, args });
@@ -652,22 +694,16 @@ describe("createYtdlpClient (con runner falso, sin subprocess)", () => {
         stderr: "",
       };
     };
-    vi.stubEnv("YT_COOKIES_PATH", "/app/data/secrets/youtube-cookies.txt");
+    vi.stubEnv("YT_COOKIES_PATH", "/nonexistent/dir/cookies.txt");
+    const warn = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
       await createYtdlpClient(runner).getMetadata(YOUTUBE_URL);
-      expect(calls[0]!.args).toEqual([
-        "--js-runtimes",
-        "node",
-        "--cookies",
-        "/app/data/secrets/youtube-cookies.txt",
-        "-J",
-        YOUTUBE_URL,
-      ]);
+      expect(calls[0]!.args).toEqual(["--js-runtimes", "node", "-J", YOUTUBE_URL]);
+      expect(warn).toHaveBeenCalled();
     } finally {
+      vi.restoreAllMocks();
       vi.unstubAllEnvs();
     }
-    // And without the env var the exact-args assertions above prove no
-    // --cookies flag leaks into the command line.
   });
 });
 
