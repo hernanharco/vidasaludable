@@ -10,7 +10,7 @@
  */
 
 import { execFile } from "node:child_process";
-import { existsSync } from "node:fs";
+import { copyFileSync, existsSync, rmSync } from "node:fs";
 import { mkdir, mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -87,13 +87,41 @@ export function createYtdlpClient(runner: CommandRunner = execCommandRunner): Yt
   const jsRuntime = ["--js-runtimes", "node"] as const;
   // yt-dlp plan B for datacenter IPs (prod incident 2026-10-25): YouTube
   // bot-checks Hetzner's IP and impersonation alone does NOT pass it —
-  // verified probes; only authenticated sessions work. When the env var
-  // points at a cookies file (rw data-volume path, NEVER in git), every
-  // extraction call authenticates with it; unset → no flag, behavior as
-  // before.
-  const cookieArgs = (): string[] => {
+  // verified probes; only authenticated sessions work.
+  //
+  // COOKIE-JAR TRAP (prod incident 2026-10-26): `--cookies FILE` is a
+  // read-AND-DUMP target — on exit yt-dlp rewrites the jar and the dump
+  // PRUNES the Google auth family (26 → 13 cookies on the first successful
+  // run; SID, __Secure-1PSID, LOGIN_INFO… silently gone → the next run is
+  // bot-checked again). A read-only file crashes instead (OSError 30). So
+  // the master file (env YT_COOKIES_PATH, rw volume, NEVER in git) must
+  // NEVER be the --cookies target: every extraction copies it to a
+  // disposable "<path>.run" sibling, passes that, and removes the copy
+  // afterwards — the master stays byte-identical run after run. Unset env →
+  // no flag, behavior unchanged.
+  const prepareCookies = (): { args: string[]; dispose: () => void } => {
     const path = process.env.YT_COOKIES_PATH?.trim();
-    return path ? ["--cookies", path] : [];
+    if (!path) return { args: [], dispose: () => {} };
+    const run = `${path}.run`;
+    try {
+      copyFileSync(path, run);
+    } catch (err) {
+      // Master unreadable/missing: run WITHOUT cookies (the honest
+      // bot-check error surfaces in the CRM) instead of letting yt-dlp
+      // create or prune anything at the master path.
+      console.error("[ytdlp] cookies master no copiable; se omite --cookies:", err);
+      return { args: [], dispose: () => {} };
+    }
+    return {
+      args: ["--cookies", run],
+      dispose: () => {
+        try {
+          rmSync(run, { force: true });
+        } catch {
+          // best effort — a leftover .run is overwritten next run
+        }
+      },
+    };
   };
   return {
     async getVersion(): Promise<string> {
@@ -107,7 +135,13 @@ export function createYtdlpClient(runner: CommandRunner = execCommandRunner): Yt
     },
 
     async getMetadata(url: string): Promise<YtDlpMetadata> {
-      const res = await runner("yt-dlp", [...jsRuntime, ...cookieArgs(), "-J", url]);
+      const cookies = prepareCookies();
+      let res: CommandResult;
+      try {
+        res = await runner("yt-dlp", [...jsRuntime, ...cookies.args, "-J", url]);
+      } finally {
+        cookies.dispose();
+      }
       if (res.code !== 0) {
         throw new Error(
           `yt-dlp falló al leer los metadatos de ${url}. Verifica que la URL sea válida y que yt-dlp esté instalado. Detalle: ${tailStderr(res.stderr)}`,
@@ -137,10 +171,11 @@ export function createYtdlpClient(runner: CommandRunner = execCommandRunner): Yt
 
     async getTranscript(url: string): Promise<unknown> {
       const dir = await mkdtemp(join(tmpdir(), "video-subs-"));
+      const cookies = prepareCookies();
       try {
         const res = await runner("yt-dlp", [
           ...jsRuntime,
-          ...cookieArgs(),
+          ...cookies.args,
           "--skip-download",
           "--write-auto-subs",
           "--sub-langs",
@@ -170,21 +205,28 @@ export function createYtdlpClient(runner: CommandRunner = execCommandRunner): Yt
           throw new Error("El archivo de subtítulos json3 está dañado y no se pudo interpretar.");
         }
       } finally {
+        cookies.dispose();
         await rm(dir, { recursive: true, force: true });
       }
     },
 
     async downloadVideo(url: string, output: string): Promise<void> {
       await mkdir(dirname(output), { recursive: true });
-      const res = await runner("yt-dlp", [
-        ...jsRuntime,
-        ...cookieArgs(),
-        "-f",
-        "bv*+ba/b",
-        "-o",
-        output,
-        url,
-      ]);
+      const cookies = prepareCookies();
+      let res: CommandResult;
+      try {
+        res = await runner("yt-dlp", [
+          ...jsRuntime,
+          ...cookies.args,
+          "-f",
+          "bv*+ba/b",
+          "-o",
+          output,
+          url,
+        ]);
+      } finally {
+        cookies.dispose();
+      }
       if (res.code !== 0) {
         throw new Error(
           `yt-dlp falló al descargar el video original a ${output}. Detalle: ${tailStderr(res.stderr)}`,
