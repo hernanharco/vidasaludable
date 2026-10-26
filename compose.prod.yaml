@@ -24,9 +24,12 @@ services:
       # admin-video-analyze: YouTube cookies for yt-dlp live under the data
       # volume (/app/data/secrets/youtube-cookies.txt, referenced by
       # YT_COOKIES_PATH in the host .env) — NOT a dedicated ro mount:
-      # yt-dlp SAVES the cookie jar back on exit (keeps rotated cookies
-      # fresh) and an OSError 30 (read-only file system) aborts extraction.
-      # Host dirs stay OUTSIDE git (data/ and secrets/ are gitignored).
+      # media.ts copies the master to a disposable "<path>.run" sibling per
+      # extraction (yt-dlp dumps its pruned jar INTO THAT COPY — the master
+      # is never the --cookies target, see spec Log L8), so the directory
+      # must be writable and an OSError 30 (read-only file system) would
+      # abort extraction. Host dirs stay OUTSIDE git (data/ and secrets/
+      # are gitignored).
     healthcheck:
       test:
         - CMD

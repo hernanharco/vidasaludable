@@ -220,3 +220,20 @@ backend en Hetzner con rebuild del contenedor (usuario lo aprobó).
   mejora futura), F3 no-cancelación tras timeout (mismo sobre), F4 gaps de
   tests (transcript/download/rejection-dispose), F5 asserts débiles del
   fallback, F6-F8 Info. 312/312 + tsc reproducidos por el verificador.
+- L10 — Lecciones operativas de la saga (2026-10-26):
+  (a) **Freshness de cookies**: Google rota sidts/SIDCC en minutos-horas;
+  exportar con YouTube CERRADO y usar YA (yt-dlp avisa "no longer valid,
+  rotated in browser"). Un probe local NO valida: la IP residencial pasa
+  sin autenticación — solo el server (datacenter) lo exige.
+  (b) **Deploy**: el webhook de Hetzner ejecuta `compose up` solo al hacer
+  push → NUNCA correr un `compose up` manual en paralelo (causó conflicto
+  de nombre de contenedor y DOWNTIME del API ~minutos; restaurado con un
+  `up -d` único). Coordinar: push → esperar webhook, o desactivar uno.
+  (c) **Cosmético**: el contenedor quedó con nombre hashed
+  `4a972eadb4f0_vidasaludable-api-1` a raíz del conflicto — renombrar en el
+  próximo mantenimiento (down/up en ventana sin tráfico).
+  (d) **Gemini transitorio**: "no es JSON válido" con modelos flash-lite
+  es NO determinista (temperature>0 sin maxOutputTokens) — reintentar
+  primero (clic o CLI); si persiste 2×, investigar (maxOutputTokens,
+  chunking). Flujo de import local→prod validado 2× hoy (K6lOO 17, v7 27):
+  INSERTs con quote(), backup .backup, transacción, integrity_check.
