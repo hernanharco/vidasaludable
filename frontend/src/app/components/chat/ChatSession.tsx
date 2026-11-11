@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import { DEFAULT_COUNTRY_CODE, formatPhone } from "../../lib/countryCodes";
 
 import { ChatHeader } from "./ChatHeader";
@@ -138,6 +139,37 @@ function readStoredConsentVersion(): number | null {
   return Number.isInteger(n) ? n : null;
 }
 
+/** T4 tamizaje — today's LOCAL date as YYYY-MM-DD (the `taken_at` wire shape). */
+function todayIsoDate(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/** The server's `{error}` string from a failed reply, or null when absent. */
+async function readServerError(res: Response): Promise<string | null> {
+  try {
+    const data = (await res.json()) as { error?: unknown };
+    return typeof data?.error === "string" && data.error !== "" ? data.error : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * T4 tamizaje — image upload failure copy. Surfaces the server's OWN message
+ * (413 size / 500 not configured / 502 upload failed) inside a Spanish
+ * apology — the Booking `submitErrorMessage` precedent (T3).
+ */
+function uploadErrorMessage(serverError: string | null): string {
+  if (serverError) return `No se pudo guardar la imagen. (${serverError})`;
+  return "No se pudo guardar la imagen. Inténtalo de nuevo en unos segundos.";
+}
+
+/** Transport-failure copy shared by the two T4 chat POSTs. */
+const CONNECTION_ERROR =
+  "No pudimos conectar con el servidor. Comprueba tu conexión e inténtalo de nuevo.";
+
 export function ChatSession({ onOpenAssessment, onClose }: ChatSessionProps) {
   const [phase, setPhase] = useState<Phase>("boot");
   const [consent, setConsent] = useState<ConsentInfo | null>(null);
@@ -173,6 +205,9 @@ export function ChatSession({ onOpenAssessment, onClose }: ChatSessionProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [sending, setSending] = useState(false);
+  // T4 tamizaje — an image upload is in flight: ChatInput disables the
+  // attach button while this is true (pending state).
+  const [uploadingImage, setUploadingImage] = useState(false);
 
   // multi-conversation T2 (S1/S3) — the ChatHeader menu panel. Open only in
   // the chat phase (gates/intake have nothing to list).
@@ -716,6 +751,107 @@ export function ChatSession({ onOpenAssessment, onClose }: ChatSessionProps) {
     void sendMessage(text);
   };
 
+  /**
+   * T4 tamizaje — POST /assistant/images. LIFTED to the session (like
+   * sendMessage) because the 401 re-consent plumbing lives here: the reply's
+   * consent (or the fallback fetch) is cached, consentReentry is set and the
+   * gate re-opens — byte-for-byte the /ask 401 pattern. ChatInput owns the
+   * file UX (hidden input, 8 MB client cap, FileReader) and calls this with
+   * the dataURL; resolves true only on success so it clears the input.
+   */
+  const handleUploadImage = async (dataUrl: string): Promise<boolean> => {
+    if (customerId == null) {
+      // Same degraded guard as sendMessage: no identity → full gate.
+      setConsentReentry(false);
+      setPhase("gate");
+      void loadConsent();
+      return false;
+    }
+    setUploadingImage(true);
+    try {
+      const res = await fetch("/api/assistant/images", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customer_id: customerId,
+          data: dataUrl,
+          kind: "tamizaje",
+          taken_at: todayIsoDate(),
+        }),
+      });
+      if (res.ok) {
+        toast.success("Imagen guardada en tu historial");
+        return true;
+      }
+      if (res.status === 401) {
+        // Same re-consent pattern as /ask (see sendMessage): identity kept —
+        // stale consent is not a corrupt identity.
+        let info = consent;
+        try {
+          const data = (await res.json()) as { consent?: ConsentInfo };
+          if (data.consent) info = data.consent;
+        } catch {
+          /* fall back to cached consent */
+        }
+        if (!info) info = await fetchConsent();
+        if (info) {
+          setConsent(info);
+          setConsentError(null);
+        }
+        setConsentReentry(true);
+        setPhase("gate");
+        return false;
+      }
+      toast.error(uploadErrorMessage(await readServerError(res)));
+      return false;
+    } catch {
+      toast.error(CONNECTION_ERROR);
+      return false;
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
+  /**
+   * T4 tamizaje — POST /assistant/appointments from the `[CITA]` confirm
+   * dialog. NO consent gate on the endpoint (400/404 only, like
+   * /conversations), so no gate plumbing is needed; it still lives here so
+   * every chat POST stays in one place with the shared customerId closure.
+   * Resolves true on 201 — the card flips to its confirmed state.
+   */
+  const handleRequestAppointment = async (reason: string): Promise<boolean> => {
+    if (customerId == null) return false;
+    try {
+      const res = await fetch("/api/assistant/appointments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ customer_id: customerId, reason }),
+      });
+      if (res.ok) {
+        toast.success("Solicitud de cita enviada");
+        return true;
+      }
+      if (res.status === 404) {
+        // Unknown customer: identity repair lives elsewhere — just point at a
+        // fresh conversation, never touching the stored keys here.
+        toast.error(
+          "No encontramos tu registro. Inicia una conversación nueva e inténtalo de nuevo.",
+        );
+        return false;
+      }
+      const serverError = await readServerError(res);
+      toast.error(
+        serverError
+          ? `No se pudo enviar la solicitud. (${serverError})`
+          : "No se pudo enviar la solicitud. Inténtalo de nuevo.",
+      );
+      return false;
+    } catch {
+      toast.error(CONNECTION_ERROR);
+      return false;
+    }
+  };
+
   return (
     <div className="flex h-full overflow-hidden">
       {/* multi-conversation T2 — in-flow sidebar at md+, slide-in drawer
@@ -783,12 +919,15 @@ export function ChatSession({ onOpenAssessment, onClose }: ChatSessionProps) {
             videos={videos}
             products={products}
             onOpenAssessment={onOpenAssessment}
+            onRequestAppointment={handleRequestAppointment}
           />
           <ChatInput
             inputValue={inputValue}
             sending={sending}
             onInputChange={setInputValue}
             onSend={handleSend}
+            onUploadImage={handleUploadImage}
+            uploading={uploadingImage}
           />
         </>
       )}
