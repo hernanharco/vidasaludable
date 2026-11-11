@@ -3,6 +3,7 @@ import { DEFAULT_COUNTRY_CODE, formatPhone } from "../../lib/countryCodes";
 
 import { ChatHeader } from "./ChatHeader";
 import { ChatMessages, ChatMessage } from "./ChatMessages";
+import { ConversationSidebar } from "./ConversationSidebar";
 import { ChatInput } from "./ChatInput";
 import { RegistrationGate } from "./RegistrationGate";
 import { AccessCodeGate } from "../AccessCodeGate";
@@ -173,6 +174,13 @@ export function ChatSession({ onOpenAssessment, onClose }: ChatSessionProps) {
   const [inputValue, setInputValue] = useState("");
   const [sending, setSending] = useState(false);
 
+  // multi-conversation T2 (S1/S3) — the ChatHeader menu panel. Open only in
+  // the chat phase (gates/intake have nothing to list).
+  const [conversationsOpen, setConversationsOpen] = useState(false);
+  // Monotonic token so a slow /history response can never overwrite the
+  // messages of a conversation the user switched to meanwhile.
+  const historySeqRef = useRef(0);
+
   // T3 chat-intake — the 5-step questionnaire answers (client-side shape).
   const [profile, setProfile] = useState<IntakeProfile>(EMPTY_PROFILE);
 
@@ -296,22 +304,38 @@ export function ChatSession({ onOpenAssessment, onClose }: ChatSessionProps) {
     setConsentLoading(false);
   }, [fetchConsent]);
 
-  const loadHistory = useCallback(async () => {
-    if (customerId == null || conversationId == null) return;
-    try {
-      const res = await fetch(
-        `/api/assistant/history?conversation_id=${conversationId}&customer_id=${customerId}`,
-      );
-      if (!res.ok) return;
-      const data = (await res.json()) as { messages: Array<{ role: string; content: string }> };
-      const restored: ChatMessage[] = data.messages
-        .filter((m) => m.role === "user" || m.role === "assistant")
-        .map((m) => ({ sender: m.role === "user" ? "user" : "agent", text: m.content }));
-      if (restored.length > 0) setMessages(restored);
-    } catch {
-      // History is best-effort memory
-    }
-  }, [customerId, conversationId]);
+  // Optional overrides let a conversation switch load ITS history right
+  // away, without waiting for the conversationId state to re-render.
+  const loadHistory = useCallback(
+    async (overrideConversationId?: number, overrideCustomerId?: number) => {
+      const convId = overrideConversationId ?? conversationId;
+      const custId = overrideCustomerId ?? customerId;
+      if (custId == null || convId == null) return;
+      const seq = ++historySeqRef.current;
+      try {
+        const res = await fetch(
+          `/api/assistant/history?conversation_id=${convId}&customer_id=${custId}`,
+        );
+        if (!res.ok) return;
+        const data = (await res.json()) as { messages: Array<{ role: string; content: string }> };
+        const restored: ChatMessage[] = data.messages
+          .filter((m) => m.role === "user" || m.role === "assistant")
+          .map((m) => ({ sender: m.role === "user" ? "user" : "agent", text: m.content }));
+        // A newer load (conversation switch) superseded this response.
+        if (seq !== historySeqRef.current) return;
+        if (restored.length > 0) setMessages(restored);
+      } catch {
+        // History is best-effort memory
+      }
+    },
+    [customerId, conversationId],
+  );
+
+  // Leaving the chat phase (e.g. a 401 on /ask re-opens the consent gate)
+  // must not leave the conversations panel stranded open behind the gate.
+  useEffect(() => {
+    if (phase !== "chat") setConversationsOpen(false);
+  }, [phase]);
 
   // On first mount (the host shows the session): access-code-once.
   // The gate is asked only while this browser has no validated referrer;
@@ -361,6 +385,50 @@ export function ChatSession({ onOpenAssessment, onClose }: ChatSessionProps) {
     window.localStorage.removeItem(STORAGE.conversationId);
     setCustomerId(null);
     setConversationId(null);
+  };
+
+  /**
+   * multi-conversation T2 (S1) — open an existing conversation from the
+   * sidebar: persist its id through the existing identity path, replace the
+   * visible messages with the chosen thread's history and close the panel.
+   */
+  const handleSelectConversation = (id: number) => {
+    setConversationsOpen(false);
+    if (customerId == null || id === conversationId) return;
+    setMessages([]);
+    persistIdentity(customerId, id);
+    void loadHistory(id, customerId);
+  };
+
+  /**
+   * multi-conversation T2 (S3) — "Nueva conversación": POST an empty
+   * conversation, then reset ONLY `vr_conversation_id` + the message list
+   * (ODD S3: identity, consent and attribution keys are never touched).
+   * The fresh thread id lives in state so the first message lands in the
+   * conversation the POST just created — the existing persistIdentity path
+   * re-persists it on the first successful turn. Resolves `false` on
+   * failure so the panel can report it without resetting anything.
+   */
+  const handleNewConversation = async (): Promise<boolean> => {
+    if (customerId == null) return false;
+    try {
+      const res = await fetch("/api/assistant/conversations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ customer_id: customerId }),
+      });
+      if (!res.ok) return false;
+      const data = (await res.json()) as { conversation_id?: unknown };
+      const newId = data?.conversation_id;
+      if (typeof newId !== "number" || !Number.isInteger(newId) || newId <= 0) return false;
+      window.localStorage.removeItem(STORAGE.conversationId);
+      setConversationId(newId);
+      setMessages([]);
+      setConversationsOpen(false);
+      return true;
+    } catch {
+      return false;
+    }
   };
 
   /**
@@ -649,8 +717,30 @@ export function ChatSession({ onOpenAssessment, onClose }: ChatSessionProps) {
   };
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
-      <ChatHeader onClose={() => onClose?.()} />
+    <div className="flex h-full overflow-hidden">
+      {/* multi-conversation T2 — in-flow sidebar at md+, slide-in drawer
+          below md (fixed + backdrop); mounted only while open. */}
+      {phase === "chat" && customerId != null && conversationsOpen && (
+        <ConversationSidebar
+          customerId={customerId}
+          currentConversationId={conversationId}
+          currentMessages={messages}
+          onClose={() => setConversationsOpen(false)}
+          onSelect={handleSelectConversation}
+          onNewConversation={handleNewConversation}
+        />
+      )}
+
+      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+        <ChatHeader
+          onClose={() => onClose?.()}
+          onToggleConversations={
+            phase === "chat" && customerId != null
+              ? () => setConversationsOpen((open) => !open)
+              : undefined
+          }
+          conversationsOpen={conversationsOpen}
+        />
 
       {phase === "access_code" && (
         <AccessCodeGate onValidated={handleAccessCodeValidated} />
@@ -702,6 +792,7 @@ export function ChatSession({ onOpenAssessment, onClose }: ChatSessionProps) {
           />
         </>
       )}
+      </div>
     </div>
   );
 }
