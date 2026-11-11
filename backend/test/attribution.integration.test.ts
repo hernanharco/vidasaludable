@@ -59,7 +59,7 @@ describe("assistant attribution (integration: last-touch access code)", () => {
       name: "Cliente Test",
       email,
       phone,
-      consent_version: 1,
+      consent_version: 2,
       ...(referrerId != null ? { referrer_id: referrerId } : {}),
     });
     expect(res.status).toBe(200);

@@ -7,7 +7,7 @@
  * before any new recommendation; prior records are preserved (version-gated,
  * not presence-gated — see design ADR and recommendation-audit-log spec).
  */
-export const CURRENT_CONSENT_VERSION = 1;
+export const CURRENT_CONSENT_VERSION = 2;
 
 export const CONSENT_TEXT = `CONSENTIMIENTO INFORMADO — RECOMENDADOR PREVENTIVO NUTRILITE™
 
@@ -16,7 +16,10 @@ recibir cualquier recomendación:
 
 1. FINALIDAD. Este asistente le ofrece orientación general de prevención y apoyo al
    estilo de vida con productos Nutrilite™. NO proporciona diagnóstico, tratamiento,
-   cura ni prescripción médica de ninguna enfermedad o condición de salud.
+   cura ni prescripción médica de ninguna enfermedad o condición de salud. Este
+   programa pertenece a los empresarios que lo ofrecen y no representa, patrocina ni
+   está afiliado de ninguna manera con la empresa Nutrilite™; solo se hace uso de
+   sus productos.
 
 2. NATURALEZA INFORMATIVA. Las recomendaciones son de carácter orientativo y se basan
    en la información que usted facilita. No sustituyen la consulta, el diagnóstico ni
@@ -35,7 +38,7 @@ recibir cualquier recomendación:
    consentimiento antes de seguir recibiendo recomendaciones.
 
 5. REVOCACIÓN. Puede solicitar la supresión o revisión de sus datos en cualquier momento
-   dirigiéndose a la doctora.
+   dirigiéndose a la persona que le recomendó esta página.
 
 Al aceptar, confirma que es mayor de edad y que acepta estos términos voluntariamente.`;
 

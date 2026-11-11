@@ -41,7 +41,7 @@ describe("GET /admin/referrers customerCount (integration)", () => {
         name: "Sin Referente",
         email: "otro@example.com",
         phone: "+34000000000",
-        consentVersion: 1,
+        consentVersion: 2,
         consentTimestamp: "2026-01-01T00:00:00Z",
         registeredAt: "2026-01-01T00:00:00Z",
       })
@@ -52,7 +52,7 @@ describe("GET /admin/referrers customerCount (integration)", () => {
         name: "Hernan Arango Cortes",
         email: "hernan.harco@gmail.com",
         phone: "+34634405549",
-        consentVersion: 1,
+        consentVersion: 2,
         consentTimestamp: "2026-10-10T17:25:16.153Z",
         registeredAt: "2026-10-10T17:25:16.153Z",
         referrerId: referrer.id,

@@ -59,7 +59,7 @@ describe("chat long-term memory (integration)", () => {
       name: "Cliente Test",
       email,
       phone,
-      consent_version: 1,
+      consent_version: 2,
     });
     expect(res.status).toBe(200);
     return ((await res.json()) as { customer_id: number }).customer_id;

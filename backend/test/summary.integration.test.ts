@@ -74,7 +74,7 @@ describe("admin customer summary (integration)", () => {
         name: name ?? `Cliente Summary ${customerSeq}`,
         email: `summary${customerSeq}@x.com`,
         phone: `39${String(customerSeq).padStart(8, "0")}`,
-        consentVersion: 1,
+        consentVersion: 2,
         consentTimestamp: "2026-01-01T00:00:00.000Z",
         registeredAt: "2026-01-01T00:00:00.000Z",
       })
@@ -149,7 +149,7 @@ describe("admin customer summary (integration)", () => {
         symptom: "sueño intermitente",
         productReferences: JSON.stringify(["990001"]),
         rationale: "El magnesio ayuda a relajar.",
-        consentVersion: 1,
+        consentVersion: 2,
       })
       .run();
 

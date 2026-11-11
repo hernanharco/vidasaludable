@@ -57,7 +57,7 @@ describe("register + ask (integration: purchase injection, history, append-only)
       name: "Cliente Test",
       email,
       phone,
-      consent_version: 1,
+      consent_version: 2,
     });
     expect(res.status).toBe(200);
     return ((await res.json()) as { customer_id: number }).customer_id;
@@ -242,7 +242,7 @@ describe("register + ask (integration: purchase injection, history, append-only)
       symptom: "cansancio",
       productReferences: ["100305"],
       rationale: "preventive guidance",
-      consentVersion: 1,
+      consentVersion: 2,
       guardBlocked: false,
     });
 

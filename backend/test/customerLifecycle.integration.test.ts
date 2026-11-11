@@ -120,7 +120,7 @@ describe("customer lifecycle (register attribution + safe delete)", () => {
       name: "Hernan",
       email,
       phone,
-      consent_version: 1,
+      consent_version: 2,
       referrer_id: referrerA.id,
     });
     expect(first.status).toBe(200);
@@ -132,7 +132,7 @@ describe("customer lifecycle (register attribution + safe delete)", () => {
       name: "Hernan",
       email,
       phone,
-      consent_version: 1,
+      consent_version: 2,
       referrer_id: referrerB.id,
     });
     expect(second.status).toBe(200);
@@ -157,7 +157,7 @@ describe("customer lifecycle (register attribution + safe delete)", () => {
       name: "Sin Código",
       email,
       phone: "+34600000001",
-      consent_version: 1,
+      consent_version: 2,
       referrer_id: referrerA.id,
     });
     expect(first.status).toBe(200);
@@ -167,7 +167,7 @@ describe("customer lifecycle (register attribution + safe delete)", () => {
       name: "Sin Código",
       email,
       phone: "+34600000001",
-      consent_version: 1,
+      consent_version: 2,
     });
     expect(second.status).toBe(200);
 
@@ -180,7 +180,7 @@ describe("customer lifecycle (register attribution + safe delete)", () => {
       name: "Con Historial",
       email: "historial@example.com",
       phone: "+34600000002",
-      consent_version: 1,
+      consent_version: 2,
       referrer_id: referrerA.id,
     });
     expect(res.status).toBe(200);
@@ -191,7 +191,7 @@ describe("customer lifecycle (register attribution + safe delete)", () => {
       name: "Otro Cliente",
       email: "otro@example.com",
       phone: "+34600000009",
-      consent_version: 1,
+      consent_version: 2,
     });
     expect(bystander.status).toBe(200);
     const bystanderId = ((await bystander.json()) as { customer_id: number }).customer_id;
@@ -210,7 +210,7 @@ describe("customer lifecycle (register attribution + safe delete)", () => {
       symptom: "fatiga",
       productReferences: JSON.stringify(["P-1"]),
       rationale: "test",
-      consentVersion: 1,
+      consentVersion: 2,
     }).run();
     db.insert(products).values({
       reference: "P-1",
@@ -262,7 +262,7 @@ describe("customer lifecycle (register attribution + safe delete)", () => {
       name: "Código Malo",
       email,
       phone: "+34600000004",
-      consent_version: 1,
+      consent_version: 2,
       referrer_id: referrerA.id,
     });
     expect(first.status).toBe(200);
@@ -274,7 +274,7 @@ describe("customer lifecycle (register attribution + safe delete)", () => {
       name: "Código Malo",
       email,
       phone: "+34600000004",
-      consent_version: 1,
+      consent_version: 2,
       referrer_id: 999999,
     });
     expect(bad.status).toBe(400);
@@ -287,7 +287,7 @@ describe("customer lifecycle (register attribution + safe delete)", () => {
       name: "Borrar Vía API",
       email: "borrar-api@example.com",
       phone: "+34600000003",
-      consent_version: 1,
+      consent_version: 2,
       referrer_id: referrerA.id,
     });
     expect(res.status).toBe(200);
@@ -319,7 +319,7 @@ describe("customer lifecycle (register attribution + safe delete)", () => {
       name: "Con Resumen",
       email: "resumen@example.com",
       phone: "+34600000004",
-      consent_version: 1,
+      consent_version: 2,
       referrer_id: referrerB.id,
     });
     expect(res.status).toBe(200);
@@ -345,7 +345,7 @@ describe("customer lifecycle (register attribution + safe delete)", () => {
       name: "Con Recomendación",
       email: "con-reco@example.com",
       phone: "+34600000005",
-      consent_version: 1,
+      consent_version: 2,
       referrer_id: referrerA.id,
     });
     expect(res.status).toBe(200);
@@ -359,7 +359,7 @@ describe("customer lifecycle (register attribution + safe delete)", () => {
       symptom: "fatiga",
       productReferences: JSON.stringify([]),
       rationale: "test",
-      consentVersion: 1,
+      consentVersion: 2,
     }).run();
 
     // Before the fix: recommendations referenced the conversation, so this

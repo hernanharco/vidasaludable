@@ -55,7 +55,7 @@ describe("register + consent versioning (integration)", () => {
       name: "Ana",
       email: "ana@x.com",
       phone: "111",
-      consent_version: 1,
+      consent_version: 2,
     });
     expect(res.status).toBe(200);
     const data = (await res.json()) as { customer_id: number; reconsented: boolean };
@@ -68,7 +68,7 @@ describe("register + consent versioning (integration)", () => {
       name: "Ana",
       email: "ana@x.com",
       phone: "111",
-      consent_version: 1,
+      consent_version: 2,
     });
     expect(res.status).toBe(200); // upsert, not conflict
     const data = (await res.json()) as { customer_id: number; reconsented: boolean };
@@ -101,7 +101,7 @@ describe("register + consent versioning (integration)", () => {
       name: "Ana",
       email: "ana@x.com",
       phone: "111",
-      consent_version: 1,
+      consent_version: 2,
     });
     expect(res.status).toBe(200);
     const data = (await res.json()) as { customer_id: number; reconsented: boolean };
@@ -109,7 +109,7 @@ describe("register + consent versioning (integration)", () => {
     expect(data.reconsented).toBe(true);
 
     const refreshed = db.select().from(customers).where(eq(customers.id, 1)).get();
-    expect(refreshed?.consentVersion).toBe(1);
+    expect(refreshed?.consentVersion).toBe(2);
 
     // After re-consent the customer can keep using /ask (no 401 dead-end).
     const ok = await post("/assistant/ask", { customer_id: 1, message: "¿qué vitamina?" });

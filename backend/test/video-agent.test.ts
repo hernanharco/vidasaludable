@@ -228,7 +228,7 @@ describe("ask route: video block injection + video_refs filtering", () => {
       name: "Cliente Video",
       email,
       phone: "3007",
-      consent_version: 1,
+      consent_version: 2,
     });
     expect(res.status).toBe(200);
     return ((await res.json()) as { customer_id: number }).customer_id;
