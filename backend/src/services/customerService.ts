@@ -82,6 +82,13 @@ function normalize(s: string): string {
   return s.trim().toLowerCase();
 }
 
+/**
+ * Wire-format email check shared by registration and the PUBLIC landing
+ * booking form (tamizaje-images T2): one pattern, two surfaces — a
+ * malformed address is an invalid input value on both.
+ */
+export const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export function createCustomerService(db: Db, deps: CustomerServiceDeps = {}): CustomerService {
   return {
     register(input: RegisterInput): RegisterResult {
@@ -91,7 +98,7 @@ export function createCustomerService(db: Db, deps: CustomerServiceDeps = {}): C
       if (!name || !email || !phone) {
         return { status: "invalid", reason: "name, email y phone son obligatorios" };
       }
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      if (!EMAIL_PATTERN.test(email)) {
         return { status: "invalid", reason: "email no válido" };
       }
       if (input.consentVersion !== CURRENT_CONSENT_VERSION) {

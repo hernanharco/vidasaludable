@@ -8,6 +8,8 @@ import type { Db } from "./db/client.js";
 import { createDatabase } from "./db/client.js";
 import { migrate } from "./db/migrate.js";
 import { createAssistantRouter } from "./routes/assistant.js";
+import { createAssistantTamizajeRouter } from "./routes/assistantTamizaje.js";
+import { createAppointmentsRouter } from "./routes/appointments.js";
 import type { GeminiClient } from "./agent/gemini.js";
 import type { CloudinaryClient } from "./services/cloudinaryService.js";
 import { createRegisterRouter } from "./routes/register.js";
@@ -132,6 +134,15 @@ export function buildApp(db: Db, deps: BuildAppDeps = {}): Hono {
 
   app.route("/assistant", createRegisterRouter(db));
   app.route("/assistant", createAssistantRouter(db, { geminiClient: deps.geminiClient }));
+  // tamizaje-images T2: customer-facing images / body-metrics / appointments
+  // (consent gate on the health-PII writes, same mount as the assistant).
+  app.route(
+    "/assistant",
+    createAssistantTamizajeRouter(db, { cloudinaryClient: deps.cloudinaryClient }),
+  );
+  // tamizaje-images T2: PUBLIC landing Booking form — root mount, no auth,
+  // NOT under /assistant or /admin (anonymous row with customer_id NULL).
+  app.route("/", createAppointmentsRouter(db));
   app.route("/admin", createAdminRouter(db, {
     analysisAnalyze: deps.analysisAnalyze,
     cloudinaryClient: deps.cloudinaryClient,

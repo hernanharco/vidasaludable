@@ -68,6 +68,35 @@ export interface ChatMessage {
   content: string;
 }
 
+/**
+ * tamizaje-images T2 (S1) — the customer's LATEST `body_metrics` record as
+ * prompt context (optional, never-blocking: no row ⇒ no block). Structural,
+ * same convention as ProfileContext: every field optional, a missing field
+ * is simply not rendered (never an "undefined" label in the prompt).
+ */
+export interface BodyMetricContext {
+  measuredAt?: string | number | null;
+  source?: string | number | null; // RENPHO | manual
+  weightKg?: number | null;
+  bmi?: number | null;
+  bodyFatPct?: number | null;
+  fatMassKg?: number | null;
+  subcutaneousFatPct?: number | null;
+  visceralFat?: number | null;
+  musclePct?: number | null;
+  muscleMassKg?: number | null;
+  skeletalMusclePct?: number | null;
+  skeletalMuscleMassKg?: number | null;
+  bonePct?: number | null;
+  boneMassKg?: number | null;
+  fatFreeMassKg?: number | null;
+  metabolicAge?: number | null;
+  bmrKcal?: number | null;
+  waterPct?: number | null;
+  proteinPct?: number | null;
+  notes?: string | number | null;
+}
+
 const HARD_LIMIT = `ERES UN ASISTENTE PREVENTIVO DE NUTRILITE™. LÍMITE DURO E INVIOLABLE:
 
 1. SOLO PREVENCIÓN Y ESTILO DE VIDA. Tu función es ofrecer orientación general de
@@ -92,7 +121,13 @@ const HARD_LIMIT = `ERES UN ASISTENTE PREVENTIVO DE NUTRILITE™. LÍMITE DURO E
    inventes ids de video. Preséntalos SIEMPRE como contenido educativo sobre un
    tema, NUNCA como diagnóstico, tratamiento ni prescripción de la condición del
    usuario. Si ningún video coincide con el tema del usuario, simplemente no
-   cites ninguno.`;
+   cites ninguno.
+9. CITA PARA EL TAMIZAJE PRESENCIAL. Cuando el usuario pregunte por el
+   tamizaje presencial, por la medición de su composición corporal en persona
+   o quiera agendar una cita, escribe el marcador exacto [CITA] en una línea
+   propia (el frontend lo renderiza como botón de solicitud de cita, con el
+   mismo mecanismo que [ASSESSMENT]). Escríbelo exactamente así, una sola vez
+   y solo cuando lo pida el usuario; nunca lo uses en otros temas.`;
 
 /**
  * agent-persona-memory T1 (S3-S5) — conversational personality. Always
@@ -124,6 +159,10 @@ const PERSONA = `TU PERSONALIDAD (cómo hablas; no cambia ninguna regla de arrib
  * only when the "PERFIL DEL USUARIO" block is actually injected. The
  * [ASSESSMENT] marker must be written literally, once, on its own line —
  * the frontend matches it to render the 95-symptom check as a button.
+ * tamizaje-images T2: the [CITA] marker (appointment-request card, rendered
+ * by the frontend with the SAME mechanism as [ASSESSMENT]) is documented in
+ * the same literal-marker style — HARD_LIMIT rule 9 carries the
+ * unconditional contract so it also works without a profile block.
  */
 const GUIDED_FLOW = `FLUJO GUIADO CON EL PERFIL INICIAL DEL USUARIO (aplica solo cuando se inyecte el bloque de perfil inicial a continuación):
 1. ABRE tu respuesta con 2-3 preguntas cortas y abiertas de seguimiento basadas
@@ -138,6 +177,11 @@ const GUIDED_FLOW = `FLUJO GUIADO CON EL PERFIL INICIAL DEL USUARIO (aplica solo
    chequeo completo de 95 síntomas escribiendo el marcador exacto [ASSESSMENT]
    en una línea propia (el frontend lo renderiza como botón). Escríbelo
    exactamente así, una sola vez, sin texto adicional en esa línea.
+4. Si el usuario pregunta por el tamizaje presencial o pide agendar una cita,
+   escribe el marcador exacto [CITA] en una línea propia (el frontend lo
+   renderiza como botón de solicitud de cita, con el mismo mecanismo que
+   [ASSESSMENT]). Escríbelo exactamente así, una sola vez, sin texto adicional
+   en esa línea.
 Cuando NO haya bloque de perfil, omite este flujo guiado y responde directamente.`;
 
 /**
@@ -222,6 +266,69 @@ export function memoryBlock(content: string | null | undefined): string {
   const text = content?.trim();
   if (!text) return "";
   return `LO QUE RECUERDAS DE CONVERSACIONES ANTERIORES (retoma el tema con naturalidad, sin decir «según mis registros» ni volver a preguntar lo que ya respondió):\n- ${text}`;
+}
+
+/**
+ * Formats one stored metric for display: integers stay bare, non-integers
+ * gain the Spanish decimal comma (same display rule as formatMeters);
+ * a non-numeric stored value degrades to the raw string (defensive, mirroring
+ * presentProfileField — never "NaN").
+ */
+function formatMetric(value: number | string): string {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return String(value);
+  return Number.isInteger(n) ? String(n) : String(n).replace(".", ",");
+}
+
+/**
+ * tamizaje-images T2 (S1) — the customer's latest body-composition record as
+ * an optional prompt block, injected right AFTER memoryBlock (S3 "Inyectar
+ * en el agente"). Same convention as memoryBlock/profileBlock: null or an
+ * all-empty record renders "" (no stale header), so a customer without
+ * Tanita records behaves exactly as before (optional, never-blocking).
+ *
+ * The header carries instruction (a) of the ODD Diseño: the data is a
+ * LIFESTYLE input only — never a diagnosis or treatment (the RENPHO report
+ * itself notes it does not replace medical equipment), mirroring the
+ * HARD_LIMIT disclaimer tone.
+ */
+export function bodyMetricsBlock(metrics: BodyMetricContext | null | undefined): string {
+  if (!metrics) return "";
+  const lines: string[] = [];
+  const add = (label: string, value: number | string | null | undefined, unit = "") => {
+    if (value == null || value === "") return; // absent field → no label
+    lines.push(`- ${label}: ${formatMetric(value)}${unit}`);
+  };
+
+  const measuredAt = presentProfileField(metrics.measuredAt);
+  const source = presentProfileField(metrics.source);
+  if (measuredAt) {
+    lines.push(`- Fecha de medición: ${measuredAt}${source ? ` · origen: ${source}` : ""}`);
+  } else if (source) {
+    lines.push(`- Origen: ${source}`);
+  }
+  add("Peso", metrics.weightKg, " kg");
+  add("IMC", metrics.bmi);
+  add("Grasa corporal", metrics.bodyFatPct, " %");
+  add("Masa de grasa", metrics.fatMassKg, " kg");
+  add("Grasa subcutánea", metrics.subcutaneousFatPct, " %");
+  add("Grasa visceral", metrics.visceralFat);
+  add("Porcentaje de músculo", metrics.musclePct, " %");
+  add("Masa muscular", metrics.muscleMassKg, " kg");
+  add("Músculo esquelético", metrics.skeletalMusclePct, " %");
+  add("Masa de músculo esquelético", metrics.skeletalMuscleMassKg, " kg");
+  add("Porcentaje de hueso", metrics.bonePct, " %");
+  add("Masa ósea", metrics.boneMassKg, " kg");
+  add("Masa magra", metrics.fatFreeMassKg, " kg");
+  add("Edad metabólica", metrics.metabolicAge, " años");
+  add("Gasto energético basal (BMR)", metrics.bmrKcal, " kcal");
+  add("Agua corporal", metrics.waterPct, " %");
+  add("Proteína", metrics.proteinPct, " %");
+  const notes = presentProfileField(metrics.notes);
+  if (notes) lines.push(`- Notas: "${notes}"`);
+
+  if (lines.length === 0) return "";
+  return `LO QUE SE SABE DE TU COMPOSICIÓN CORPORAL (registro opcional que el usuario compartió — úsalo SOLO como insumo de estilo de vida para personalizar tu orientación preventiva; NUNCA como diagnóstico ni tratamiento, y jamás lo presentes como un valor médico que sustituya una evaluación profesional):\n${lines.join("\n")}`;
 }
 
 function catalogBlock(ctx: CatalogContext): string {
@@ -412,6 +519,9 @@ export function buildSystemPrompt(
   // agent-persona-memory T2: optional (backwards-compatible) long-term
   // memory summary; null/undefined/blank ⇒ no memory block injected.
   memory?: string | null,
+  // tamizaje-images T2 (S1): optional (backwards-compatible) latest
+  // body-metrics record; null/undefined ⇒ no body-composition block injected.
+  bodyMetrics?: BodyMetricContext | null,
 ): string {
   const blocks = [
     HARD_LIMIT,
@@ -421,6 +531,8 @@ export function buildSystemPrompt(
     "CONTEXTO DE ESTA CONVERSACIÓN:",
     profileBlock(profile ?? null),
     memoryBlock(memory ?? null),
+    // tamizaje-images T2: injected right after memoryBlock (ODD Diseño).
+    bodyMetricsBlock(bodyMetrics ?? null),
     purchasesBlock(purchases),
     "",
     catalogBlock(ctx),

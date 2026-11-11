@@ -8,6 +8,7 @@ import { createGuidanceService } from "../services/guidanceService.js";
 import { createVideoService, parseSegmentProductList } from "../services/videoService.js";
 import { createProfileService } from "../services/profileService.js";
 import { createMemoryService } from "../services/memoryService.js";
+import { createBodyMetricService } from "../services/bodyMetricService.js";
 import { createGeminiClient, type GeminiClient } from "../agent/gemini.js";
 import { summarizeConversation, MEMORY_SUMMARIZE_EVERY } from "../agent/memory.js";
 import { buildSystemPrompt, buildHistoryMessages, extractProductRefs, extractVideoRefs, pairSegmentProducts } from "../agent/prompt.js";
@@ -75,6 +76,9 @@ export function createAssistantRouter(db: Db, deps: AssistantRouterDeps = {}): H
   const videos = createVideoService(db);
   const profiles = createProfileService(db);
   const memories = createMemoryService(db);
+  // tamizaje-images T2 (S1): reads the latest body-composition record for
+  // the optional bodyMetricsBlock (same service the customer endpoints use).
+  const bodyMetrics = createBodyMetricService(db);
   const gemini = deps.geminiClient ?? createGeminiClient();
 
   app.get("/consent", (c) => {
@@ -356,6 +360,9 @@ export function createAssistantRouter(db: Db, deps: AssistantRouterDeps = {}): H
     // agent-persona-memory T2 (S1): the long-term per-customer summary so the
     // bot remembers across conversations. Absent/blank ⇒ no block injected.
     const memory = memories.getByCustomer(customerId) ?? null;
+    // tamizaje-images T2 (S1): the customer's LATEST body_metrics row for the
+    // optional bodyMetricsBlock. No row ⇒ no block (optional, never-blocking).
+    const latestBodyMetrics = bodyMetrics.getLatestByCustomer(customerId) ?? null;
     const systemPrompt = buildSystemPrompt(
       { products: catalogProducts },
       { refs: purchaseRefs },
@@ -387,6 +394,7 @@ export function createAssistantRouter(db: Db, deps: AssistantRouterDeps = {}): H
       },
       profile,
       memory?.content ?? null,
+      latestBodyMetrics,
     );
 
     let rawReply: string;
