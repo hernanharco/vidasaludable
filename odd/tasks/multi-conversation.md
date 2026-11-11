@@ -69,8 +69,13 @@ conversación se inyecta en todas las demás. No hay memoria aislada por tema.
   Detalle: el id creado por POST se mantiene en estado (no solo en storage)
   para que el primer `/ask` use esa conversación y no orqueste una fila
   vacía; al re-seleccionar la actual solo cierra el panel.
-- [ ] T3 — Cierre: docs/help si aplica, suite completa, deploy + verificación
+- [x] T3 — Cierre: docs/help si aplica, suite completa, deploy + verificación
   en prod, evidencia en este documento (L de Log con commits).
+  **Hecho (L5)**: push `c57893c3..b611a145`; migración aplicada en prod
+  (`conversations` = id, customer_id, created_at, title, updated_at;
+  integrity ok); endpoints vivos (404 JSON `customer no encontrado` para
+  id inexistente, 200 `{"conversations":[]}` para el customer real 12);
+  bundle `index-gx8e_iTv.js` contiene "Nueva conversación" + `vr_referrer_id`.
 
 ## Log
 
@@ -98,3 +103,9 @@ conversación se inyecta en todas las demás. No hay memoria aislada por tema.
   menú solo existe en fase chat (gates/intake sin cambios). Suite frontend
   256/257 (único fallo = timeout pre-existente de ChatIntake) + tsc OK,
   spot check del orquestador en verde.
+- **L5** (2026-11-11, T3 cierre): backend 320/320 (commit `6e0abdde`) +
+  frontend 256/257 (commit `b611a145`), único fallo = timeout pre-existente
+  de ChatIntake. Deploy verificado E2E en prod: migración de columnas ok,
+  GET/POST `/assistant/conversations` responden con el contrato (200 lista
+  vacía para customer 12 / 404 JSON para id inexistente), bundle con el
+  sidebar. Feature COMPLETA.
