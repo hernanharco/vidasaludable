@@ -9,6 +9,7 @@ import { createDatabase } from "./db/client.js";
 import { migrate } from "./db/migrate.js";
 import { createAssistantRouter } from "./routes/assistant.js";
 import type { GeminiClient } from "./agent/gemini.js";
+import type { CloudinaryClient } from "./services/cloudinaryService.js";
 import { createRegisterRouter } from "./routes/register.js";
 import { createAdminRouter } from "./routes/admin.js";
 import { createAssessmentRouter } from "./routes/assessment.js";
@@ -87,6 +88,9 @@ export interface BuildAppDeps {
   geminiClient?: GeminiClient;
   /** admin-video-analyze: injectable analyzer threaded to the admin router. */
   analysisAnalyze?: AnalysisAnalyzeFn;
+  /** tamizaje-images T1: injectable Cloudinary client (tests inject a fake —
+   * no network, no credentials, no CLOUDINARY_* env needed). */
+  cloudinaryClient?: CloudinaryClient;
 }
 
 export function buildApp(db: Db, deps: BuildAppDeps = {}): Hono {
@@ -128,7 +132,10 @@ export function buildApp(db: Db, deps: BuildAppDeps = {}): Hono {
 
   app.route("/assistant", createRegisterRouter(db));
   app.route("/assistant", createAssistantRouter(db, { geminiClient: deps.geminiClient }));
-  app.route("/admin", createAdminRouter(db, { analysisAnalyze: deps.analysisAnalyze }));
+  app.route("/admin", createAdminRouter(db, {
+    analysisAnalyze: deps.analysisAnalyze,
+    cloudinaryClient: deps.cloudinaryClient,
+  }));
   app.route("/assessment", createAssessmentRouter(db));
   app.route("/referrer", createReferrerRouter(db));
   app.route("/admin/referrers", createAdminReferrerRouter(db));

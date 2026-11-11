@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import type { Context } from "hono";
 import type { Db } from "../db/client.js";
 import { createCatalogService } from "../services/catalogService.js";
 import type { CatalogService } from "../services/catalogService.js";
@@ -14,15 +15,67 @@ import { createRecommendationService } from "../services/recommendationService.j
 import { createConversationService } from "../services/conversationService.js";
 import { createCustomerService } from "../services/customerService.js";
 import {
+  createCloudinaryClient,
+  CloudinaryNotConfiguredError,
+} from "../services/cloudinaryService.js";
+import type { CloudinaryClient, CloudinaryUploadResult } from "../services/cloudinaryService.js";
+import {
   createSummaryService,
   CustomerNotFoundError,
   SummaryGenerationError,
 } from "../services/summaryService.js";
 import type { GeminiClient } from "../agent/gemini.js";
-import { customers, conversations, messages, products, purchases, videos, videoSegments, recommendations as recommendationsTable } from "../db/schema.js";
+import { customers, conversations, messages, products, purchases, videos, videoSegments, recommendations as recommendationsTable, bodyMetrics, customerImages, appointmentRequests } from "../db/schema.js";
 import { assessmentSymptoms } from "../db/assessmentSchema.js";
-import type { NewGuidance, NewVideo } from "../db/schema.js";
-import { eq, count } from "drizzle-orm";
+import type { NewGuidance, NewVideo, NewBodyMetric, NewAppointmentRequest } from "../db/schema.js";
+import { and, eq, count } from "drizzle-orm";
+
+/** Allowed `customer_images.kind` values (design: tamizaje|evolucion|otro). */
+const IMAGE_KINDS = ["tamizaje", "evolucion", "otro"] as const;
+/** Allowed `appointment_requests.status` values (CRM state machine). */
+const APPOINTMENT_STATUSES = ["pendiente", "contactada", "agendada", "cancelada"] as const;
+/** Upload cap: 8 MB DECODED (design: "Límite de carga: 8 MB — rechazar 413/400"). */
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+/** The body-metric columns accepted by POST .../body-metrics (snake_case wire). */
+const BODY_METRIC_FIELDS = [
+  "weight_kg",
+  "bmi",
+  "body_fat_pct",
+  "fat_mass_kg",
+  "subcutaneous_fat_pct",
+  "visceral_fat",
+  "muscle_pct",
+  "muscle_mass_kg",
+  "skeletal_muscle_pct",
+  "skeletal_muscle_mass_kg",
+  "bone_pct",
+  "bone_mass_kg",
+  "fat_free_mass_kg",
+  "metabolic_age",
+  "bmr_kcal",
+  "water_pct",
+  "protein_pct",
+] as const;
+/** Wire name (snake_case, per the ODD Diseño) → Drizzle column (camelCase). */
+const BODY_METRIC_COLUMNS = {
+  weight_kg: "weightKg",
+  bmi: "bmi",
+  body_fat_pct: "bodyFatPct",
+  fat_mass_kg: "fatMassKg",
+  subcutaneous_fat_pct: "subcutaneousFatPct",
+  visceral_fat: "visceralFat",
+  muscle_pct: "musclePct",
+  muscle_mass_kg: "muscleMassKg",
+  skeletal_muscle_pct: "skeletalMusclePct",
+  skeletal_muscle_mass_kg: "skeletalMuscleMassKg",
+  bone_pct: "bonePct",
+  bone_mass_kg: "boneMassKg",
+  fat_free_mass_kg: "fatFreeMassKg",
+  metabolic_age: "metabolicAge",
+  bmr_kcal: "bmrKcal",
+  water_pct: "waterPct",
+  protein_pct: "proteinPct",
+} as const satisfies Record<(typeof BODY_METRIC_FIELDS)[number], keyof NewBodyMetric>;
 
 /** Allowed `videos.status` values — the pipeline lifecycle state machine. */
 const VIDEO_STATUSES = ["draft", "analyzed", "cut", "published"] as const;
@@ -46,6 +99,9 @@ export interface AdminRouterDeps {
   /** admin-video-analyze: injectable analyzer (tests run the real route +
    * runner without network/subprocesses; production uses the default). */
   analysisAnalyze?: AnalysisAnalyzeFn;
+  /** tamizaje-images T1: injectable Cloudinary client (tests use a fake — no
+   * network, no credentials; production resolves CLOUDINARY_* env). */
+  cloudinaryClient?: CloudinaryClient;
 }
 
 /**
@@ -68,7 +124,11 @@ export function createAdminRouter(db: Db, deps: AdminRouterDeps = {}): Hono {
   const catalog = createCatalogService(db);
   const recommendations = createRecommendationService(db);
   const conversationsService = createConversationService(db);
-  const customersService = createCustomerService(db);
+  // Default reads CLOUDINARY_* env lazily at call time — constructing it here
+  // never throws, so an unconfigured server boots and only the upload call
+  // fails (clear 500, see POST /customers/:id/images).
+  const cloudinary = deps.cloudinaryClient ?? createCloudinaryClient();
+  const customersService = createCustomerService(db, { cloudinary });
   const guidanceService = createGuidanceService(db);
   const videoService = createVideoService(db);
   const analysisRunner = createAnalysisRunner(db, deps.analysisAnalyze);
@@ -181,6 +241,222 @@ export function createAdminRouter(db: Db, deps: AdminRouterDeps = {}): Hono {
     const deleted = customersService.delete(id);
     if (!deleted) return c.json({ error: "customer not found" }, 404);
     return c.body(null, 204);
+  });
+
+  /**
+   * Resolves the `:id` of a customer-scoped route: malformed id → 400
+   * `{error:"invalid id"}`, unknown customer → 404 `{error:"customer not found"}`
+   * (the existing admin conventions), otherwise the numeric id.
+   */
+  const resolveCustomerId = (c: Context): number | Response => {
+    const id = Number(c.req.param("id"));
+    if (!Number.isInteger(id)) return c.json({ error: "invalid id" }, 400);
+    const customer = db.select().from(customers).where(eq(customers.id, id)).get();
+    if (!customer) return c.json({ error: "customer not found" }, 404);
+    return id;
+  };
+
+  // --- Tamizaje: image history (S2, Cloudinary refs only — no binaries) ---
+  app.get("/customers/:id/images", (c) => {
+    const customerId = resolveCustomerId(c);
+    if (typeof customerId !== "number") return customerId;
+    return c.json({
+      images: db.select().from(customerImages).where(eq(customerImages.customerId, customerId)).all(),
+    });
+  });
+
+  /**
+   * Server-side upload proxy: the admin sends base64 in JSON (the gate is the
+   * route itself), this endpoint signs and forwards it to Cloudinary and
+   * stores ONLY `public_id`/`secure_url` with `uploaded_by='admin'`.
+   *
+   * 201 {image} on success · 400 invalid body/kind/data · 413 over the 8MB
+   * decoded cap · 404 unknown customer · 500 cloudinary not configured
+   * (boot-safe: the client fails at call time, not at startup) · 502 upload
+   * failure (Cloudinary/network).
+   */
+  app.post("/customers/:id/images", async (c) => {
+    const customerId = resolveCustomerId(c);
+    if (typeof customerId !== "number") return customerId;
+
+    const body = await c.req.json().catch(() => null);
+    if (!body) return c.json({ error: "invalid body" }, 400);
+
+    const kind = body.kind != null ? String(body.kind) : "";
+    if (!kind) return c.json({ error: "missing field: kind" }, 400);
+    if (!(IMAGE_KINDS as readonly string[]).includes(kind)) {
+      return c.json({ error: "kind must be tamizaje, evolucion u otro" }, 400);
+    }
+
+    // `data` (canonical) or `base64` (alias): raw base64 or a full data URI.
+    const rawData = body.data ?? body.base64;
+    if (rawData == null || String(rawData).trim() === "") {
+      return c.json({ error: "missing field: data" }, 400);
+    }
+    const payload = String(rawData).trim();
+    const base64Part = payload.startsWith("data:")
+      ? payload.slice(payload.indexOf(",") + 1)
+      : payload;
+    const compact = base64Part.replace(/\s+/g, "");
+    if (compact === "" || !/^[A-Za-z0-9+/]+={0,2}$/.test(compact)) {
+      return c.json({ error: "data must be valid base64" }, 400);
+    }
+    // Size cap on the DECODED payload, computed from the base64 length (no
+    // decode needed): len*3/4 minus padding. Over → 413 (design: 8MB limit).
+    const padding = compact.endsWith("==") ? 2 : compact.endsWith("=") ? 1 : 0;
+    const decodedBytes = Math.floor((compact.length * 3) / 4) - padding;
+    if (decodedBytes > MAX_IMAGE_BYTES) {
+      return c.json({ error: "image exceeds the 8MB limit" }, 413);
+    }
+
+    const takenAt = body.taken_at != null ? String(body.taken_at) : null;
+    const notes = body.notes != null ? String(body.notes) : null;
+
+    let uploaded: CloudinaryUploadResult;
+    try {
+      uploaded = await cloudinary.upload(payload);
+    } catch (err) {
+      if (err instanceof CloudinaryNotConfiguredError) {
+        return c.json({ error: "cloudinary not configured" }, 500);
+      }
+      return c.json({ error: "cloudinary upload failed" }, 502);
+    }
+
+    const image = db
+      .insert(customerImages)
+      .values({
+        customerId,
+        kind,
+        cloudinaryPublicId: uploaded.public_id,
+        cloudinarySecureUrl: uploaded.secure_url,
+        takenAt,
+        uploadedBy: "admin", // this router IS the admin surface (design)
+        notes,
+      })
+      .returning()
+      .get();
+    return c.json({ image }, 201);
+  });
+
+  // --- Métricas corporales (S1: optional, never-blocking record) ---
+  app.get("/customers/:id/body-metrics", (c) => {
+    const customerId = resolveCustomerId(c);
+    if (typeof customerId !== "number") return customerId;
+    return c.json({
+      bodyMetrics: db.select().from(bodyMetrics).where(eq(bodyMetrics.customerId, customerId)).all(),
+    });
+  });
+
+  /**
+   * Creates or UPSERTs the record for `measured_at` (one row per customer
+   * + date, enforced by body_metrics_customer_measured_unique). Absent
+   * fields KEEP their stored value on update — partial records are valid by
+   * design, so a one-field correction cannot wipe a full RENPHO import.
+   * 201 on create, 200 on upsert.
+   */
+  app.post("/customers/:id/body-metrics", async (c) => {
+    const customerId = resolveCustomerId(c);
+    if (typeof customerId !== "number") return customerId;
+
+    const body = await c.req.json().catch(() => null);
+    if (!body) return c.json({ error: "invalid body" }, 400);
+
+    const measuredAt = body.measured_at != null ? String(body.measured_at).trim() : "";
+    if (!measuredAt) return c.json({ error: "missing field: measured_at" }, 400);
+
+    const metrics: Partial<NewBodyMetric> = {};
+    for (const field of BODY_METRIC_FIELDS) {
+      const raw = body[field];
+      if (raw == null || raw === "") continue; // absent → keep stored value
+      const num = Number(raw);
+      if (!Number.isFinite(num)) {
+        return c.json({ error: `${field} must be a number` }, 400);
+      }
+      metrics[BODY_METRIC_COLUMNS[field]] = num;
+    }
+
+    const patch: Partial<NewBodyMetric> = { ...metrics };
+    if (body.source != null && body.source !== "") {
+      const source = String(body.source);
+      if (source !== "RENPHO" && source !== "manual") {
+        return c.json({ error: "source must be RENPHO or manual" }, 400);
+      }
+      patch.source = source;
+    }
+    if (body.notes != null) patch.notes = String(body.notes);
+
+    const existing = db
+      .select()
+      .from(bodyMetrics)
+      .where(and(eq(bodyMetrics.customerId, customerId), eq(bodyMetrics.measuredAt, measuredAt)))
+      .get();
+
+    if (existing) {
+      if (Object.keys(patch).length === 0) {
+        return c.json({ bodyMetric: existing }, 200); // nothing to change
+      }
+      const updated = db
+        .update(bodyMetrics)
+        .set(patch)
+        .where(and(eq(bodyMetrics.customerId, customerId), eq(bodyMetrics.measuredAt, measuredAt)))
+        .returning()
+        .get();
+      return c.json({ bodyMetric: updated }, 200);
+    }
+
+    const inserted = db
+      .insert(bodyMetrics)
+      .values({ ...patch, customerId, measuredAt })
+      .returning()
+      .get();
+    return c.json({ bodyMetric: inserted }, 201);
+  });
+
+  // --- Solicitud de cita (S3: landing + CRM + chat) — CRM list + updates. ---
+  // Includes the public landing rows (customer_id NULL): this is the CRM
+  // view of appointment_requests.
+  app.get("/appointments", (c) =>
+    c.json({ appointments: db.select().from(appointmentRequests).all() }),
+  );
+
+  /**
+   * PATCH /admin/appointments/:id — the CRM status machine
+   * (pendiente → contactada → agendada | cancelada) plus admin follow-up
+   * notes. Every change bumps `updated_at`.
+   * 200 {appointment} · 400 invalid id/body/status/nothing-to-update ·
+   * 404 appointment not found.
+   */
+  app.patch("/appointments/:id", async (c) => {
+    const id = Number(c.req.param("id"));
+    if (!Number.isInteger(id)) return c.json({ error: "invalid id" }, 400);
+    const body = await c.req.json().catch(() => null);
+    if (!body) return c.json({ error: "invalid body" }, 400);
+
+    const existing = db
+      .select()
+      .from(appointmentRequests)
+      .where(eq(appointmentRequests.id, id))
+      .get();
+    if (!existing) return c.json({ error: "appointment not found" }, 404);
+
+    const patch: Partial<NewAppointmentRequest> = {};
+    if (body.status != null) {
+      const status = String(body.status);
+      if (!(APPOINTMENT_STATUSES as readonly string[]).includes(status)) {
+        return c.json({ error: "status must be pendiente, contactada, agendada o cancelada" }, 400);
+      }
+      patch.status = status;
+    }
+    if (body.notes != null) patch.notes = String(body.notes);
+    if (Object.keys(patch).length === 0) return c.json({ error: "nothing to update" }, 400);
+
+    const updated = db
+      .update(appointmentRequests)
+      .set({ ...patch, updatedAt: new Date().toISOString() })
+      .where(eq(appointmentRequests.id, id))
+      .returning()
+      .get();
+    return c.json({ appointment: updated });
   });
 
   // --- Advisor executive summary (advisor-summary T2): GET reads the stored

@@ -1,7 +1,8 @@
 import { eq } from "drizzle-orm";
 import type { Db } from "../db/client.js";
-import { customers, referrers, customerProfile, customerSummaries, conversations, messages, recommendations, purchases } from "../db/schema.js";
+import { customers, referrers, customerProfile, customerSummaries, conversations, messages, recommendations, purchases, bodyMetrics, customerImages, appointmentRequests } from "../db/schema.js";
 import type { Customer } from "../db/schema.js";
+import type { CloudinaryClient } from "./cloudinaryService.js";
 import { CURRENT_CONSENT_VERSION } from "../config/consent.js";
 
 /**
@@ -59,15 +60,29 @@ export interface CustomerService {
    * it. `customers` has NO `ON DELETE CASCADE` on its incoming foreign keys
    * while the client enables `foreign_keys = ON`, so the implementation must
    * remove the dependents itself — see the implementation for the order.
+   *
+   * tamizaje-images T1: `body_metrics`, `customer_images` and
+   * `appointment_requests` are part of that cascade. The Cloudinary assets
+   * behind `customer_images` are destroyed BEST-EFFORT after the transaction
+   * commits — a failing (or unconfigured) client never blocks the delete.
    */
   delete(customerId: number): boolean;
+}
+
+/**
+ * Optional constructor deps. `cloudinary` powers the best-effort destroy of
+ * a deleted customer's image assets; when absent (callers that never delete
+ * customers) no destroy is attempted.
+ */
+export interface CustomerServiceDeps {
+  cloudinary?: CloudinaryClient;
 }
 
 function normalize(s: string): string {
   return s.trim().toLowerCase();
 }
 
-export function createCustomerService(db: Db): CustomerService {
+export function createCustomerService(db: Db, deps: CustomerServiceDeps = {}): CustomerService {
   return {
     register(input: RegisterInput): RegisterResult {
       const name = input.name?.trim();
@@ -240,8 +255,9 @@ export function createCustomerService(db: Db): CustomerService {
     },
 
     delete(customerId: number): boolean {
-      // `customer_profile`, `customer_summaries`, `conversations`, `purchases`
-      // and `recommendations` reference `customers` directly, and
+      // `customer_profile`, `customer_summaries`, `conversations`, `purchases`,
+      // `recommendations`, `body_metrics`, `customer_images` and
+      // `appointment_requests` reference `customers` directly, and
       // `messages`/`recommendations` do so through `conversations`. None of
       // those foreign keys cascade, so a bare
       // `DELETE FROM customers` threw `FOREIGN KEY constraint failed` for any
@@ -249,7 +265,8 @@ export function createCustomerService(db: Db): CustomerService {
       // silently. Remove the dependents first, in FK-safe order, inside ONE
       // transaction: a failure partway through must not leave the customer
       // stripped of history while the row itself survives.
-      return db.transaction((tx) => {
+      const cloudinaryPublicIds: string[] = [];
+      const deleted = db.transaction((tx) => {
         const conversationIds = tx
           .select({ id: conversations.id })
           .from(conversations)
@@ -273,6 +290,23 @@ export function createCustomerService(db: Db): CustomerService {
         // customerLifecycle.integration.test.ts).
         tx.delete(customerSummaries).where(eq(customerSummaries.customerId, customerId)).run();
 
+        // tamizaje-images T1: the three new dependents. The Cloudinary
+        // references are collected INSIDE the transaction (the rows vanish
+        // with it) so the assets can be destroyed after a successful commit.
+        // `appointment_requests.customer_id` is NULLable (landing form) —
+        // those anonymous rows belong to nobody and are left alone.
+        cloudinaryPublicIds.push(
+          ...tx
+            .select({ publicId: customerImages.cloudinaryPublicId })
+            .from(customerImages)
+            .where(eq(customerImages.customerId, customerId))
+            .all()
+            .map((row) => row.publicId),
+        );
+        tx.delete(bodyMetrics).where(eq(bodyMetrics.customerId, customerId)).run();
+        tx.delete(customerImages).where(eq(customerImages.customerId, customerId)).run();
+        tx.delete(appointmentRequests).where(eq(appointmentRequests.customerId, customerId)).run();
+
         const deleted = tx
           .delete(customers)
           .where(eq(customers.id, customerId))
@@ -280,6 +314,24 @@ export function createCustomerService(db: Db): CustomerService {
           .get();
         return !!deleted;
       });
+
+      // Best-effort Cloudinary cleanup, AFTER the commit: sync throws,
+      // rejections and an unconfigured client must never block or fail the
+      // delete (design: "Cloudinary destroy best-effort, nunca bloquear el
+      // delete"). Each call is guarded on its own so one bad asset cannot
+      // prevent the rest from being attempted.
+      if (deleted && deps.cloudinary) {
+        for (const publicId of cloudinaryPublicIds) {
+          try {
+            void Promise.resolve(deps.cloudinary.destroy(publicId)).catch(() => {
+              /* best-effort */
+            });
+          } catch {
+            /* best-effort */
+          }
+        }
+      }
+      return deleted;
     },
   };
 }

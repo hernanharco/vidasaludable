@@ -373,3 +373,116 @@ export type Video = typeof videos.$inferSelect;
 export type NewVideo = typeof videos.$inferInsert;
 export type VideoSegment = typeof videoSegments.$inferSelect;
 export type NewVideoSegment = typeof videoSegments.$inferInsert;
+
+/**
+ * tamizaje-images T1 (S1) — optional, NEVER-blocking body-metrics record
+ * (the Tanita/RENPHO report measured in person). One row per
+ * (customer_id, measured_at): POST /admin/customers/:id/body-metrics and the
+ * future /assistant twin UPSERT on that pair, so re-posting the same date
+ * updates the record instead of duplicating it.
+ *
+ * Every REAL column is nullable by design — "registro parcial es válido": a
+ * record can carry just a date and one metric. `source` distinguishes a
+ * RENPHO report import from a manual entry. No binaries here: only numbers.
+ */
+export const bodyMetrics = sqliteTable(
+  "body_metrics",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    customerId: integer("customer_id")
+      .notNull()
+      .references(() => customers.id),
+    measuredAt: text("measured_at").notNull(), // date of the record (opaque ISO key)
+    weightKg: real("weight_kg"),
+    bmi: real("bmi"),
+    bodyFatPct: real("body_fat_pct"),
+    fatMassKg: real("fat_mass_kg"),
+    subcutaneousFatPct: real("subcutaneous_fat_pct"),
+    visceralFat: real("visceral_fat"),
+    musclePct: real("muscle_pct"),
+    muscleMassKg: real("muscle_mass_kg"),
+    skeletalMusclePct: real("skeletal_muscle_pct"),
+    skeletalMuscleMassKg: real("skeletal_muscle_mass_kg"),
+    bonePct: real("bone_pct"),
+    boneMassKg: real("bone_mass_kg"),
+    fatFreeMassKg: real("fat_free_mass_kg"),
+    metabolicAge: real("metabolic_age"),
+    bmrKcal: real("bmr_kcal"),
+    waterPct: real("water_pct"),
+    proteinPct: real("protein_pct"),
+    source: text("source").notNull().default("manual"), // 'RENPHO' | 'manual'
+    notes: text("notes"),
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  (t) => [
+    index("body_metrics_customer_id_idx").on(t.customerId),
+    // The upsert-by-date key (matches migrate.ts DDL).
+    uniqueIndex("body_metrics_customer_measured_unique").on(t.customerId, t.measuredAt),
+  ],
+);
+
+export type BodyMetric = typeof bodyMetrics.$inferSelect;
+export type NewBodyMetric = typeof bodyMetrics.$inferInsert;
+
+/**
+ * tamizaje-images T1 (S2) — per-customer image history in Cloudinary. Only
+ * the Cloudinary references are stored (`public_id` / `secure_url`); the
+ * binaries never touch SQLite (design constraint). `kind` is validated at
+ * the route: 'tamizaje' | 'evolucion' | 'otro'; `uploaded_by` records who
+ * pushed it: 'customer' | 'admin'.
+ */
+export const customerImages = sqliteTable(
+  "customer_images",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    customerId: integer("customer_id")
+      .notNull()
+      .references(() => customers.id),
+    kind: text("kind").notNull(), // 'tamizaje' | 'evolucion' | 'otro' (route-validated)
+    cloudinaryPublicId: text("cloudinary_public_id").notNull(),
+    cloudinarySecureUrl: text("cloudinary_secure_url").notNull(),
+    takenAt: text("taken_at"), // fecha del reporte — optional
+    uploadedBy: text("uploaded_by").notNull(), // 'customer' | 'admin' (route-set)
+    notes: text("notes"),
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  (t) => [index("customer_images_customer_id_idx").on(t.customerId)],
+);
+
+export type CustomerImage = typeof customerImages.$inferSelect;
+export type NewCustomerImage = typeof customerImages.$inferInsert;
+
+/**
+ * tamizaje-images T1 (S3 — decided scope: landing + CRM + chat) — appointment
+ * requests for a screening session. `customer_id` is NULL for the public
+ * landing Booking form (anonymous visitor with name/phone/reason); the chat
+ * and CRM paths attach the requesting customer. `status` is the small CRM
+ * state machine: pendiente (default) → contactada → agendada | cancelada.
+ */
+export const appointmentRequests = sqliteTable(
+  "appointment_requests",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    customerId: integer("customer_id").references(() => customers.id), // NULL: landing form
+    name: text("name"), // landing form contact
+    phone: text("phone"),
+    email: text("email"),
+    reason: text("reason").notNull(),
+    status: text("status").notNull().default("pendiente"), // 'pendiente' | 'contactada' | 'agendada' | 'cancelada'
+    notes: text("notes"), // admin follow-up notes
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text("updated_at")
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  (t) => [index("appointment_requests_customer_id_idx").on(t.customerId)],
+);
+
+export type AppointmentRequest = typeof appointmentRequests.$inferSelect;
+export type NewAppointmentRequest = typeof appointmentRequests.$inferInsert;

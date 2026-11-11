@@ -220,6 +220,76 @@ CREATE INDEX IF NOT EXISTS video_segments_condition_idx ON video_segments (condi
 -- R3-002: segment lookups by video (assistant cards, admin lists, the DELETE
 -- FK pre-check) had no index and scanned the whole table.
 CREATE INDEX IF NOT EXISTS video_segments_video_id_idx ON video_segments (video_id);
+
+-- tamizaje-images T1 (S1): optional, never-blocking body-metrics record
+-- (Tanita/RENPHO report measured in person). REAL columns are nullable —
+-- a partial record is valid ("registro parcial es válido"). One row per
+-- (customer_id, measured_at): the unique key is what the admin/assistant
+-- POST upserts on. CREATE TABLE IF NOT EXISTS only — these tables are NEW
+-- in every database, so no ALTER/ADD COLUMN is ever needed (avoids the
+-- SQLite "Cannot add a column with non-constant default" pitfall on
+-- non-empty tables).
+CREATE TABLE IF NOT EXISTS body_metrics (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  customer_id INTEGER NOT NULL REFERENCES customers(id),
+  measured_at TEXT NOT NULL,
+  weight_kg REAL,
+  bmi REAL,
+  body_fat_pct REAL,
+  fat_mass_kg REAL,
+  subcutaneous_fat_pct REAL,
+  visceral_fat REAL,
+  muscle_pct REAL,
+  muscle_mass_kg REAL,
+  skeletal_muscle_pct REAL,
+  skeletal_muscle_mass_kg REAL,
+  bone_pct REAL,
+  bone_mass_kg REAL,
+  fat_free_mass_kg REAL,
+  metabolic_age REAL,
+  bmr_kcal REAL,
+  water_pct REAL,
+  protein_pct REAL,
+  source TEXT NOT NULL DEFAULT 'manual',
+  notes TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS body_metrics_customer_id_idx ON body_metrics (customer_id);
+CREATE UNIQUE INDEX IF NOT EXISTS body_metrics_customer_measured_unique ON body_metrics (customer_id, measured_at);
+
+-- tamizaje-images T1 (S2): per-customer Cloudinary image history. Only the
+-- Cloudinary references live here — never the binaries (design constraint).
+-- kind (tamizaje|evolucion|otro) and uploaded_by (customer|admin) are
+-- validated/set at the route layer, matching how videos.status is handled.
+CREATE TABLE IF NOT EXISTS customer_images (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  customer_id INTEGER NOT NULL REFERENCES customers(id),
+  kind TEXT NOT NULL,
+  cloudinary_public_id TEXT NOT NULL,
+  cloudinary_secure_url TEXT NOT NULL,
+  taken_at TEXT,
+  uploaded_by TEXT NOT NULL,
+  notes TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS customer_images_customer_id_idx ON customer_images (customer_id);
+
+-- tamizaje-images T1 (S3): screening appointment requests from the landing
+-- form (customer_id NULL), the chat and the CRM. status defaults to
+-- 'pendiente' and is moved by PATCH /admin/appointments/:id.
+CREATE TABLE IF NOT EXISTS appointment_requests (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  customer_id INTEGER REFERENCES customers(id),
+  name TEXT,
+  phone TEXT,
+  email TEXT,
+  reason TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pendiente',
+  notes TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS appointment_requests_customer_id_idx ON appointment_requests (customer_id);
 `;
 
 /**
