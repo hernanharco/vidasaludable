@@ -115,7 +115,8 @@ user → chat directo". **Siempre** `setPhase("access_code")`.
   name/email/phone que el frontend no persiste; un endpoint de atribución es
   más chico y no ensancha el contrato de registro.
 - **El código se pide en cada visita**, no se persiste. Si se persistiera, se
-  volvería al problema actual.
+  volvería al problema actual. **[SUPERSEVIDO 2026-11-11 — ver "Reversal"
+  abajo: ahora se persiste (`vr_referrer_*`) y el gate es una sola vez.]**
 - **Error de red en la atribución (T2)**: el POST a `/assistant/attribution`
   falla por red → la atribución de esta visita es best-effort y se degrada al
   profile check (intake|chat) SIN bloquear al usuario, siguiendo la filosofía
@@ -125,3 +126,50 @@ user → chat directo". **Siempre** `setPhase("access_code")`.
   comportamiento (pasar por el gate) en lugar de marcarse como obsolete — el
   cambio de boot ES el requerimiento; el helper `test/helpers/accessCode.ts`
   centraliza la interacción del gate.
+
+---
+
+## Reversal (2026-11-11) — access-code-once
+
+User request verbatim (L1):
+
+> "estaba pensando que el pedir el codigo del referido que sea solo una sola
+> vez, esto lo cambie en su momento pero ahora pienso que por UX es mejor de
+> esta forma la persoan ingresa coloca el codigo de la persona que refiero la
+> pagina, coloca sus datos y que ya de ahi en adelante pueda hablar con el
+> agente."
+
+Scope decision (user, 2026-11-11): apply to chat AND assessment (the gate is
+shared), part 1 before the multi-conversation design work.
+
+**Semantics now**: the validated referrer is persisted (`vr_referrer_id` /
+`vr_referrer_name`) at gate confirmation. Boot reads it:
+
+- stored → the boot effect replays `handleAccessCodeValidated(storedId,
+  storedName)` directly — the SAME post-code path (attribution last-touch →
+  profile check → intake|chat; 401 → re-consent gate; 400/404 → clearIdentity
+  + full registration gate), so identity-repair and consent handling are
+  unchanged. The gate UI never renders.
+- not stored (legacy browsers, first visit after this deploy) → the gate
+  shows once, the code is persisted, and it is never asked again on that
+  browser.
+
+AssessmentWidget shares the same two keys: with a stored referrer it skips
+its gate and loads the questionnaire directly, and its saves still attach
+`referrer_id` from storage.
+
+**Superseded bullets** (kept above for history): "El código se pide en cada
+visita, no se persiste" and "boot always lands on `access_code`" — both are
+the 2026-10-09 decision this reversal replaces.
+
+**Tradeoff accepted by the user**: a returning visit no longer submits a
+fresh code, so last-touch attribution is refreshed with the SAME stored
+referrer (equivalent to no refresh). First registration still attributes
+normally; clearing browser storage asks again.
+
+**Tests**: `AccessCodeAlways.test.tsx` keeps the legacy (no stored referrer)
+cases and adds an `access-code-once` describe (persistence, gateless boot →
+chat/intake, 401 consent, 404 identity repair with referrer kept);
+`AssessmentWidget.test.tsx` adds persistence + skip cases and now installs an
+in-memory localStorage (jsdom opaque origin). Evidence: frontend 249/250
+(1 pre-existing ChatIntake timeout, reproducible on base), tsc clean.

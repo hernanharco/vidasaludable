@@ -69,6 +69,23 @@ function installFetch(options: FetchOptions) {
         json: () => Promise.resolve({ messages: options.history }),
       });
     }
+    // Assessment wizard: the access-code-once gate skips straight to the
+    // questionnaire when a validated referrer is stored, so the dialog
+    // needs a real payload to render the welcome step.
+    if (u.includes("/questionnaire")) {
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () =>
+          Promise.resolve({
+            symptoms: Array.from({ length: 12 }, (_, i) => ({
+              id: i + 1,
+              nameEs: `Síntoma ${i + 1}`,
+            })),
+            nutrients: [{ id: "vitamina_a", name: "Vitamina A", type: "vitamin" }],
+          }),
+      });
+    }
     // videos / products / consent — best-effort endpoints, not needed here
     return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({}) });
   });

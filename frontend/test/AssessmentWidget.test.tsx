@@ -40,6 +40,28 @@ const mockReferrerValidateResponse = {
   referrerName: "Ana Referidora",
 };
 
+// Access-code-once persists vr_referrer_* — jsdom under vitest runs with an
+// opaque origin (window.localStorage is undefined here), so install an
+// in-memory storage like AccessCodeAlways.test.tsx does.
+function installMemoryLocalStorage() {
+  const store = new Map<string, string>();
+  const impl = {
+    getItem: (key: string) => (store.has(key) ? (store.get(key) as string) : null),
+    setItem: (key: string, value: string) => {
+      store.set(key, String(value));
+    },
+    removeItem: (key: string) => {
+      store.delete(key);
+    },
+    clear: () => {
+      store.clear();
+    },
+  };
+  Object.defineProperty(window, "localStorage", { configurable: true, value: impl });
+}
+
+installMemoryLocalStorage();
+
 function setupDefaultMocks() {
   mockFetch.mockImplementation((url: string) => {
     if (url.includes("/referrer/validate")) {
@@ -96,6 +118,9 @@ async function enterAccessCode(user: ReturnType<typeof userEvent.setup>) {
 describe("AssessmentWidget", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Access-code-once persists vr_referrer_* in the widget under test —
+    // clear it so each case starts with a fresh (gate-showing) browser.
+    window.localStorage.clear();
     setupDefaultMocks();
   });
 
@@ -220,5 +245,33 @@ describe("AssessmentWidget", () => {
     await waitFor(() => {
       expect(screen.getByText("PDF")).toBeInTheDocument();
     });
+  });
+});
+
+describe("AssessmentWidget access-code-once", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    window.localStorage.clear();
+    setupDefaultMocks();
+  });
+
+  it("persists the validated referrer so the gate becomes one-time", async () => {
+    const user = userEvent.setup();
+    renderWidget();
+    await enterAccessCode(user);
+
+    expect(window.localStorage.getItem("vr_referrer_id")).toBe(String(mockReferrerValidateResponse.referrerId));
+    expect(window.localStorage.getItem("vr_referrer_name")).toBe(mockReferrerValidateResponse.referrerName);
+  });
+
+  it("skips the gate entirely when a validated referrer is already stored", async () => {
+    window.localStorage.setItem("vr_referrer_id", String(mockReferrerValidateResponse.referrerId));
+    window.localStorage.setItem("vr_referrer_name", mockReferrerValidateResponse.referrerName);
+
+    renderWidget();
+
+    expect(await screen.findByText("Evaluación de Deficiencias")).toBeInTheDocument();
+    expect(screen.queryByText("Validar código")).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("Ej: 7023369988")).not.toBeInTheDocument();
   });
 });

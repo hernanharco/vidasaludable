@@ -159,6 +159,22 @@ function installChatFetch() {
     if (u.includes("/api/assistant/videos")) {
       return Promise.resolve({ ok: true, json: () => Promise.resolve({ videos: [] }) });
     }
+    // Assessment wizard: with a stored validated referrer the dialog skips
+    // its gate and loads the questionnaire immediately — give it a payload.
+    if (u.includes("/questionnaire")) {
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () =>
+          Promise.resolve({
+            symptoms: Array.from({ length: 12 }, (_, i) => ({
+              id: i + 1,
+              nameEs: `Síntoma ${i + 1}`,
+            })),
+            nutrients: [{ id: "vitamina_a", name: "Vitamina A", type: "vitamin" }],
+          }),
+      });
+    }
     if (u.includes("/api/assistant/products")) {
       return Promise.resolve({ ok: true, json: () => Promise.resolve({ products: [] }) });
     }

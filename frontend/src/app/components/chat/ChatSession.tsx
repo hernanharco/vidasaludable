@@ -105,6 +105,10 @@ async function fetchProfileExists(customerId: number): Promise<boolean | null> {
 const STORAGE = {
   customerId: "vr_customer_id",
   conversationId: "vr_conversation_id",
+  // Validated access code — written once at gate validation so later visits
+  // skip the gate (access-code-once).
+  referrerId: "vr_referrer_id",
+  referrerName: "vr_referrer_name",
 };
 
 function readStoredNumber(key: string): number | null {
@@ -140,9 +144,14 @@ export function ChatSession({ onOpenAssessment, onClose }: ChatSessionProps) {
   const [consentError, setConsentError] = useState<string | null>(null);
   const [consentReentry, setConsentReentry] = useState(false);
 
-  // Access code state
-  const [referrerId, setReferrerId] = useState<number | null>(null);
-  const [referrerName, setReferrerName] = useState<string | null>(null);
+  // Access code state — restored from storage so the boot path can reuse a
+  // previously validated referrer without showing the gate again.
+  const [referrerId, setReferrerId] = useState<number | null>(() =>
+    readStoredNumber(STORAGE.referrerId),
+  );
+  const [referrerName, setReferrerName] = useState<string | null>(() =>
+    window.localStorage.getItem(STORAGE.referrerName),
+  );
 
   // Registration form state
   const [name, setName] = useState("");
@@ -304,15 +313,23 @@ export function ChatSession({ onOpenAssessment, onClose }: ChatSessionProps) {
     }
   }, [customerId, conversationId]);
 
-  // On first mount (the host shows the session): access-code-always.
-  // The access code is requested on EVERY visit — including returning
-  // customers with a stored identity — so boot always lands on the access
-  // code gate. The returning-user routing (attribution → profile check →
-  // intake|chat) happens in handleAccessCodeValidated after the code is
-  // validated.
+  // On first mount (the host shows the session): access-code-once.
+  // The gate is asked only while this browser has no validated referrer;
+  // once the code has been validated it is persisted and every later visit
+  // skips the gate by running the SAME post-code path directly
+  // (attribution last-touch → profile check → intake|chat), so consent
+  // (401 → re-consent) and corrupt-identity (400/404 → clear + full gate)
+  // handling stay identical to the code-entry path. User decision (2026-11-11):
+  // the code is a one-time action per browser, not a per-visit ritual.
   useEffect(() => {
     if (phase !== "boot") return;
     setConsentReentry(false);
+    const storedId = readStoredNumber(STORAGE.referrerId);
+    const storedName = window.localStorage.getItem(STORAGE.referrerName);
+    if (storedId != null && storedName) {
+      void handleAccessCodeValidated(storedId, storedName);
+      return;
+    }
     setPhase("access_code");
   }, [phase]);
 
@@ -347,7 +364,11 @@ export function ChatSession({ onOpenAssessment, onClose }: ChatSessionProps) {
   };
 
   /**
-   * Access code validated (access-code-always).
+   * Access code validated (access-code-once).
+   *
+   * Persists the validated referrer (vr_referrer_id / vr_referrer_name) so
+   * the gate becomes one-time per browser; the boot effect replays this
+   * same path on later visits without showing the gate.
    *
    * - Fresh visitor (no customer_id): full registration gate, unchanged.
    * - Returning visitor: POST /assistant/attribution (last-touch). Branches:
@@ -367,6 +388,10 @@ export function ChatSession({ onOpenAssessment, onClose }: ChatSessionProps) {
     // Last-touch: the freshly validated referrer REPLACES the previous one.
     setReferrerId(id);
     setReferrerName(name);
+    // Persist the validated code: this is what makes the gate one-time
+    // (the boot effect skips straight into this path on later visits).
+    window.localStorage.setItem(STORAGE.referrerId, String(id));
+    window.localStorage.setItem(STORAGE.referrerName, name);
 
     if (customerId == null) {
       setConsentReentry(false);

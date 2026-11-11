@@ -34,6 +34,39 @@ export interface AssessmentWidgetProps {
   onClose: () => void;
 }
 
+/**
+ * Access-code-once: keys shared with the chat gate (ChatSession STORAGE).
+ * Once a referrer has been validated in this browser, neither widget asks
+ * again; the assessment still attaches `referrer_id` to its saves from here.
+ */
+const REFERRER_STORAGE = { id: "vr_referrer_id", name: "vr_referrer_name" };
+
+/**
+ * localStorage may be unavailable (opaque test origins, privacy modes) —
+ * never crash the wizard over it: an unreadable store just means "ask the
+ * code again" (read) or "the gate stays one-time-less" (write).
+ */
+function readStoredReferrer(): { id: number; name: string | null } | null {
+  try {
+    const raw = window.localStorage?.getItem(REFERRER_STORAGE.id);
+    if (raw == null) return null;
+    const id = Number(raw);
+    if (!Number.isFinite(id)) return null;
+    return { id, name: window.localStorage?.getItem(REFERRER_STORAGE.name) ?? null };
+  } catch {
+    return null;
+  }
+}
+
+function persistReferrer(id: number, name: string): void {
+  try {
+    window.localStorage?.setItem(REFERRER_STORAGE.id, String(id));
+    window.localStorage?.setItem(REFERRER_STORAGE.name, name);
+  } catch {
+    // Degrades to asking the code again on the next visit — never blocks.
+  }
+}
+
 export function AssessmentWidget({ open, onClose }: AssessmentWidgetProps) {
   const [phase, setPhase] = useState<"access_code" | "loading" | "welcome" | "symptoms" | "calculating" | "results">("access_code");
   const [questionnaire, setQuestionnaire] = useState<QuestionnaireData | null>(null);
@@ -68,7 +101,12 @@ export function AssessmentWidget({ open, onClose }: AssessmentWidgetProps) {
   const loadQuestionnaire = useCallback(() => {
     setPhase("loading");
     fetch("/api/assessment/questionnaire")
-      .then((r) => r.json())
+      .then((r) => {
+        // A non-2xx body must NOT be stored as the questionnaire — it used
+        // to crash the wizard on render (questionnaire.symptoms undefined).
+        if (r.ok === false) throw new Error(`questionnaire HTTP ${r.status}`);
+        return r.json();
+      })
       .then((data: QuestionnaireData) => {
         setQuestionnaire(data);
         setPhase("welcome");
@@ -78,12 +116,27 @@ export function AssessmentWidget({ open, onClose }: AssessmentWidgetProps) {
       });
   }, []);
 
-  // Access code validated → load questionnaire
+  // Access code validated → remember the code (one-time gate) and load the
+  // questionnaire. Persisted so future visits — chat or assessment — skip
+  // the gate entirely.
   const handleAccessCodeValidated = (id: number, name: string) => {
     setReferrerId(id);
     setReferrerName(name);
+    persistReferrer(id, name);
     loadQuestionnaire();
   };
+
+  // Access-code-once: with a validated referrer stored in this browser the
+  // gate never shows again — boot straight into the questionnaire. Only
+  // when the wizard is actually open (ChatPage mounts it closed).
+  useEffect(() => {
+    if (!open || phase !== "access_code") return;
+    const stored = readStoredReferrer();
+    if (!stored) return;
+    setReferrerId(stored.id);
+    setReferrerName(stored.name);
+    loadQuestionnaire();
+  }, [phase, loadQuestionnaire, open]);
 
   // Calculate steps
   const symptomSteps = questionnaire

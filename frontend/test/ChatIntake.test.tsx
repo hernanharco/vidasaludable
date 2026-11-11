@@ -397,6 +397,9 @@ function IntakeHarness({ onComplete }: { onComplete: (p: IntakeProfile) => Promi
 describe("ChatIntake component", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Access-code-once: earlier describes persist vr_referrer_* — clear so
+    // each describe starts with a gate-showing browser.
+    window.localStorage.clear();
   });
 
   it("preserves selections when navigating back and forward", async () => {
@@ -486,6 +489,9 @@ describe("ChatIntake component", () => {
 describe("ChatIntake copy, layout and guidance (S2-S4)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Access-code-once: earlier describes persist vr_referrer_* — clear so
+    // each describe starts with a gate-showing browser.
+    window.localStorage.clear();
   });
 
   it("labels the sex chips Mujer/Hombre and keeps the F/M wire values", async () => {
@@ -744,6 +750,9 @@ describe("ChatIntake copy, layout and guidance (S2-S4)", () => {
 describe("ChatIntake health data (S1-S4)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Access-code-once: earlier describes persist vr_referrer_* — clear so
+    // each describe starts with a gate-showing browser.
+    window.localStorage.clear();
   });
 
   it("offers optional weight/height on step 1 and advances without them", async () => {
