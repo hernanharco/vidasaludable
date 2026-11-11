@@ -128,7 +128,7 @@ Reintentar en otra sesión; el trabajo queda verde y commiteado.
   `customer_profile` creada por `migrate()` sobre la BD real, `integrity_check`
   `ok`, datos intactos (1 referrer, 2 customers). Flujo real de usuario vía
   Vercel → túnel → Hetzner: `POST /api/referrer/validate` con el código real
-  `1906432239` → `{valid:true, Hernan Arango Cortes}`.
+  `7023369988` → `{valid:true, Hernan Arango Cortes}`.
 - Commits: `f3937e11` (backend intake), `dfbd3e0b` (frontend intake),
   `ca3365f9` + `b3682473` (docs), `c71c9666` (db:pull-prod).
 

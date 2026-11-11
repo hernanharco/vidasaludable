@@ -76,7 +76,7 @@ function OpenHarness() {
 
 /** Traverse gate → welcome → symptoms → results (mocked endpoints). */
 async function enterWizardToResults(user: ReturnType<typeof userEvent.setup>) {
-  await user.type(screen.getByPlaceholderText("Ej: 1906432239"), "12345");
+  await user.type(screen.getByPlaceholderText("Ej: 7023369988"), "12345");
   await user.click(screen.getByRole("button", { name: "Validar código" }));
   await waitFor(() => {
     expect(screen.getByText("Código válido")).toBeInTheDocument();

@@ -29,7 +29,7 @@ describe("GET /admin/referrers customerCount (integration)", () => {
 
     const referrer = db
       .insert(referrers)
-      .values({ code: "1906432239", name: "Hernan Arango Cortes" })
+      .values({ code: "7023369988", name: "Hernan Arango Cortes" })
       .returning()
       .get();
 
@@ -70,7 +70,7 @@ describe("GET /admin/referrers customerCount (integration)", () => {
       }[];
     };
 
-    const r = body.referrers.find((x) => x.code === "1906432239");
+    const r = body.referrers.find((x) => x.code === "7023369988");
     expect(r).toBeDefined();
     expect(r!.customers.length).toBe(1);
     expect(r!.customerCount).toBe(1);

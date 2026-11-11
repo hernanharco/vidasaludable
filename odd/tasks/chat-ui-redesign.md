@@ -105,7 +105,7 @@ de import + setup, misma lógica assertion.
   widget-level de AssessmentCard migrado a `ChatSession`+`AssessmentWidget`).
 - [x] T4 — smoke E2E por curl contra el dev server con data de producción:
   `GET /chat` → 200, `POST referrer/validate` con el código real
-  `1906432239` → `{valid:true, Hernan Arango Cortes}`, consent v1, 16
+  `7023369988` → `{valid:true, Hernan Arango Cortes}`, consent v1, 16
   productos disponibles para las cards. Limpieza: comentarios stale que
   mencionaban `ChatWidget` corregidos en `ChatSession.tsx`/`types.ts` y los
   `describe` titles de 3 tests. Verificado por el padre: `ChatWidget.tsx`

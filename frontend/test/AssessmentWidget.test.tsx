@@ -82,7 +82,7 @@ function renderWidget() {
  * "welcome" → AssessmentWelcome heading).
  */
 async function enterAccessCode(user: ReturnType<typeof userEvent.setup>) {
-  await user.type(screen.getByPlaceholderText("Ej: 1906432239"), "12345");
+  await user.type(screen.getByPlaceholderText("Ej: 7023369988"), "12345");
   await user.click(screen.getByText("Validar código"));
   await waitFor(() => {
     expect(screen.getByText("Código válido")).toBeInTheDocument();

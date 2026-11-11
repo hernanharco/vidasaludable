@@ -97,7 +97,7 @@ describe("ChatPage (/chat fullscreen route)", () => {
     renderChatPage();
 
     expect(await screen.findByText("Código de acceso")).toBeInTheDocument();
-    expect(screen.getByPlaceholderText("Ej: 1906432239")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Ej: 7023369988")).toBeInTheDocument();
     expect(screen.queryByPlaceholderText("Escribe un mensaje...")).not.toBeInTheDocument();
   });
 

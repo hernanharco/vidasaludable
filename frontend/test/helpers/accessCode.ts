@@ -8,7 +8,7 @@ import type userEvent from "@testing-library/user-event";
  * tests must walk through it before reaching gate/intake/chat.
  */
 
-export const ACCESS_CODE = "1906432239";
+export const ACCESS_CODE = "7023369988";
 export const ACCESS_REFERRER_ID = 5;
 
 /**
@@ -42,7 +42,7 @@ export function accessCodeFetch(url: string): {
 /** Types the code, validates it and confirms — the session leaves the gate. */
 export async function passAccessCodeGate(user: ReturnType<typeof userEvent.setup>) {
   await screen.findByText("Código de acceso");
-  await user.type(screen.getByPlaceholderText("Ej: 1906432239"), ACCESS_CODE);
+  await user.type(screen.getByPlaceholderText("Ej: 7023369988"), ACCESS_CODE);
   await user.click(screen.getByRole("button", { name: "Validar código" }));
   await screen.findByText("Código válido");
   await user.click(screen.getByRole("button", { name: "Continuar" }));

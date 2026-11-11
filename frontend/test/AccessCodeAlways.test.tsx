@@ -152,7 +152,7 @@ function renderChatPage() {
 /** Types the code, validates and confirms — lands on handleAccessCodeValidated. */
 async function enterAccessCode(user: ReturnType<typeof userEvent.setup>) {
   await screen.findByText("Código de acceso");
-  await user.type(screen.getByPlaceholderText("Ej: 1906432239"), "1906432239");
+  await user.type(screen.getByPlaceholderText("Ej: 7023369988"), "7023369988");
   await user.click(screen.getByRole("button", { name: "Validar código" }));
   await screen.findByText("Código válido");
   await user.click(screen.getByRole("button", { name: "Continuar" }));

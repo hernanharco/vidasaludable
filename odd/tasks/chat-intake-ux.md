@@ -113,7 +113,7 @@ sin llamado a `/api/assistant/ask` para ese mensaje.
   (el cuestionario de 5 pasos en escritorio). Saludo → "Mensaje fijo con su
   perfil".
 - L3 (2026-10-15, evidencia): reproducción local completa con Playwright
-  (código 1906432239 → registro → 5 pasos → chat → respuesta del agente y
+  (código 7023369988 → registro → 5 pasos → chat → respuesta del agente y
   chequeeo de 95 síntomas) en 320/390/768/1024/1440: el flujo funciona, pero
   el paso 1 en escritorio deja ~700px de hueco y "Siguiente" deshabilitado
   sin aviso. Producción (ssh hetzner-ts, solo lectura): `customers.id=4`
