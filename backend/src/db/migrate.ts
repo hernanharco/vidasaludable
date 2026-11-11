@@ -83,7 +83,9 @@ CREATE INDEX IF NOT EXISTS purchases_customer_id_idx ON purchases (customer_id);
 CREATE TABLE IF NOT EXISTS conversations (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   customer_id INTEGER NOT NULL REFERENCES customers(id),
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  title TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS conversations_customer_id_idx ON conversations (customer_id);
 
@@ -251,6 +253,17 @@ export async function migrate(db: ReturnType<typeof createDatabase>): Promise<vo
     // admin-video-analyze — server-side analysis lifecycle on videos.
     `ALTER TABLE videos ADD COLUMN analysis_state TEXT`,
     `ALTER TABLE videos ADD COLUMN analysis_error TEXT`,
+    // multi-conversation T1 — sidebar title (nullable) + activity stamp.
+    `ALTER TABLE conversations ADD COLUMN title TEXT`,
+    // `updated_at` deliberately uses a CONSTANT default: SQLite rejects a
+    // non-constant default (CURRENT_TIMESTAMP) in ADD COLUMN when the table
+    // already has rows — "Cannot add a column with non-constant default" —
+    // which is exactly the production case, and the try/catch above would
+    // silently drop the column, breaking every list query. The '' sentinel is
+    // replaced by created_at in the backfill below; the schema marks the
+    // column NOT NULL (the DDL default covers fresh databases, where this
+    // ALTER fails harmlessly as a duplicate column).
+    `ALTER TABLE conversations ADD COLUMN updated_at TEXT NOT NULL DEFAULT ''`,
   ];
   for (const stmt of alterStatements) {
     try {
@@ -265,6 +278,18 @@ export async function migrate(db: ReturnType<typeof createDatabase>): Promise<vo
     db.$client.exec(`UPDATE assessment_results SET score = ratio WHERE score IS NULL`);
   } catch {
     // New-shape database — ignore
+  }
+
+  // multi-conversation T1 — replace the '' ADD COLUMN sentinel with the
+  // conversation's created_at (pre-T1 rows). No-op on fresh databases (DDL
+  // default) and on rows the service already stamped. The NULL branch covers
+  // a legacy file that got a nullable column from an older ALTER attempt.
+  try {
+    db.$client.exec(
+      `UPDATE conversations SET updated_at = created_at WHERE updated_at IS NULL OR updated_at = ''`,
+    );
+  } catch {
+    // conversations table without the column (never via the DDL above) — ignore
   }
 
   // Legacy NOT NULL columns absent from the DDL — drop them AFTER the backfill

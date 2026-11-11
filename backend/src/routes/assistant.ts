@@ -22,6 +22,16 @@ import type { Product } from "../db/schema.js";
  * - POST /assistant/ask     → consent version-gated; server-side purchase
  *   injection; Gemini → deterministic guard → append-only audit log.
  * - GET  /assistant/history → prior messages for memory.
+ * - GET  /assistant/conversations?customer_id=N → multi-conversation T1 (S1):
+ *   the customer's conversations, newest activity first →
+ *   {conversations: [{id, customer_id, title, updated_at, created_at,
+ *   snippet}]}. `title` is null until the first user message derives it;
+ *   `snippet` is the last message (truncated) or null when empty. Customer
+ *   checks match /history: 400 invalid/missing customer_id, 404 unknown.
+ * - POST /assistant/conversations {customer_id} → creates an EMPTY
+ *   conversation for the customer → {conversation_id}; same 400/404 checks.
+ *   (No consent gate: it only creates a container — consent still gates
+ *   /ask recommendations.)
  * - GET  /assistant/videos  → enabled segment cards with resolved URLs
  *   (public, no auth — the widget fetches them at boot to render the
  *   `[VIDEO:id]` markers the agent cites; same surface as /assistant/consent).
@@ -125,6 +135,53 @@ export function createAssistantRouter(db: Db, deps: AssistantRouterDeps = {}): H
       return c.json({ error: "conversación no pertenece al customer" }, 403);
     }
     return c.json({ messages: conversations.loadHistory(conversationId) });
+  });
+
+  // multi-conversation T1 (S1) — the customer's conversation list for the
+  // sidebar: newest activity (`updated_at`) first, customer-scoped with the
+  // same checks as /profile and /history (400 invalid customer_id, 404
+  // unknown customer). Never leaks another customer's conversations.
+  app.get("/conversations", (c) => {
+    const customerId = Number(c.req.query("customer_id"));
+    if (!Number.isInteger(customerId) || customerId <= 0) {
+      return c.json({ error: "customer_id inválido" }, 400);
+    }
+    if (!customers.getById(customerId)) {
+      return c.json({ error: "customer no encontrado" }, 404);
+    }
+    return c.json({
+      conversations: conversations.listByCustomer(customerId).map((item) => ({
+        id: item.id,
+        customer_id: item.customerId,
+        title: item.title,
+        updated_at: item.updatedAt,
+        created_at: item.createdAt,
+        snippet: item.snippet,
+      })),
+    });
+  });
+
+  // multi-conversation T1 (S1) — "Nueva conversación": an EMPTY conversation
+  // for the customer (no messages, no title). Same 400/404 customer checks
+  // as /profile. The frontend swaps its conversation_id and loads history.
+  app.post("/conversations", async (c) => {
+    let body: Record<string, unknown>;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "cuerpo inválido" }, 400);
+    }
+
+    const customerId = Number(body.customer_id);
+    if (!Number.isInteger(customerId) || customerId <= 0) {
+      return c.json({ error: "customer_id inválido" }, 400);
+    }
+    if (!customers.getById(customerId)) {
+      return c.json({ error: "customer no encontrado" }, 404);
+    }
+
+    const conversation = conversations.createConversation(customerId);
+    return c.json({ conversation_id: conversation.id });
   });
 
   // T1 chat-intake — per-customer intake profile (the 5-step questionnaire).
@@ -280,6 +337,13 @@ export function createAssistantRouter(db: Db, deps: AssistantRouterDeps = {}): H
 
     // Persist user message, build history, run the agent.
     conversations.saveMessage(conversationId, "user", message);
+    // multi-conversation T1 (S1): refresh the conversation's activity stamp
+    // and, while it is still untitled, derive the title from this first user
+    // message. Runs with the message persist so the turn counts even if
+    // Gemini is unavailable; consent/ownership checks above already passed,
+    // so the row exists and belongs to the customer. Prompt building and the
+    // memory summarization flow are untouched.
+    conversations.touchConversation(conversationId, message);
     const history = conversations.loadHistory(conversationId);
     const guidanceItems = guidance.listEnabled();
     // Enabled (admin-approved) video segments: injected as context AND used

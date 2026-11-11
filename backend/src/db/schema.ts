@@ -138,7 +138,16 @@ export const conversations = sqliteTable(
     customerId: integer("customer_id")
       .notNull()
       .references(() => customers.id),
+    // multi-conversation T1 (S1): sidebar title, derived from the FIRST user
+    // message while the conversation is still untitled. NULL = untitled.
+    title: text("title"),
     createdAt: text("created_at")
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    // Activity stamp refreshed on every /ask turn; drives the sidebar's
+    // newest-first ordering. Services write ISO-8601; the DDL default covers
+    // raw inserts (see migrate.ts for the pre-T1 ALTER + backfill).
+    updatedAt: text("updated_at")
       .notNull()
       .default(sql`CURRENT_TIMESTAMP`),
   },
