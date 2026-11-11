@@ -2,23 +2,77 @@ import React, { useState } from "react";
 import { motion } from "motion/react";
 import { Calendar as CalendarIcon, Clock, ChevronDown } from "lucide-react";
 
+/** Display labels for the reason select values sent to POST /appointments. */
+const REASON_LABELS: Record<string, string> = {
+  vitaminas: "Plan de Vitaminas y Suplementos",
+  habitos: "Coaching de Hábitos",
+  integral: "Evaluación Integral",
+  otro: "Otro motivo",
+};
+
+/**
+ * Humanizes the backend failures of the PUBLIC booking endpoint:
+ * 429 (per-IP rate limit, 5/10 min) gets its own friendly copy, every other
+ * failure surfaces the server message inside a generic apology.
+ */
+function submitErrorMessage(status: number, serverError: string | null): string {
+  if (status === 429) {
+    return "Has enviado varias solicitudes en poco tiempo. Espera unos minutos y vuelve a intentarlo.";
+  }
+  if (serverError) return `No pudimos enviar tu solicitud. (${serverError})`;
+  return "No pudimos enviar tu solicitud. Inténtalo de nuevo en unos segundos.";
+}
+
+/** reason select value (+ optional preferred date) → the free-text the CRM stores. */
+function buildReason(reasonCode: string, date: string): string {
+  const label = REASON_LABELS[reasonCode] ?? reasonCode;
+  return date ? `${label} — Fecha preferida: ${date}` : label;
+}
+
 export function Booking() {
   const [formState, setFormState] = useState({
     name: "",
     email: "",
+    phone: "",
     date: "",
     reason: "",
   });
 
   const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // Real submit (tamizaje-images T3): POST /appointments (public, no auth).
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Simulate API call
-    setTimeout(() => {
+    if (submitting) return;
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      const res = await fetch("/api/appointments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: formState.name.trim(),
+          phone: formState.phone.trim(),
+          email: formState.email.trim(),
+          reason: buildReason(formState.reason, formState.date),
+        }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        setSubmitError(submitErrorMessage(res.status, body.error ?? null));
+        return;
+      }
       setSubmitted(true);
-      setFormState({ name: "", email: "", date: "", reason: "" });
-    }, 800);
+      setFormState({ name: "", email: "", phone: "", date: "", reason: "" });
+    } catch {
+      setSubmitError(submitErrorMessage(0, null));
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -99,7 +153,6 @@ export function Booking() {
           ) : (
             <form onSubmit={handleSubmit} className="space-y-6">
               <h3 className="text-2xl font-bold text-emerald-900 mb-6">Agenda tu Consulta</h3>
-              
               <div className="space-y-4">
                 <div>
                   <label htmlFor="name" className="block text-sm font-medium text-stone-700 mb-1">
@@ -113,6 +166,21 @@ export function Booking() {
                     onChange={(e) => setFormState({ ...formState, name: e.target.value })}
                     className="w-full px-4 py-3 border border-stone-200 rounded-xl bg-stone-50 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
                     placeholder="Tu nombre completo"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="phone" className="block text-sm font-medium text-stone-700 mb-1">
+                    Teléfono
+                  </label>
+                  <input
+                    type="tel"
+                    id="phone"
+                    required
+                    value={formState.phone}
+                    onChange={(e) => setFormState({ ...formState, phone: e.target.value })}
+                    className="w-full px-4 py-3 border border-stone-200 rounded-xl bg-stone-50 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+                    placeholder="+34 600 000 000"
                   />
                 </div>
                 
@@ -170,11 +238,21 @@ export function Booking() {
                 </div>
               </div>
 
+              {submitError && (
+                <div
+                  role="alert"
+                  className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+                >
+                  {submitError}
+                </div>
+              )}
+
               <button
                 type="submit"
-                className="w-full py-4 bg-emerald-900 text-white font-semibold tracking-wide uppercase text-sm hover:bg-emerald-800 transition-colors mt-4 rounded-xl"
+                disabled={submitting}
+                className="w-full py-4 bg-emerald-900 text-white font-semibold tracking-wide uppercase text-sm hover:bg-emerald-800 transition-colors mt-4 rounded-xl disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                Solicitar Cita
+                {submitting ? "Enviando…" : "Solicitar Cita"}
               </button>
             </form>
           )}

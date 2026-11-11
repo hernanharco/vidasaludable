@@ -10,6 +10,7 @@ import {
   type Recommendation,
 } from "./api";
 import { ProductRefs } from "./ProductRefs";
+import { CustomerScreening } from "./CustomerScreening";
 import { ErrorBanner, toErrorState, type ErrorState } from "./ErrorBanner";
 import { parseRefs } from "../lib/parseRefs";
 
@@ -373,6 +374,11 @@ export function CustomerDetailPage() {
           </section>
         </div>
       )}
+
+      {/* Tamizaje (T3, tamizaje-images) — imágenes Cloudinary + métricas
+          corporales + citas. Own loading/error state; appended after the
+          existing sections without touching them. */}
+      <CustomerScreening customerId={customerId} />
     </div>
   );
 }

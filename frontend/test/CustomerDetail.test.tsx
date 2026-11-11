@@ -177,6 +177,18 @@ function installFetchMock() {
       summaryState = NEW_SUMMARY;
       return ok(200, { summary: NEW_SUMMARY });
     }
+    // T3 screening sections (tamizaje-images): healthy empty lists here so
+    // the page renders them without an extra alert; the seeded behaviour is
+    // covered in CustomerDetailScreening.test.tsx.
+    if (url === "/api/admin/customers/1/images" && method === "GET") {
+      return ok(200, { images: [] });
+    }
+    if (url === "/api/admin/customers/1/body-metrics" && method === "GET") {
+      return ok(200, { bodyMetrics: [] });
+    }
+    if (url === "/api/admin/appointments" && method === "GET") {
+      return ok(200, { appointments: [] });
+    }
     if (url === "/api/admin/recommendations" && method === "GET") {
       return ok(200, { recommendations: RECOMMENDATIONS });
     }

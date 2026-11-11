@@ -214,6 +214,113 @@ export type SegmentPatch = Partial<Omit<SegmentInput, "videoId">> & {
   clipYoutubeId?: string | null; // null clears the clip (falls back to the deep link)
 };
 
+// ─── Tamizaje: imágenes Cloudinary + métricas corporales + citas ──
+// (tamizaje-images T3 — wire shapes mirror backend T1/T2 contracts: the
+// drizzle rows serialize camelCase, the POST bodies are snake_case.)
+
+export type ImageKind = "tamizaje" | "evolucion" | "otro";
+
+export interface CustomerImage {
+  id: number;
+  customerId: number;
+  kind: ImageKind;
+  cloudinaryPublicId: string;
+  cloudinarySecureUrl: string; // the only URL the UI ever renders
+  takenAt: string | null; // fecha del reporte (opcional)
+  uploadedBy: "customer" | "admin";
+  notes: string | null;
+  createdAt: string;
+}
+
+export interface CustomerImageInput {
+  /** base64 puro o data URI — el backend proxy acepta ambos (máx. 8 MB). */
+  data: string;
+  kind: ImageKind;
+  taken_at?: string;
+  notes?: string;
+}
+
+/** Los 17 campos numéricos aceptados por POST .../body-metrics (snake_case). */
+export const BODY_METRIC_FIELDS = [
+  "weight_kg",
+  "bmi",
+  "body_fat_pct",
+  "fat_mass_kg",
+  "subcutaneous_fat_pct",
+  "visceral_fat",
+  "muscle_pct",
+  "muscle_mass_kg",
+  "skeletal_muscle_pct",
+  "skeletal_muscle_mass_kg",
+  "bone_pct",
+  "bone_mass_kg",
+  "fat_free_mass_kg",
+  "metabolic_age",
+  "bmr_kcal",
+  "water_pct",
+  "protein_pct",
+] as const;
+
+export type BodyMetricField = (typeof BODY_METRIC_FIELDS)[number];
+
+export interface BodyMetric {
+  id: number;
+  customerId: number;
+  measuredAt: string; // clave por fecha (upsert: un registro por customer+fecha)
+  weightKg: number | null;
+  bmi: number | null;
+  bodyFatPct: number | null;
+  fatMassKg: number | null;
+  subcutaneousFatPct: number | null;
+  visceralFat: number | null;
+  musclePct: number | null;
+  muscleMassKg: number | null;
+  skeletalMusclePct: number | null;
+  skeletalMuscleMassKg: number | null;
+  bonePct: number | null;
+  boneMassKg: number | null;
+  fatFreeMassKg: number | null;
+  metabolicAge: number | null;
+  bmrKcal: number | null;
+  waterPct: number | null;
+  proteinPct: number | null;
+  source: "RENPHO" | "manual";
+  notes: string | null;
+  createdAt: string;
+}
+
+/** Registro parcial válido: measured_at obligatorio, el resto opcional. */
+export type BodyMetricInput = {
+  measured_at: string;
+  source?: "RENPHO" | "manual";
+  notes?: string;
+} & Partial<Record<BodyMetricField, number>>;
+
+export type AppointmentStatus =
+  | "pendiente"
+  | "contactada"
+  | "agendada"
+  | "cancelada";
+
+export interface Appointment {
+  id: number;
+  /** NULL = solicitud pública del landing (Booking). */
+  customerId: number | null;
+  name: string | null;
+  phone: string | null;
+  email: string | null;
+  reason: string;
+  status: AppointmentStatus;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type AppointmentPatch = Partial<{
+  status: AppointmentStatus;
+  notes: string;
+}>;
+
 export class AdminError extends Error {
   status: number;
   constructor(status: number, message: string) {
@@ -413,5 +520,32 @@ export const api = {
     request<{ deleted: number }>("/video-segments/bulk-delete", {
       method: "POST",
       body: JSON.stringify({ ids }),
+    }),
+
+  // ─── Tamizaje: imágenes, métricas corporales y citas (T3) ─────
+  /** Historial Cloudinary del cliente (refs, nunca binarios). */
+  listCustomerImages: (id: number) =>
+    request<{ images: CustomerImage[] }>(`/customers/${id}/images`),
+  /** Upload proxy: envía base64/data-URI, el backend firma y sube. 201 {image}. */
+  uploadCustomerImage: (id: number, input: CustomerImageInput) =>
+    request<{ image: CustomerImage }>(`/customers/${id}/images`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  listCustomerBodyMetrics: (id: number) =>
+    request<{ bodyMetrics: BodyMetric[] }>(`/customers/${id}/body-metrics`),
+  /** Upsert por measured_at: 201 al crear, 200 al actualizar. */
+  createCustomerBodyMetric: (id: number, input: BodyMetricInput) =>
+    request<{ bodyMetric: BodyMetric }>(`/customers/${id}/body-metrics`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  /** Lista GLOBAL (incluye las filas públicas del landing): filtrar por customerId. */
+  listAppointments: () =>
+    request<{ appointments: Appointment[] }>("/appointments"),
+  updateAppointment: (id: number, patch: AppointmentPatch) =>
+    request<{ appointment: Appointment }>(`/appointments/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
     }),
 };
