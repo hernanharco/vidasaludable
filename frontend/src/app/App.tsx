@@ -52,6 +52,9 @@ const ReferrersPage = lazy(() =>
 const AssessmentAdminPage = lazy(() =>
   import("./admin/AssessmentAdminPage").then((m) => ({ default: m.AssessmentAdminPage })),
 );
+const AppointmentsPage = lazy(() =>
+  import("./admin/AppointmentsPage").then((m) => ({ default: m.AppointmentsPage })),
+);
 const VideosPage = lazy(() =>
   import("./admin/VideosPage").then((m) => ({ default: m.VideosPage })),
 );
@@ -108,6 +111,8 @@ export default function App() {
             <Route path="guidance" element={<GuidancePage />} />
             <Route path="recommendations" element={<RecommendationsPage />} />
             <Route path="referrers" element={<ReferrersPage />} />
+            {/* T7 — global citas view (landing rows with customer_id NULL included) */}
+            <Route path="citas" element={<AppointmentsPage />} />
             <Route path="assessment" element={<AssessmentAdminPage />} />
             <Route path="videos" element={<VideosPage />} />
           </Route>

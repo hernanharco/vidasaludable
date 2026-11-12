@@ -427,6 +427,12 @@ describe("admin tamizaje endpoints (T1: images, body metrics, appointments)", ()
     expect(ours.every((row) => row.status === "pendiente")).toBe(true);
     const landing = ours.find((row) => row.customerId === null)!;
     expect(landing).toMatchObject({ name: "Visitante", phone: "+34611111111", reason: "Formulario landing" });
+    // Chat-created rows carry no own name — the payload enriches them with
+    // the linked customer's contact data (additive fields).
+    const chatRow = ours.find((row) => row.customerId === customerId)!;
+    expect(chatRow.name).toBeNull();
+    expect(chatRow.customerName).toBe("Pide Cita");
+    expect(landing.customerName).toBeNull();
   });
 
   it("PATCH /admin/appointments/:id changes status and bumps updated_at", async () => {

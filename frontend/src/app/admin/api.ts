@@ -314,6 +314,11 @@ export interface Appointment {
   notes: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Enrichment de GET /admin/appointments: contacto del cliente vinculado
+   *  (filas creadas desde el chat vienen sin name/phone/email propios). */
+  customerName?: string | null;
+  customerPhone?: string | null;
+  customerEmail?: string | null;
 }
 
 export type AppointmentPatch = Partial<{

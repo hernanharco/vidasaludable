@@ -29,7 +29,7 @@ import type { GeminiClient } from "../agent/gemini.js";
 import { customers, conversations, messages, products, purchases, videos, videoSegments, recommendations as recommendationsTable, bodyMetrics, customerImages, appointmentRequests } from "../db/schema.js";
 import { assessmentSymptoms } from "../db/assessmentSchema.js";
 import type { NewGuidance, NewVideo, NewAppointmentRequest } from "../db/schema.js";
-import { eq, count } from "drizzle-orm";
+import { eq, count, inArray } from "drizzle-orm";
 
 /** Allowed `appointment_requests.status` values (CRM state machine). */
 const APPOINTMENT_STATUSES = ["pendiente", "contactada", "agendada", "cancelada"] as const;
@@ -290,9 +290,37 @@ export function createAdminRouter(db: Db, deps: AdminRouterDeps = {}): Hono {
   // --- Solicitud de cita (S3: landing + CRM + chat) — CRM list + updates. ---
   // Includes the public landing rows (customer_id NULL): this is the CRM
   // view of appointment_requests.
-  app.get("/appointments", (c) =>
-    c.json({ appointments: db.select().from(appointmentRequests).all() }),
-  );
+  app.get("/appointments", (c) => {
+    const rows = db.select().from(appointmentRequests).all();
+    // Enrich chat-created rows (they carry customerId but no name/phone/
+    // email on the wire) with the linked customer's contact data, so the
+    // CRM global list identifies WHO asked. Flat shape preserved — the
+    // enrichment fields are additive.
+    const ids = [
+      ...new Set(rows.map((r) => r.customerId).filter((v): v is number => v != null)),
+    ];
+    const byId = new Map<number, { name: string | null; phone: string | null; email: string | null }>();
+    if (ids.length > 0) {
+      for (const cu of db
+        .select({ id: customers.id, name: customers.name, phone: customers.phone, email: customers.email })
+        .from(customers)
+        .where(inArray(customers.id, ids))
+        .all()) {
+        byId.set(cu.id, { name: cu.name, phone: cu.phone, email: cu.email });
+      }
+    }
+    return c.json({
+      appointments: rows.map((r) => {
+        const cu = r.customerId != null ? byId.get(r.customerId) : undefined;
+        return {
+          ...r,
+          customerName: cu?.name ?? null,
+          customerPhone: cu?.phone ?? null,
+          customerEmail: cu?.email ?? null,
+        };
+      }),
+    });
+  });
 
   /**
    * PATCH /admin/appointments/:id — the CRM status machine

@@ -14,6 +14,7 @@ import {
   Key,
   Stethoscope,
   Clapperboard,
+  CalendarDays,
   Menu,
 } from "lucide-react";
 import { api, AdminError } from "./api";
@@ -28,6 +29,8 @@ const sections = [
   { to: "/admin/guidance", label: "Guías", icon: BookOpen, end: false },
   { to: "/admin/recommendations", label: "Recomendaciones", icon: ClipboardList, end: false },
   { to: "/admin/referrers", label: "Referentes", icon: Key, end: false },
+  // T7 — global citas (the ficha section only shows one customer's rows)
+  { to: "/admin/citas", label: "Citas", icon: CalendarDays, end: false },
   { to: "/admin/assessment", label: "Evaluación", icon: Stethoscope, end: false },
   { to: "/admin/videos", label: "Vídeos", icon: Clapperboard, end: false },
 ];
