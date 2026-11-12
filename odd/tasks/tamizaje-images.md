@@ -251,3 +251,9 @@ listado global + filtro de estados + PATCH optimista + notas inline, y
 nombre/teléfono/email del cliente (campos aditivos `customerName`,
 `customerPhone`, `customerEmail`). Evidencia: RED 6/6, backend 377/377,
 frontend 296/297 (único fallo = ChatIntake flaky pre-existente), tsc OK.
+- **L11** (2026-11-12, T7 E2E): push `690233e8` → Deploy Frontend success
+  (01:49Z). Verificado en prod: `dist/routes/admin.js` con el enrichment
+  (customerPhone), ruta "citas" en `index-BdkHXSUI.js` y el chunk lazy
+  `AppointmentsPage-DSQy417G.js` con "No hay citas" + customerName +
+  "formulario del landing". (Primer intento de grep falló porque la página
+  es lazy: sus strings viven en el chunk, no en index.js.)
