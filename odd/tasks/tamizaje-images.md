@@ -196,3 +196,37 @@ cuando el usuario pregunta por tamizaje/cita (instrucción en prompt como
   "Admin + chat del cliente"; 2) cita = "Landing + CRM + chat"; 3) uso del
   dato = "Inyectar en el agente"; 4) Cloudinary = "Sí, ya tengo
   credenciales".
+
+---
+
+## T6 — Descubrimiento del tamizaje (2026-11-11)
+
+> **L7** (verbatim): "como se da cuenta el usuario que puede tener un
+> tamizaje?" — decisión vía ask_user_question: los TRES canales
+> (Landing + Chat proactivo + Resultados del assessment).
+
+Tareas:
+- [x] T6a — Landing: opción `tamizaje` ("Tamizaje corporal (Tanita)") en
+  REASON_LABELS + select del form de Booking, y copy en la sección que
+  presente el servicio (qué es, qué mide con la Tanita, presencial y
+  opcional, sin compromiso). Commit `feat(landing)`.
+- [x] T6b — Chat proactivo: instrucción en `agent/prompt.ts` para que el
+  agente OFREZCA el tamizaje cuando el tema lo amerite (peso, grasa,
+  composición corporal, bajar de peso, objetivos corporales) emitiendo
+  `[CITA]` — sin ser insistentente, una oferta por tema. Commit
+  `feat(backend)`.
+- [x] T6c — Assessment results: card contextual en la fase de resultados
+  ("¿Querés medir tu composición corporal en persona? → Solicitar cita").
+  Con `vr_customer_id` guardado → reutiliza el diálogo de cita de chat
+  (extraer CitaCard a componente compartido); sin identidad → enlace a
+  `#booking` del landing (donde T6a ya ofrece el motivo tamizaje). Commit
+  `feat(chat)`.
+- [x] T6d — Cierre: **Hecho (L8)**. Commits `c0b6dfa4` (landing),
+  `463dd3ec` (prompt regla 10), `d84dfea2` (CTA assessment + componente
+  compartido). Suites: backend **377/377**, frontend **291/291**, tsc
+  limpio en ambos (spot check del orquestador). RED observado: 3/3 + 2/2 +
+  6/6. Copy elegido: opción "Tamizaje corporal (Tanita)" primera en el
+  select; regla 10 = oferta máx. una vez por tema, nunca venta forzada;
+  CTA = "¿Querés medir tu composición corporal en persona?" → diálogo con
+  identidad / enlace a #booking sin ella (clave corrupta degrada al
+  enlace). Pendiente E2E de deploy (ver L9).
