@@ -237,3 +237,17 @@ Tareas:
   shell HTML no las muestra porque el copy vive en el bundle SPA).
   **Feature completa.** Pendiente humano: vistazo manual al diálogo anidado
   en browser y valorar el tono de la oferta proactiva del agente.
+
+## T7 — Página global de Citas en el CRM (2026-11-11)
+
+> **L10** (verbatim): "cuando le di solicitar cita para tamizaje aparecio el
+> modal pero en el CRM no veo donde encuentro que le gustaria una tamizaje"
+
+Hueco: las citas solo se veían en la ficha del cliente (filtradas por
+customerId) y las del landing (NULL) en ninguna parte. Fix commit
+**`eb09970e`**: página `/admin/citas` (nav "Citas" tras Referentes) con el
+listado global + filtro de estados + PATCH optimista + notas inline, y
+`GET /admin/appointments` ahora enriquece las filas del chat con
+nombre/teléfono/email del cliente (campos aditivos `customerName`,
+`customerPhone`, `customerEmail`). Evidencia: RED 6/6, backend 377/377,
+frontend 296/297 (único fallo = ChatIntake flaky pre-existente), tsc OK.
