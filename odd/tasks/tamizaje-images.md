@@ -230,3 +230,10 @@ Tareas:
   CTA = "¿Querés medir tu composición corporal en persona?" → diálogo con
   identidad / enlace a #booking sin ella (clave corrupta degrada al
   enlace). Pendiente E2E de deploy (ver L9).
+- **L9** (2026-11-11, T6 E2E en prod): push `67a5bf96` → webhook con build
+  exitoso (fix IPv4 en vigor). Verificado: regla 10 en
+  `/app/dist/agent/prompt.js` del contenedor; bundle `index-DItN56_s.js`
+  con "Tamizaje corporal (Tanita)" y "composición corporal en persona" (el
+  shell HTML no las muestra porque el copy vive en el bundle SPA).
+  **Feature completa.** Pendiente humano: vistazo manual al diálogo anidado
+  en browser y valorar el tono de la oferta proactiva del agente.
