@@ -4,6 +4,9 @@ import { Calendar as CalendarIcon, Clock, ChevronDown } from "lucide-react";
 
 /** Display labels for the reason select values sent to POST /appointments. */
 const REASON_LABELS: Record<string, string> = {
+  // T6a discovery: first among the concrete motives — the in-person
+  // body-composition screening (Tanita) the landing must surface.
+  tamizaje: "Tamizaje corporal (Tanita)",
   vitaminas: "Plan de Vitaminas y Suplementos",
   habitos: "Coaching de Hábitos",
   integral: "Evaluación Integral",
@@ -101,7 +104,9 @@ export function Booking() {
           </h2>
           <p className="text-emerald-100/80 mb-10 leading-relaxed text-lg">
             Solicita una evaluación inicial. Analizaremos tu estilo de vida, hábitos y requerimientos 
-            vitamínicos para crear un plan preventivo a tu medida.
+            vitamínicos para crear un plan preventivo a tu medida. También puedes hacerte el
+            tamizaje de composición corporal presencial con una báscula Tanita —mide peso, grasa
+            corporal, masa muscular, agua y más—, opcional y sin compromiso.
           </p>
           
           <div className="space-y-6">
@@ -228,6 +233,7 @@ export function Booking() {
                       className="w-full px-4 py-3 border border-stone-200 rounded-xl bg-stone-50 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all appearance-none"
                     >
                       <option value="" disabled>Selecciona una opción...</option>
+                      <option value="tamizaje">Tamizaje corporal (Tanita)</option>
                       <option value="vitaminas">Plan de Vitaminas y Suplementos</option>
                       <option value="habitos">Coaching de Hábitos</option>
                       <option value="integral">Evaluación Integral</option>

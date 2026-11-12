@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import React from "react";
-import { render, screen, waitFor, fireEvent, act } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, act, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Booking } from "../src/app/components/Booking";
 
@@ -51,7 +51,10 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-async function fillForm(user: ReturnType<typeof userEvent.setup>) {
+async function fillForm(
+  user: ReturnType<typeof userEvent.setup>,
+  reasonCode = "integral",
+) {
   await user.type(screen.getByLabelText(/Nombre Completo/), "Ana López");
   await user.type(screen.getByLabelText(/Correo Electrónico/), "ana@example.com");
   await user.type(screen.getByLabelText(/Teléfono/), "+34 611 222 333");
@@ -60,7 +63,7 @@ async function fillForm(user: ReturnType<typeof userEvent.setup>) {
   });
   await user.selectOptions(
     screen.getByLabelText(/Motivo de Consulta/),
-    "integral",
+    reasonCode,
   );
 }
 
@@ -173,5 +176,59 @@ describe("Booking (landing, S3 Landing + CRM)", () => {
     expect(alert).toHaveTextContent(/No pudimos enviar tu solicitud/);
     expect(screen.getByRole("button", { name: "Solicitar Cita" })).toBeEnabled();
     await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1));
+  });
+});
+
+// T6a (tamizaje-images discovery, L7 channel 1: Landing) — the landing must
+// let visitors DISCOVER the in-person screening: a `tamizaje` motive first
+// among the concrete options of the Motivo select, and section copy that
+// presents what the Tanita screening is (in-person, optional, no commitment).
+describe("Booking tamizaje discovery (T6a)", () => {
+  it("offers the tamizaje motive first among the concrete options", () => {
+    render(<Booking />);
+
+    const select = screen.getByLabelText(/Motivo de Consulta/);
+    const options = within(select).getAllByRole("option");
+    // Placeholder first, then tamizaje BEFORE the concrete service motives.
+    expect(options.map((o) => o.getAttribute("value"))).toEqual([
+      "",
+      "tamizaje",
+      "vitaminas",
+      "habitos",
+      "integral",
+      "otro",
+    ]);
+    expect(options[1]).toHaveTextContent("Tamizaje corporal (Tanita)");
+  });
+
+  it("presents the in-person Tanita body-composition screening in the section copy", () => {
+    const { container } = render(<Booking />);
+    const copy = container.textContent ?? "";
+    expect(copy).toMatch(/tamizaje/i);
+    expect(copy).toMatch(/composición corporal/i);
+    expect(copy).toMatch(/presencial/i);
+    expect(copy).toMatch(/Tanita/i);
+    expect(copy).toMatch(/opcional/i);
+    expect(copy).toMatch(/sin compromiso/i);
+    // The original section headline stays (extend the copy, don't redesign).
+    expect(copy).toContain("Tu plan preventivo comienza aquí.");
+  });
+
+  it("sends the tamizaje label to the public endpoint when selected", async () => {
+    const user = userEvent.setup();
+    mockFetch.mockImplementation(() =>
+      ok(201, { appointment: { id: 44, status: "pendiente" } }),
+    );
+    render(<Booking />);
+
+    await fillForm(user, "tamizaje");
+    await user.click(screen.getByRole("button", { name: "Solicitar Cita" }));
+
+    expect(await screen.findByText("Solicitud Recibida")).toBeInTheDocument();
+    const [url, init] = lastCall();
+    expect(url).toBe("/api/appointments");
+    expect(JSON.parse(String(init.body)).reason).toBe(
+      "Tamizaje corporal (Tanita) — Fecha preferida: 2026-03-01",
+    );
   });
 });
