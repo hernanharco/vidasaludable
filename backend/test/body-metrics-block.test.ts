@@ -142,3 +142,58 @@ describe("[CITA] marker instruction (S3)", () => {
     expect(withProfile).toContain("[CITA]");
   });
 });
+
+describe("proactive [CITA] offer instruction (T6b)", () => {
+  it("extends the [CITA] rule with the proactive, once-per-topic offer", () => {
+    const prompt = buildSystemPrompt(noContext.catalog, null, noContext.guidance, noContext.video);
+
+    // Rule 9's on-demand contract stays intact (extend, don't rewrite).
+    expect(prompt).toContain("solo cuando lo pida el usuario");
+    expect(prompt).toContain("[CITA]");
+
+    // The proactive instruction sits right after the [CITA] rule (rule 9).
+    const citaRuleIdx = prompt.indexOf("CITA PARA EL TAMIZAJE PRESENCIAL");
+    const proactiveIdx = prompt.indexOf("OFRECIMIENTO PROACTIVO DEL TAMIZAJE");
+    expect(citaRuleIdx).toBeGreaterThan(0);
+    expect(proactiveIdx).toBeGreaterThan(citaRuleIdx);
+
+    // Topic triggers of the T6b scope (weight loss, body fat, weighing
+    // themselves, muscle mass, body composition, body goals).
+    for (const topic of [
+      "bajar de peso",
+      "grasa corporal",
+      "pesarse",
+      "masa muscular",
+      "composición corporal",
+      "objetivos corporales",
+    ]) {
+      expect(prompt).toContain(topic);
+    }
+
+    // Once per topic, no repeat after accept/decline, natural — never pushy.
+    expect(prompt).toMatch(/UNA VEZ POR TEMA/);
+    expect(prompt).toContain("aceptó");
+    expect(prompt).toContain("rechazó");
+    expect(prompt).toMatch(/venta forzada/);
+  });
+
+  it("is unconditional: present with and without an injected profile block", () => {
+    const withoutProfile = buildSystemPrompt(
+      noContext.catalog,
+      null,
+      noContext.guidance,
+      noContext.video,
+    );
+    const withProfile = buildSystemPrompt(
+      noContext.catalog,
+      null,
+      noContext.guidance,
+      noContext.video,
+      { goal: "energía" },
+      null,
+      null,
+    );
+    expect(withoutProfile).toContain("OFRECIMIENTO PROACTIVO DEL TAMIZAJE");
+    expect(withProfile).toContain("OFRECIMIENTO PROACTIVO DEL TAMIZAJE");
+  });
+});

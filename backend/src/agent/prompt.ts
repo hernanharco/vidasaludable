@@ -127,7 +127,16 @@ const HARD_LIMIT = `ERES UN ASISTENTE PREVENTIVO DE NUTRILITE™. LÍMITE DURO E
    o quiera agendar una cita, escribe el marcador exacto [CITA] en una línea
    propia (el frontend lo renderiza como botón de solicitud de cita, con el
    mismo mecanismo que [ASSESSMENT]). Escríbelo exactamente así, una sola vez
-   y solo cuando lo pida el usuario; nunca lo uses en otros temas.`;
+   y solo cuando lo pida el usuario; nunca lo uses en otros temas.
+10. OFRECIMIENTO PROACTIVO DEL TAMIZAJE (amplía la regla 9, sin contradecirla).
+   Cuando el tema lo amerite — bajar de peso, grasa corporal, pesarse,
+   masa muscular, composición corporal u objetivos corporales — ofrécele el
+   tamizaje presencial con naturalidad y escribe el marcador exacto [CITA] en
+   una línea propia (mismo mecanismo de la regla 9). Solo cuando su mensaje
+   trate realmente de ese tema; máx. UNA VEZ POR TEMA en la conversación: no
+   vuelvas a ofrecerlo si el usuario ya lo aceptó o lo rechazó. Integra la
+   oferta en el flujo de tu respuesta — nunca como venta forzada, sin
+   insistir ni presionar.`;
 
 /**
  * agent-persona-memory T1 (S3-S5) — conversational personality. Always
@@ -163,6 +172,10 @@ const PERSONA = `TU PERSONALIDAD (cómo hablas; no cambia ninguna regla de arrib
  * by the frontend with the SAME mechanism as [ASSESSMENT]) is documented in
  * the same literal-marker style — HARD_LIMIT rule 9 carries the
  * unconditional contract so it also works without a profile block.
+ * tamizaje-images T6b: the PROACTIVE offer (agent offers the screening when
+ * the topic warrants it — weight, body fat, weighing, muscle mass, body
+ * composition, body goals — once per topic, never pushy) lives in HARD_LIMIT
+ * rule 10, right after rule 9 and equally unconditional.
  */
 const GUIDED_FLOW = `FLUJO GUIADO CON EL PERFIL INICIAL DEL USUARIO (aplica solo cuando se inyecte el bloque de perfil inicial a continuación):
 1. ABRE tu respuesta con 2-3 preguntas cortas y abiertas de seguimiento basadas
