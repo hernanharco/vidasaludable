@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { ClipboardCheck, X, ChevronRight, ChevronLeft, Check, Loader2, Mail, User } from "lucide-react";
+import { ClipboardCheck, X, ChevronRight, ChevronLeft, Check, Loader2, Mail, User, Calendar } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Progress } from "../ui/progress";
@@ -10,6 +11,7 @@ import { AssessmentWelcome } from "./AssessmentWelcome";
 import { AssessmentSymptoms } from "./AssessmentSymptoms";
 import { AssessmentResults } from "./AssessmentResults";
 import { AccessCodeGate } from "../AccessCodeGate";
+import { CitaAppointmentButton } from "../chat/CitaAppointmentButton";
 import { QuestionnaireData, CalculateResponse, AssessmentSaved, SYMPTOMS_PER_STEP } from "./types";
 
 /**
@@ -66,6 +68,37 @@ function persistReferrer(id: number, name: string): void {
     // Degrades to asking the code again on the next visit — never blocks.
   }
 }
+
+/**
+ * T6c — stored chat identity for the results CTA. Same read contract as
+ * ChatSession's `readStoredNumber` (positive integer): a missing or corrupt
+ * `vr_customer_id` degrades to the no-identity branch (link to the landing
+ * booking form), never to a broken dialog.
+ */
+function readStoredCustomerId(): number | null {
+  try {
+    const raw = window.localStorage?.getItem("vr_customer_id");
+    if (raw == null) return null;
+    const n = Number(raw);
+    return Number.isInteger(n) && n > 0 ? n : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The server's `{error}` string from a failed reply, or null when absent (ChatSession copy). */
+async function readServerError(res: Response): Promise<string | null> {
+  try {
+    const data = (await res.json()) as { error?: unknown };
+    return typeof data?.error === "string" && data.error !== "" ? data.error : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Transport-failure copy for the T6c appointment POST (ChatSession copy, identical). */
+const CONNECTION_ERROR =
+  "No pudimos conectar con el servidor. Comprueba tu conexión e inténtalo de nuevo.";
 
 export function AssessmentWidget({ open, onClose }: AssessmentWidgetProps) {
   const [phase, setPhase] = useState<"access_code" | "loading" | "welcome" | "symptoms" | "calculating" | "results">("access_code");
@@ -213,6 +246,51 @@ export function AssessmentWidget({ open, onClose }: AssessmentWidgetProps) {
       setEmailSending(false);
     }
   }, [savedId, email]);
+
+  /**
+   * T6c — appointment POST behind the results CTA: same endpoint, payload
+   * ({customer_id, reason}) and toast copy as ChatSession's lifted `[CITA]`
+   * handler (chat behavior untouched). The wizard owns its own fetches, so
+   * the request lives here with a fresh identity read at click time.
+   * Resolves true on 2xx — the card flips to its confirmed state.
+   */
+  const handleRequestAppointment = useCallback(async (reason: string): Promise<boolean> => {
+    const customerId = readStoredCustomerId();
+    if (customerId == null) return false;
+    try {
+      const res = await fetch("/api/assistant/appointments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ customer_id: customerId, reason }),
+      });
+      if (res.ok) {
+        toast.success("Solicitud de cita enviada");
+        return true;
+      }
+      if (res.status === 404) {
+        toast.error(
+          "No encontramos tu registro. Inicia una conversación nueva e inténtalo de nuevo.",
+        );
+        return false;
+      }
+      const serverError = await readServerError(res);
+      toast.error(
+        serverError
+          ? `No se pudo enviar la solicitud. (${serverError})`
+          : "No se pudo enviar la solicitud. Inténtalo de nuevo.",
+      );
+      return false;
+    } catch {
+      toast.error(CONNECTION_ERROR);
+      return false;
+    }
+  }, []);
+
+  // T6c — discovery: with a stored chat identity the results CTA reuses the
+  // chat's appointment dialog; without one it links to /#booking (the landing
+  // form that offers the tamizaje motive after T6a). Read per render so a
+  // stale/corrupt key can never route into a dead dialog.
+  const storedCustomerId = readStoredCustomerId();
 
   // T4 — controlled: closed means no DOM at all (the parent owns the open
   // state; the standalone floating button was removed).
@@ -442,6 +520,38 @@ export function AssessmentWidget({ open, onClose }: AssessmentWidgetProps) {
                       >
                         PDF
                       </Button>
+                    )}
+                  </div>
+                  {/* T6c — discovery channel: the in-person body-composition
+                      screening, next to the PDF/email actions. With a stored
+                      chat identity the CTA opens the chat's OWN appointment
+                      dialog (shared CitaAppointmentButton → POST
+                      /assistant/appointments); without one it links to the
+                      landing booking form (T6a added the tamizaje motive).
+                      The assessment dialog STAYS open behind the nested cita
+                      dialog — cancelling returns to these results with no
+                      state loss. */}
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-stone-700">
+                      ¿Querés medir tu composición corporal en persona?
+                    </p>
+                    {storedCustomerId != null ? (
+                      <CitaAppointmentButton onRequestAppointment={handleRequestAppointment} />
+                    ) : (
+                      <a
+                        href="/#booking"
+                        className="mt-1 w-full flex items-center gap-3 rounded-xl border border-emerald-600 bg-emerald-50 px-3 py-2.5 text-left transition-colors hover:bg-emerald-100 focus:outline-none focus:ring-2 focus:ring-emerald-600/40"
+                      >
+                        <Calendar className="w-5 h-5 shrink-0 text-emerald-700" aria-hidden="true" />
+                        <span className="flex flex-col">
+                          <span className="text-sm font-semibold text-emerald-800">
+                            Solicitar cita para tamizaje
+                          </span>
+                          <span className="text-xs text-emerald-700">
+                            Agenda presencial con un especialista
+                          </span>
+                        </span>
+                      </a>
                     )}
                   </div>
                 </div>
