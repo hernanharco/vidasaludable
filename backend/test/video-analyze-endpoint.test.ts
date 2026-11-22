@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createAnalysisPreflight } from "../src/services/analysisPreflight.js";
 import type { CommandRunner } from "../src/tools/media.js";
+import type { GeminiClient } from "../src/agent/gemini.js";
 import { createDatabase } from "../src/db/client.js";
 import { migrate } from "../src/db/migrate.js";
 import { buildApp } from "../src/index.js";
@@ -38,6 +39,12 @@ describe("POST /admin/videos/:id/analyze (T2)", () => {
   /** yt-dlp fake for the preflight: present (no subprocess, no network). */
   const ytdlpOk: CommandRunner = async () => ({ code: 0, stdout: "2026.10.1", stderr: "" });
 
+  /** Gemini fake: the preflight must never read the ambient env in tests — a
+   * real key on the developer machine (or its absence in CI) must not decide
+   * which branch is exercised. */
+  const geminiWithKey = { isConfigured: () => true, generate: async () => "" } as unknown as GeminiClient;
+  const geminiWithoutKey = { isConfigured: () => false, generate: async () => "" } as unknown as GeminiClient;
+
   /** Analyzer fake: captures the video + injected transcript, parks until settled. */
   const analysisAnalyze = (video: Video, transcript?: unknown): Promise<void> => {
     calls.push(video);
@@ -68,21 +75,21 @@ describe("POST /admin/videos/:id/analyze (T2)", () => {
   beforeAll(async () => {
     prevNodeEnv = process.env.NODE_ENV;
     process.env.NODE_ENV = "development"; // admin router open (dev mode)
-    // The analyze preflight needs a configured Gemini key; a real deployment
-    // has one, and tests must not depend on the developer's ambient env.
-    vi.stubEnv("GEMINI_API_KEY", "test-gemini-key");
     db = createDatabase(":memory:");
     await migrate(db);
-    // REAL preflight composition with only the yt-dlp subprocess faked, so the
-    // cookie and Gemini checks under test are the production ones.
+    // REAL preflight composition with only the yt-dlp subprocess and the Gemini
+    // client faked, so the cookie and Gemini checks under test are the
+    // production ones and stay independent of ambient env.
     app = buildApp(db, {
       analysisAnalyze,
-      analysisPreflight: createAnalysisPreflight({ ytdlpRunner: ytdlpOk }),
+      analysisPreflight: createAnalysisPreflight({
+        ytdlpRunner: ytdlpOk,
+        geminiClient: geminiWithKey,
+      }),
     });
   });
 
   afterAll(() => {
-    vi.unstubAllEnvs();
     if (prevNodeEnv === undefined) delete process.env.NODE_ENV;
     else process.env.NODE_ENV = prevNodeEnv;
   });
@@ -267,11 +274,16 @@ describe("POST /admin/videos/:id/analyze (T2)", () => {
     // Gemini runs in BOTH acquisition modes, so a missing key is a config error
     // in both — and it used to surface as a 202 plus an identical
     // analysis_error on every retry.
+    const noKeyApp = buildApp(db, {
+      analysisAnalyze,
+      analysisPreflight: createAnalysisPreflight({
+        ytdlpRunner: ytdlpOk,
+        geminiClient: geminiWithoutKey,
+      }),
+    });
     const video = makeVideo("anEpNoGemini");
-    const prevKey = process.env.GEMINI_API_KEY;
-    vi.stubEnv("GEMINI_API_KEY", "");
-    try {
-      const res = await send("POST", `/admin/videos/${video.id}/analyze`);
+    {
+      const res = await noKeyApp.request(`/admin/videos/${video.id}/analyze`, { method: "POST" });
       expect(res.status).toBe(503);
       const data = (await res.json()) as { error: string; code: string };
       expect(data.code).toBe("gemini_not_configured");
@@ -280,7 +292,7 @@ describe("POST /admin/videos/:id/analyze (T2)", () => {
       expect(stateOf(video.id).state).toBeNull();
 
       // The escape hatch needs Gemini too — no 202 without a key.
-      const withTranscript = await app.request(`/admin/videos/${video.id}/analyze`, {
+      const withTranscript = await noKeyApp.request(`/admin/videos/${video.id}/analyze`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ transcript: { events: [] } }),
@@ -290,8 +302,6 @@ describe("POST /admin/videos/:id/analyze (T2)", () => {
         "gemini_not_configured",
       );
       expect(calls).toHaveLength(0);
-    } finally {
-      vi.stubEnv("GEMINI_API_KEY", prevKey ?? "test-gemini-key");
     }
   });
 
@@ -301,7 +311,10 @@ describe("POST /admin/videos/:id/analyze (T2)", () => {
     const ytdlpMissing: CommandRunner = async () => ({ code: 127, stdout: "", stderr: "not found" });
     const localApp = buildApp(db, {
       analysisAnalyze,
-      analysisPreflight: createAnalysisPreflight({ ytdlpRunner: ytdlpMissing }),
+      analysisPreflight: createAnalysisPreflight({
+        ytdlpRunner: ytdlpMissing,
+        geminiClient: geminiWithKey,
+      }),
     });
     const video = makeVideo("anEpNoYtdlp");
 
