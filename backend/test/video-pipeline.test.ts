@@ -13,6 +13,7 @@ import seedData from "../src/seed/assessment_seed_data.json";
 import { parseVideoId, parseJson3Transcript, parseGeminiSegments } from "../src/tools/parsers.js";
 import {
   buildFfmpegArgs,
+  classifyYtdlpFailure,
   createFfmpegClient,
   createYtdlpClient,
   type CommandRunner,
@@ -611,6 +612,73 @@ describe("createYtdlpClient (con runner falso, sin subprocess)", () => {
   it("binary ausente (ENOENT → código 127) → error claro en español", async () => {
     const runner: CommandRunner = async () => ({ code: 127, stdout: "", stderr: "command not found" });
     await expect(createYtdlpClient(runner).getVersion()).rejects.toThrow(/yt-dlp/);
+  });
+
+  // Prod incident 2026-11-22: YouTube bot-checked the server IP with stale
+  // cookies. The old message blamed the URL and the installation; the admin
+  // chased both and neither was wrong. The cause must be named instead.
+  it("anti-bot: nombra la causa real y no culpa a la URL ni a la instalación", async () => {
+    const stderr = [
+      "WARNING: [youtube] The provided YouTube account cookies are no longer valid. They have likely been rotated in the browser as a security measure.",
+      "WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing",
+      "ERROR: [youtube] 0RYeUT3Yl0Q: Sign in to confirm you\u2019re not a bot. This helps protect our community. Use --cookies-from-browser or --cookies for the authentication.",
+    ].join("\n");
+    const runner: CommandRunner = async () => ({ code: 1, stdout: "", stderr });
+    const err = await createYtdlpClient(runner)
+      .getMetadata(YOUTUBE_URL)
+      .then(
+        () => null,
+        (e: Error) => e,
+      );
+    expect(err).toBeInstanceOf(Error);
+    const msg = (err as Error).message;
+    expect(msg).toMatch(/anti-bot/i);
+    expect(msg).not.toMatch(/URL sea válida/);
+    expect(msg).not.toMatch(/yt-dlp esté instalado/);
+    expect(msg).toContain("Detalle:");
+  });
+
+  it("cookies vencidas sin anti-bot → apunta al archivo de cookies, no a la URL", async () => {
+    const stderr = "WARNING: [youtube] The provided YouTube account cookies are no longer valid.";
+    const runner: CommandRunner = async () => ({ code: 1, stdout: "", stderr });
+    const err = await createYtdlpClient(runner)
+      .getMetadata(YOUTUBE_URL)
+      .then(
+        () => null,
+        (e: Error) => e,
+      );
+    const msg = (err as Error).message;
+    expect(msg).toMatch(/cookies/i);
+    expect(msg).toContain("YT_COOKIES_PATH");
+    expect(msg).not.toMatch(/URL sea válida/);
+  });
+
+  it("video eliminado → dice que el video no existe, no que yt-dlp falta", async () => {
+    const stderr = "ERROR: [youtube] 0RYeUT3Yl0Q: Video unavailable";
+    const runner: CommandRunner = async () => ({ code: 1, stdout: "", stderr });
+    const err = await createYtdlpClient(runner)
+      .getTranscript(YOUTUBE_URL)
+      .then(
+        () => null,
+        (e: Error) => e,
+      );
+    const msg = (err as Error).message;
+    expect(msg).toMatch(/no existe|eliminado/i);
+    expect(msg).not.toMatch(/instalado/);
+  });
+
+  it("classifyYtdlpFailure mapea causas y deja 'unknown' como último recurso", () => {
+    expect(classifyYtdlpFailure("ERROR: Sign in to confirm you\u2019re not a bot.")).toBe("anti_bot");
+    expect(classifyYtdlpFailure("WARNING: The provided YouTube account cookies are no longer valid.")).toBe(
+      "cookies_invalid",
+    );
+    expect(classifyYtdlpFailure("ERROR: Private video. Sign in if you've been granted access")).toBe(
+      "auth_required",
+    );
+    expect(classifyYtdlpFailure("ERROR: This video is not available in your country")).toBe("geo_blocked");
+    expect(classifyYtdlpFailure("ERROR: Video unavailable")).toBe("unavailable");
+    expect(classifyYtdlpFailure("ERROR: Unable to download webpage: timed out")).toBe("network");
+    expect(classifyYtdlpFailure("algo raro pasó")).toBe("unknown");
   });
 
   it("downloadVideo usa -f 'bv*+ba/b' y verifica el archivo de salida", async () => {

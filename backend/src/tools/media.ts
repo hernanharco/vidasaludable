@@ -53,6 +53,98 @@ function tailStderr(stderr: string): string {
   return lines.slice(-3).join(" | ") || "sin detalles";
 }
 
+/**
+ * Root cause of a failed yt-dlp extraction, derived from its own stderr.
+ *
+ * Why this exists: one generic "falló" message collapsed six unrelated
+ * failures into one (prod incident 2026-11-22 — the admin was told to check
+ * the URL and the installation, and neither was wrong). `unknown` is the
+ * honest fallback: never assert a cause the log does not show.
+ */
+export type YtdlpFailureCause =
+  | "anti_bot"
+  | "cookies_invalid"
+  | "auth_required"
+  | "geo_blocked"
+  | "unavailable"
+  | "network"
+  | "unknown";
+
+/**
+ * Ordered — first match wins, so the most specific signal must come first.
+ * `anti_bot` leads because YouTube's own message also says "cookies" and
+ * "sign in", which every later matcher would otherwise mis-claim.
+ */
+const FAILURE_MATCHERS: ReadonlyArray<{ cause: YtdlpFailureCause; pattern: RegExp }> = [
+  { cause: "anti_bot", pattern: /sign in to confirm you.re not a bot/i },
+  { cause: "cookies_invalid", pattern: /cookies? are no longer valid|cookies? (?:have )?expired/i },
+  {
+    cause: "auth_required",
+    pattern: /private video|members-only|members only|join this channel|only available to/i,
+  },
+  {
+    cause: "geo_blocked",
+    pattern: /not available in your country|geo.?restrict|in your country by the uploader/i,
+  },
+  {
+    cause: "unavailable",
+    pattern: /video unavailable|this video is (?:not available|no longer available)|has been removed|does not exist/i,
+  },
+  {
+    cause: "network",
+    pattern:
+      /timed out|timeout|temporary failure in name resolution|getaddrinfo|connection reset|network is unreachable|unable to download webpage/i,
+  },
+];
+
+/** Classifies yt-dlp stderr into a cause. Pure — asserted by the media tests. */
+export function classifyYtdlpFailure(stderr: string): YtdlpFailureCause {
+  for (const { cause, pattern } of FAILURE_MATCHERS) {
+    if (pattern.test(stderr)) return cause;
+  }
+  return "unknown";
+}
+
+/**
+ * Builds the thrown message for a failed extraction, naming the actual cause
+ * and its next action instead of blaming the URL and the installation.
+ *
+ * `action` is a verb phrase without the URL ("leer los metadatos"), so the
+ * URL is printed exactly once per message.
+ */
+function ytdlpFailureMessage(stderr: string, action: string, url: string): string {
+  const detail = tailStderr(stderr);
+  switch (classifyYtdlpFailure(stderr)) {
+    case "anti_bot":
+      return (
+        `YouTube bloqueó la petición (verificación anti-bot) al ${action} de ${url}. ` +
+        "La IP del servidor no la pasa: adquirí el contenido desde una máquina con sesión real " +
+        `(p. ej. "yt-dlp --cookies-from-browser …") y subí la transcripción, o renová las cookies de YT_COOKIES_PATH. Detalle: ${detail}`
+      );
+    case "cookies_invalid":
+      return (
+        `Las cookies de YouTube configuradas en YT_COOKIES_PATH vencieron al ${action} de ${url}. ` +
+        `Reexportá el archivo de cookies, o adquirí el contenido localmente. Detalle: ${detail}`
+      );
+    case "auth_required":
+      return `${url} es privado o requiere sesión al ${action}. Detalle: ${detail}`;
+    case "geo_blocked":
+      return `${url} no está disponible en la región del servidor al ${action}. Detalle: ${detail}`;
+    case "unavailable":
+      return (
+        `El video ${url} no existe o fue eliminado (no se pudo ${action}). ` +
+        `Verificá la URL. Detalle: ${detail}`
+      );
+    case "network":
+      return (
+        `Fallo de red al ${action} de ${url} (timeout, DNS o conexión cortada). ` +
+        `Puede ser transitorio: reintentá. Detalle: ${detail}`
+      );
+    default:
+      return `yt-dlp falló al ${action} de ${url}. Detalle: ${detail}`;
+  }
+}
+
 /** Normalized `yt-dlp -J` metadata. */
 export interface YtDlpMetadata {
   id: string;
@@ -143,9 +235,7 @@ export function createYtdlpClient(runner: CommandRunner = execCommandRunner): Yt
         cookies.dispose();
       }
       if (res.code !== 0) {
-        throw new Error(
-          `yt-dlp falló al leer los metadatos de ${url}. Verifica que la URL sea válida y que yt-dlp esté instalado. Detalle: ${tailStderr(res.stderr)}`,
-        );
+        throw new Error(ytdlpFailureMessage(res.stderr, "leer los metadatos", url));
       }
       let data: Record<string, unknown>;
       try {
@@ -187,9 +277,7 @@ export function createYtdlpClient(runner: CommandRunner = execCommandRunner): Yt
           url,
         ]);
         if (res.code !== 0) {
-          throw new Error(
-            `yt-dlp falló al descargar los subtítulos de ${url}. Detalle: ${tailStderr(res.stderr)}`,
-          );
+          throw new Error(ytdlpFailureMessage(res.stderr, "descargar los subtítulos", url));
         }
         const files = await readdir(dir);
         const subFile = files.find((f) => f.endsWith(".json3"));
