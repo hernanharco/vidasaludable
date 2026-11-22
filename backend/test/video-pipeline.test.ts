@@ -16,6 +16,7 @@ import {
   classifyYtdlpFailure,
   createFfmpegClient,
   createYtdlpClient,
+  createYtdlpPreflight,
   type CommandRunner,
   type YtdlpClient,
 } from "../src/tools/media.js";
@@ -846,7 +847,11 @@ describe("createYtdlpClient (con runner falso, sin subprocess)", () => {
     }
   });
 
-  it("cookies: missing master → runs WITHOUT --cookies (honest bot-check, master path never created)", async () => {
+  it("cookies: master configurado pero ilegible → aborta con la causa real y NO invoca yt-dlp", async () => {
+    // Prod incident 2026-11-22: configured-but-unreadable used to run WITHOUT
+    // --cookies, which on a datacenter IP is a guaranteed bot-check. The CRM
+    // stored a failure naming neither the cookies nor the file, and every
+    // admin retry reproduced it. A broken configuration must name itself.
     const calls: Array<{ cmd: string; args: string[] }> = [];
     const runner: CommandRunner = async (cmd, args) => {
       calls.push({ cmd, args });
@@ -856,21 +861,90 @@ describe("createYtdlpClient (con runner falso, sin subprocess)", () => {
         stderr: "",
       };
     };
-    vi.stubEnv("YT_COOKIES_PATH", "/nonexistent/dir/cookies.txt");
-    const warn = vi.spyOn(console, "error").mockImplementation(() => {});
+    const missing = "/nonexistent/dir/cookies.txt";
+    // TMPDIR redirect: os.tmpdir() reads it per call, so any directory the
+    // failed call would have created lands in this scratch dir instead — that
+    // is how "no side effect before abort" becomes assertable.
+    const scratch = await mkdtemp(join(tmpdir(), "vp-nosideeffect-"));
+    const outDir = join(scratch, "cache");
+    const output = join(outDir, "never.mp4");
+    vi.stubEnv("YT_COOKIES_PATH", missing);
+    vi.stubEnv("TMPDIR", scratch);
+    const client = createYtdlpClient(runner);
     try {
-      await createYtdlpClient(runner).getMetadata(YOUTUBE_URL);
-      expect(calls[0]!.args).toEqual(["--js-runtimes", "node", "-J", YOUTUBE_URL]);
-      expect(warn).toHaveBeenCalled();
+      // Every extraction path fails fast with the path in the message…
+      await expect(client.getMetadata(YOUTUBE_URL)).rejects.toThrow(`YT_COOKIES_PATH=${missing}`);
+      await expect(client.getTranscript(YOUTUBE_URL)).rejects.toThrow(
+        `YT_COOKIES_PATH=${missing}`,
+      );
+      await expect(client.downloadVideo(YOUTUBE_URL, output)).rejects.toThrow(
+        `YT_COOKIES_PATH=${missing}`,
+      );
+      // …no subprocess is spawned (a doomed attempt is not made)…
+      expect(calls).toHaveLength(0);
+      // …no temp dir is left behind by an acquisition that never started…
+      expect(await readdir(scratch)).toEqual([]);
+      // …and the master path is never created, nor a .run sibling.
+      await expect(access(missing)).rejects.toThrow();
+      await expect(access(`${missing}.run`)).rejects.toThrow();
     } finally {
-      vi.restoreAllMocks();
       vi.unstubAllEnvs();
+      await rm(scratch, { recursive: true, force: true });
     }
+  });
+  it("cookies: si falla el tmp/cache, el .run (copia de la sesión) NO sobrevive al rechazo", async () => {    // Post-verificación 2026-11-22 (F1): preparar las cookies antes de
+    // mkdtemp/mkdir dejaba <master>.run — una copia byte a byte de la sesión
+    // de YouTube — hasta la próxima extracción exitosa, porque dispose() vive
+    // en un finally que arrancaba después. Un rechazo nunca debe dejar
+    // credenciales en disco.
+    const runner: CommandRunner = async () => ({ code: 0, stdout: "{}", stderr: "" });
+    const root = await mkdtemp(join(tmpdir(), "vp-residue-"));
+    const master = join(root, "youtube-cookies.txt");
+    await writeFile(master, ".youtube.com\tTRUE\t/\tTRUE\t1\tSID\tabc\n", "utf8");
+    vi.stubEnv("YT_COOKIES_PATH", master);
+    const client = createYtdlpClient(runner);
+    try {
+      // tmp inexistente → mkdtemp falla DESPUÉS de copiar el master.
+      vi.stubEnv("TMPDIR", join(root, "no-existe"));
+      await expect(client.getTranscript(YOUTUBE_URL)).rejects.toThrow(/ENOENT|mkdtemp/);
+      await expect(access(`${master}.run`)).rejects.toThrow();
+
+      // output colgando de un archivo regular → mkdir falla DESPUÉS de copiar.
+      const blocker = join(root, "blocker");
+      await writeFile(blocker, "x", "utf8");
+      await expect(client.downloadVideo(YOUTUBE_URL, join(blocker, "v.mp4"))).rejects.toThrow(
+        /EEXIST|mkdir/,
+      );
+      await expect(access(`${master}.run`)).rejects.toThrow();
+    } finally {
+      vi.unstubAllEnvs();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+  it("preflight yt-dlp: falla con causa accionable y memoiza el éxito (un spawn por proceso)", async () => {
+    // The analyze route checks the binary BEFORE claiming the slot; a missing
+    // binary used to be a 202 plus an identical analysis_error per retry.
+    const missing = createYtdlpPreflight(async () => ({
+      code: 127,
+      stdout: "",
+      stderr: "yt-dlp: not found",
+    }));
+    await expect(missing()).rejects.toThrow(/yt-dlp/);
+    await expect(missing()).rejects.toThrow(/instal/i);
+
+    const spawns: string[][] = [];
+    const present = createYtdlpPreflight(async (cmd, args) => {
+      spawns.push([cmd, ...args]);
+      return { code: 0, stdout: "2026.10.1\n", stderr: "" };
+    });
+    await expect(present()).resolves.toBeUndefined();
+    await expect(present()).resolves.toBeUndefined();
+    // Memoized: one --version per process, not one per admin click.
+    expect(spawns).toEqual([["yt-dlp", "--version"]]);
   });
 });
 
-describe("createFfmpegClient (con runner falso, sin subprocess)", () => {
-  it("cut invoca ffmpeg con buildFfmpegArgs exactos y crea el directorio de salida", async () => {
+describe("createFfmpegClient (con runner falso, sin subprocess)", () => {  it("cut invoca ffmpeg con buildFfmpegArgs exactos y crea el directorio de salida", async () => {
     const root = await mkdtemp(join(tmpdir(), "vp-clips-"));
     const output = join(root, "nested", "1.mp4");
     const calls: Array<{ cmd: string; args: string[] }> = [];

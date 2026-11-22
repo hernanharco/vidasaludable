@@ -500,7 +500,9 @@ export const api = {
   deleteVideo: (id: number) => request<null>(`/videos/${id}`, { method: "DELETE" }),
   /** admin-video-analyze S1/S2: fire the server-side pipeline.
    * 202 = claimed (analysisState 'running'; the CRM polls GET /videos);
-   * 409 = another analysis is in flight → AdminError. */
+   * 409 = another analysis is in flight → AdminError;
+   * 503 = the server cannot acquire the artifact (unreadable YouTube cookie
+   * master) → AdminError carrying the Spanish cause; nothing was claimed. */
   analyzeVideo: (id: number) =>
     request<{ video: Video }>(`/videos/${id}/analyze`, { method: "POST" }),
   listVideoSegments: (videoId?: number) =>

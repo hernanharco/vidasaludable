@@ -8,6 +8,8 @@ import { createVideoService, parseSegmentProductList } from "../services/videoSe
 import type { SegmentCreateInput, SegmentPatchInput } from "../services/videoService.js";
 import { createAnalysisRunner } from "../services/analysisRunner.js";
 import type { AnalysisAnalyzeFn } from "../services/analysisRunner.js";
+import { AnalysisPreflightError, createAnalysisPreflight } from "../services/analysisPreflight.js";
+import type { AnalysisPreflight } from "../services/analysisPreflight.js";
 import { matchSymptom } from "../services/symptomMatcher.js";
 import type { SymptomCandidate } from "../services/symptomMatcher.js";
 import { parseVideoId } from "../tools/parsers.js";
@@ -60,6 +62,9 @@ export interface AdminRouterDeps {
   /** admin-video-analyze: injectable analyzer (tests run the real route +
    * runner without network/subprocesses; production uses the default). */
   analysisAnalyze?: AnalysisAnalyzeFn;
+  /** admin-video-analyze: injectable preflight (cookies, Gemini key, yt-dlp
+   * binary). Tests inject the real factory with a fake yt-dlp runner. */
+  analysisPreflight?: AnalysisPreflight;
   /** tamizaje-images T1: injectable Cloudinary client (tests use a fake — no
    * network, no credentials; production resolves CLOUDINARY_* env). */
   cloudinaryClient?: CloudinaryClient;
@@ -97,6 +102,7 @@ export function createAdminRouter(db: Db, deps: AdminRouterDeps = {}): Hono {
   const guidanceService = createGuidanceService(db);
   const videoService = createVideoService(db);
   const analysisRunner = createAnalysisRunner(db, deps.analysisAnalyze);
+  const analysisPreflight = deps.analysisPreflight ?? createAnalysisPreflight();
   const summaries = createSummaryService(db, deps.geminiClient);
 
   // --- Catalog (products): list, create, edit. No destructive delete. ---
@@ -629,6 +635,11 @@ export function createAdminRouter(db: Db, deps: AdminRouterDeps = {}): Hono {
    * admin-video-analyze S1/S2 — fire-and-forget server-side pipeline.
    * 202: claimed and fired in the background (the CRM polls GET /videos for
    * analysis_state); 409: another analysis is in flight (single-flight);
+   * 503 `code` — configuration refused before the slot is claimed:
+   * `youtube_cookies_unavailable` (server-side acquisition only),
+   * `gemini_not_configured` (both modes), `ytdlp_unavailable` (server-side
+   * acquisition only). Prod incident 2026-11-22: these used to answer 202 and
+   * store an identical analysis_error on every retry;
    * 404/400: absent video / bad id / bad transcript. Status/segments update
    * happens inside analyzeVideo only on success — failures land in
    * analysis_error (S3).
@@ -657,6 +668,20 @@ export function createAdminRouter(db: Db, deps: AdminRouterDeps = {}): Hono {
 
     const video = videoService.getVideo(id);
     if (!video) return c.json({ error: "video not found" }, 404);
+    // Environment preflight BEFORE the single-flight slot: a broken cookie
+    // master, a missing GEMINI_API_KEY or a missing yt-dlp binary are
+    // configuration errors, not runtime failures. Without this, prod (incident
+    // 2026-11-22) replied 202 and stored an identical analysis_error on every
+    // retry. 503 rather than 409: 409 already means "analysis already running"
+    // in this route's contract. Each cause carries its own `code`.
+    try {
+      await analysisPreflight({ acquire: transcript === undefined });
+    } catch (err) {
+      if (err instanceof AnalysisPreflightError) {
+        return c.json({ error: err.message, code: err.code }, 503);
+      }
+      throw err;
+    }
     if (!analysisRunner.claim(id)) {
       return c.json({ error: "analysis already running" }, 409);
     }

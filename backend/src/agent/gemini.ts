@@ -103,8 +103,7 @@ const FALLBACK_REPLY =
   "Por favor, inténtelo de nuevo más tarde. Recuerde que este asistente ofrece " +
   "orientación general de prevención y no sustituye la consulta médica.";
 
-export function createGeminiClient(deps: GeminiDeps = {}): GeminiClient {
-  const apiKey = deps.apiKey ?? process.env.GEMINI_API_KEY;
+export function createGeminiClient(deps: GeminiDeps = {}): GeminiClient {  const apiKey = deps.apiKey ?? process.env.GEMINI_API_KEY;
   const model = deps.model ?? process.env.GEMINI_MODEL ?? DEFAULT_GEMINI_MODEL;
   const fallbackModel =
     deps.fallbackModel ?? process.env.GEMINI_FALLBACK_MODEL ?? DEFAULT_FALLBACK_MODEL;

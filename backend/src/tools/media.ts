@@ -10,7 +10,7 @@
  */
 
 import { execFile } from "node:child_process";
-import { copyFileSync, existsSync, rmSync } from "node:fs";
+import { accessSync, constants, copyFileSync, existsSync, rmSync, statSync } from "node:fs";
 import { mkdir, mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -30,6 +30,9 @@ export interface CommandResult {
  * every caller handles "binary unavailable" uniformly through `code !== 0`.
  */
 export type CommandRunner = (cmd: string, args: string[]) => Promise<CommandResult>;
+
+/** How long a failed `yt-dlp --version` check is trusted before re-checking. */
+const YTDLP_RECHECK_MS = 30_000;
 
 /** Default runner backed by `node:child_process.execFile`. */
 export const execCommandRunner: CommandRunner = (cmd, args) =>
@@ -145,6 +148,78 @@ function ytdlpFailureMessage(stderr: string, action: string, url: string): strin
   }
 }
 
+/**
+ * Message for a configured-but-unreadable cookie master. Distinct from
+ * `ytdlpFailureMessage`: this is a pre-flight configuration failure, so there
+ * is no yt-dlp stderr to classify and no extraction is attempted at all.
+ */
+function cookiesUnavailableMessage(path: string, reason: string): string {
+  return (
+    `No se pudo leer el archivo de cookies de YouTube (YT_COOKIES_PATH=${path}): ${reason}. ` +
+    "No se intentó la extracción: sin cookies válidas YouTube bloquea la IP del servidor " +
+    "(verificación anti-bot). Verificá que el archivo exista y que el volumen esté montado, " +
+    "y reexportá las cookies si vencieron."
+  );
+}
+
+/**
+ * Cheap preflight for callers that must refuse work BEFORE claiming a slot
+ * (the admin analyze route): throws the same cause-naming error as
+ * `prepareCookies`, without copying and without touching the master. Unset env
+ * is a no-op — the local dev path may legitimately run without cookies.
+ */
+export function assertCookieMasterReadable(): void {
+  const path = process.env.YT_COOKIES_PATH?.trim();
+  if (!path) return;
+  try {
+    // isFile() as well as R_OK: a readable DIRECTORY passes accessSync but
+    // fails copyFileSync (EISDIR), which would let the request be claimed and
+    // reproduce the 202-then-identical-error pattern the preflight exists to
+    // prevent.
+    if (!statSync(path).isFile()) {
+      throw new Error("no es un archivo regular");
+    }
+    accessSync(path, constants.R_OK);
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    throw new Error(cookiesUnavailableMessage(path, reason));
+  }
+}
+
+/** `yt-dlp --version` failure message — the binary is a deploy dependency. */
+function ytdlpMissingMessage(detail: string): string {
+  return (
+    `No se encontró el binario 'yt-dlp' o no respondió (--version). Detalle: ${detail}. ` +
+    "Instalalo en la imagen (python3 -m pip install 'yt-dlp[default]' curl_cffi) o subí la transcripción manualmente."
+  );
+}
+
+/**
+ * Preflight factory for the `yt-dlp` binary: one `--version` spawn per instance
+ * while it succeeds; a failure is re-checked after a short TTL instead of
+ * spawning on every admin click. Separate instances keep independent memos, so
+ * tests never share state with production.
+ */
+export function createYtdlpPreflight(runner: CommandRunner = execCommandRunner): () => Promise<void> {
+  let verified = false;
+  let failedAt = 0;
+  return async () => {
+    if (verified) return;
+    if (failedAt !== 0 && Date.now() - failedAt < YTDLP_RECHECK_MS) {
+      throw new Error(ytdlpMissingMessage("verificación reciente fallida"));
+    }
+    const res = await runner("yt-dlp", ["--version"]);
+    if (res.code !== 0) {
+      failedAt = Date.now();
+      throw new Error(ytdlpMissingMessage(tailStderr(res.stderr) || `exit ${res.code}`));
+    }
+    verified = true;
+  };
+}
+
+/** Process-wide default used by the admin analyze preflight. */
+export const assertYtdlpAvailable = createYtdlpPreflight();
+
 /** Normalized `yt-dlp -J` metadata. */
 export interface YtDlpMetadata {
   id: string;
@@ -190,7 +265,8 @@ export function createYtdlpClient(runner: CommandRunner = execCommandRunner): Yt
   // NEVER be the --cookies target: every extraction copies it to a
   // disposable "<path>.run" sibling, passes that, and removes the copy
   // afterwards — the master stays byte-identical run after run. Unset env →
-  // no flag, behavior unchanged.
+  // no flag, behavior unchanged (local runs on a residential IP may pass
+  // without cookies). Configured but unreadable → throws (see the catch).
   const prepareCookies = (): { args: string[]; dispose: () => void } => {
     const path = process.env.YT_COOKIES_PATH?.trim();
     if (!path) return { args: [], dispose: () => {} };
@@ -198,11 +274,15 @@ export function createYtdlpClient(runner: CommandRunner = execCommandRunner): Yt
     try {
       copyFileSync(path, run);
     } catch (err) {
-      // Master unreadable/missing: run WITHOUT cookies (the honest
-      // bot-check error surfaces in the CRM) instead of letting yt-dlp
-      // create or prune anything at the master path.
-      console.error("[ytdlp] cookies master no copiable; se omite --cookies:", err);
-      return { args: [], dispose: () => {} };
+      // Configured but unusable (prod incident 2026-11-22): the old behavior
+      // ran WITHOUT cookies, which on a datacenter IP guarantees YouTube's
+      // bot-check — so the CRM stored a failure that named neither the cookies
+      // nor the file, and every admin retry reproduced it. Abort before
+      // spawning yt-dlp so the stored message is the real cause. The master
+      // path is still never created, written or pruned: the copy failed, so no
+      // extraction is attempted at all.
+      const reason = err instanceof Error ? err.message : String(err);
+      throw new Error(cookiesUnavailableMessage(path, reason));
     }
     return {
       args: ["--cookies", run],
@@ -260,9 +340,14 @@ export function createYtdlpClient(runner: CommandRunner = execCommandRunner): Yt
     },
 
     async getTranscript(url: string): Promise<unknown> {
-      const dir = await mkdtemp(join(tmpdir(), "video-subs-"));
+      // Cookies first: a broken configuration must abort BEFORE any side
+      // effect (temp dir, subprocess), so a failed acquisition leaks nothing.
       const cookies = prepareCookies();
+      let dir: string | undefined;
       try {
+        // Inside the try: the .run copy holds the live YouTube session, so a
+        // failing mkdtemp must still reach the dispose() below.
+        dir = await mkdtemp(join(tmpdir(), "video-subs-"));
         const res = await runner("yt-dlp", [
           ...jsRuntime,
           ...cookies.args,
@@ -294,15 +379,19 @@ export function createYtdlpClient(runner: CommandRunner = execCommandRunner): Yt
         }
       } finally {
         cookies.dispose();
-        await rm(dir, { recursive: true, force: true });
+        if (dir) await rm(dir, { recursive: true, force: true });
       }
     },
 
     async downloadVideo(url: string, output: string): Promise<void> {
-      await mkdir(dirname(output), { recursive: true });
+      // Same ordering rule as getTranscript: fail on the cookie master before
+      // creating a cache directory for a download that will never start.
       const cookies = prepareCookies();
       let res: CommandResult;
       try {
+        // Inside the try for the same reason: a failing mkdir must not strand
+        // the credential-bearing .run copy.
+        await mkdir(dirname(output), { recursive: true });
         res = await runner("yt-dlp", [
           ...jsRuntime,
           ...cookies.args,

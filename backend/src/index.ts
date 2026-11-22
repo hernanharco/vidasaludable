@@ -12,6 +12,7 @@ import { createAssistantTamizajeRouter } from "./routes/assistantTamizaje.js";
 import { createAppointmentsRouter } from "./routes/appointments.js";
 import type { GeminiClient } from "./agent/gemini.js";
 import type { CloudinaryClient } from "./services/cloudinaryService.js";
+import type { AnalysisPreflight } from "./services/analysisPreflight.js";
 import { createRegisterRouter } from "./routes/register.js";
 import { createAdminRouter } from "./routes/admin.js";
 import { createAssessmentRouter } from "./routes/assessment.js";
@@ -90,6 +91,9 @@ export interface BuildAppDeps {
   geminiClient?: GeminiClient;
   /** admin-video-analyze: injectable analyzer threaded to the admin router. */
   analysisAnalyze?: AnalysisAnalyzeFn;
+  /** admin-video-analyze: injectable environment preflight (cookies, Gemini
+   * key, yt-dlp binary) threaded to the admin router. */
+  analysisPreflight?: AnalysisPreflight;
   /** tamizaje-images T1: injectable Cloudinary client (tests inject a fake —
    * no network, no credentials, no CLOUDINARY_* env needed). */
   cloudinaryClient?: CloudinaryClient;
@@ -145,6 +149,7 @@ export function buildApp(db: Db, deps: BuildAppDeps = {}): Hono {
   app.route("/", createAppointmentsRouter(db));
   app.route("/admin", createAdminRouter(db, {
     analysisAnalyze: deps.analysisAnalyze,
+    analysisPreflight: deps.analysisPreflight,
     cloudinaryClient: deps.cloudinaryClient,
   }));
   app.route("/assessment", createAssessmentRouter(db));

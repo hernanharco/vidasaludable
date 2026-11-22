@@ -1,4 +1,9 @@
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from "vitest";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createAnalysisPreflight } from "../src/services/analysisPreflight.js";
+import type { CommandRunner } from "../src/tools/media.js";
 import { createDatabase } from "../src/db/client.js";
 import { migrate } from "../src/db/migrate.js";
 import { buildApp } from "../src/index.js";
@@ -30,6 +35,9 @@ describe("POST /admin/videos/:id/analyze (T2)", () => {
   let transcripts: unknown[] = [];
   let pending: Pending | null = null;
 
+  /** yt-dlp fake for the preflight: present (no subprocess, no network). */
+  const ytdlpOk: CommandRunner = async () => ({ code: 0, stdout: "2026.10.1", stderr: "" });
+
   /** Analyzer fake: captures the video + injected transcript, parks until settled. */
   const analysisAnalyze = (video: Video, transcript?: unknown): Promise<void> => {
     calls.push(video);
@@ -60,12 +68,21 @@ describe("POST /admin/videos/:id/analyze (T2)", () => {
   beforeAll(async () => {
     prevNodeEnv = process.env.NODE_ENV;
     process.env.NODE_ENV = "development"; // admin router open (dev mode)
+    // The analyze preflight needs a configured Gemini key; a real deployment
+    // has one, and tests must not depend on the developer's ambient env.
+    vi.stubEnv("GEMINI_API_KEY", "test-gemini-key");
     db = createDatabase(":memory:");
     await migrate(db);
-    app = buildApp(db, { analysisAnalyze });
+    // REAL preflight composition with only the yt-dlp subprocess faked, so the
+    // cookie and Gemini checks under test are the production ones.
+    app = buildApp(db, {
+      analysisAnalyze,
+      analysisPreflight: createAnalysisPreflight({ ytdlpRunner: ytdlpOk }),
+    });
   });
 
   afterAll(() => {
+    vi.unstubAllEnvs();
     if (prevNodeEnv === undefined) delete process.env.NODE_ENV;
     else process.env.NODE_ENV = prevNodeEnv;
   });
@@ -190,5 +207,121 @@ describe("POST /admin/videos/:id/analyze (T2)", () => {
     expect((await send("POST", "/admin/videos/999999/analyze")).status).toBe(404);
     expect((await send("POST", "/admin/videos/abc/analyze")).status).toBe(400);
     expect(calls).toHaveLength(0); // neither reached the analyzer
+  });
+
+  it("preflight: cookies de YouTube ilegibles → 503 con la causa, sin claim ni análisis", async () => {
+    // Prod incident 2026-11-22: a broken cookie master used to answer 202 and
+    // then store an identical analysis_error on every admin retry. A
+    // configuration problem is answered BEFORE the single-flight slot, so the
+    // operator fixes it instead of re-clicking. The injected-transcript
+    // escape hatch never touches yt-dlp and must stay 202.
+    const video = makeVideo("anEpCookies");
+    const missing = "/nonexistent/dir/youtube-cookies.txt";
+    vi.stubEnv("YT_COOKIES_PATH", missing);
+    try {
+      const res = await send("POST", `/admin/videos/${video.id}/analyze`);
+      expect(res.status).toBe(503);
+      const data = (await res.json()) as { error: string; code: string };
+      expect(data.code).toBe("youtube_cookies_unavailable");
+      expect(data.error).toContain(`YT_COOKIES_PATH=${missing}`);
+      // No side effects: slot never claimed, nothing stored, analyzer untouched.
+      expect(calls).toHaveLength(0);
+      expect(stateOf(video.id)).toEqual({ state: null, error: null, status: "draft" });
+
+      const withTranscript = await app.request(`/admin/videos/${video.id}/analyze`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ transcript: { events: [] } }),
+      });
+      expect(withTranscript.status).toBe(202);
+      await vi.waitFor(() => expect(calls.map((v) => v.id)).toEqual([video.id]));
+      pending!.resolve();
+      await vi.waitFor(() => expect(stateOf(video.id).state).toBeNull());
+      pending = null;
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("preflight: un DIRECTORIO como maestro de cookies también da 503, no solo la ausencia", async () => {
+    // accessSync(R_OK) accepts a readable directory but copyFileSync fails
+    // (EISDIR): without the isFile() check the request WAS claimed and
+    // reproduced the 202-then-identical-error pattern this preflight exists
+    // to prevent.
+    const video = makeVideo("anEpCookiesDir");
+    const dir = await mkdtemp(join(tmpdir(), "vp-cookiedir-"));
+    vi.stubEnv("YT_COOKIES_PATH", dir);
+    try {
+      const res = await send("POST", `/admin/videos/${video.id}/analyze`);
+      expect(res.status).toBe(503);
+      expect(((await res.json()) as { error: string }).error).toContain(dir);
+      expect(calls).toHaveLength(0);
+      expect(stateOf(video.id).state).toBeNull();
+    } finally {
+      vi.unstubAllEnvs();
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("preflight: sin GEMINI_API_KEY → 503 gemini_not_configured, con o sin transcripción", async () => {
+    // Gemini runs in BOTH acquisition modes, so a missing key is a config error
+    // in both — and it used to surface as a 202 plus an identical
+    // analysis_error on every retry.
+    const video = makeVideo("anEpNoGemini");
+    const prevKey = process.env.GEMINI_API_KEY;
+    vi.stubEnv("GEMINI_API_KEY", "");
+    try {
+      const res = await send("POST", `/admin/videos/${video.id}/analyze`);
+      expect(res.status).toBe(503);
+      const data = (await res.json()) as { error: string; code: string };
+      expect(data.code).toBe("gemini_not_configured");
+      expect(data.error).toContain("GEMINI_API_KEY");
+      expect(calls).toHaveLength(0);
+      expect(stateOf(video.id).state).toBeNull();
+
+      // The escape hatch needs Gemini too — no 202 without a key.
+      const withTranscript = await app.request(`/admin/videos/${video.id}/analyze`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ transcript: { events: [] } }),
+      });
+      expect(withTranscript.status).toBe(503);
+      expect(((await withTranscript.json()) as { code: string }).code).toBe(
+        "gemini_not_configured",
+      );
+      expect(calls).toHaveLength(0);
+    } finally {
+      vi.stubEnv("GEMINI_API_KEY", prevKey ?? "test-gemini-key");
+    }
+  });
+
+  it("preflight: yt-dlp ausente → 503 ytdlp_unavailable solo cuando el servidor adquiere", async () => {
+    // The binary is only needed by the server-side acquisition: an injected
+    // transcript must still work on a server without yt-dlp.
+    const ytdlpMissing: CommandRunner = async () => ({ code: 127, stdout: "", stderr: "not found" });
+    const localApp = buildApp(db, {
+      analysisAnalyze,
+      analysisPreflight: createAnalysisPreflight({ ytdlpRunner: ytdlpMissing }),
+    });
+    const video = makeVideo("anEpNoYtdlp");
+
+    const res = await localApp.request(`/admin/videos/${video.id}/analyze`, { method: "POST" });
+    expect(res.status).toBe(503);
+    const data = (await res.json()) as { error: string; code: string };
+    expect(data.code).toBe("ytdlp_unavailable");
+    expect(data.error).toContain("yt-dlp");
+    expect(calls).toHaveLength(0);
+    expect(stateOf(video.id).state).toBeNull();
+
+    const withTranscript = await localApp.request(`/admin/videos/${video.id}/analyze`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ transcript: { events: [] } }),
+    });
+    expect(withTranscript.status).toBe(202);
+    await vi.waitFor(() => expect(calls.map((v) => v.id)).toEqual([video.id]));
+    pending!.resolve();
+    await vi.waitFor(() => expect(stateOf(video.id).state).toBeNull());
+    pending = null;
   });
 });
