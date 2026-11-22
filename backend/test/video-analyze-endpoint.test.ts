@@ -27,11 +27,13 @@ describe("POST /admin/videos/:id/analyze (T2)", () => {
   let prevNodeEnv: string | undefined;
 
   let calls: Video[] = [];
+  let transcripts: unknown[] = [];
   let pending: Pending | null = null;
 
-  /** Analyzer fake: captures the video and parks until the test settles it. */
-  const analysisAnalyze = (video: Video): Promise<void> => {
+  /** Analyzer fake: captures the video + injected transcript, parks until settled. */
+  const analysisAnalyze = (video: Video, transcript?: unknown): Promise<void> => {
     calls.push(video);
+    transcripts.push(transcript);
     return new Promise<void>((resolve, reject) => {
       pending = { resolve, reject };
     });
@@ -70,6 +72,7 @@ describe("POST /admin/videos/:id/analyze (T2)", () => {
 
   beforeEach(() => {
     calls = [];
+    transcripts = [];
     pending = null;
   });
 
@@ -90,6 +93,41 @@ describe("POST /admin/videos/:id/analyze (T2)", () => {
     expect(stateOf(video.id).error).toBeNull();
     expect(stateOf(video.id).status).toBe("draft"); // fake analyzer: no status change
     pending = null;
+  });
+
+  it("acepta una transcripción json3 pre-adquirida y la entrega al analizador", async () => {
+    const video = makeVideo("anEpJson3");
+    const transcript = {
+      events: [{ tStartMs: 0, dDurationMs: 1000, segs: [{ utf8: "hola" }] }],
+    };
+
+    const res = await app.request(`/admin/videos/${video.id}/analyze`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ transcript }),
+    });
+    expect(res.status).toBe(202);
+
+    await vi.waitFor(() => expect(transcripts).toHaveLength(1));
+    expect(transcripts[0]).toEqual(transcript);
+
+    pending!.resolve();
+    await vi.waitFor(() => expect(stateOf(video.id).state).toBeNull());
+    pending = null;
+  });
+
+  it("rechaza con 400 una transcripción que no es json3 y no arranca el análisis", async () => {
+    const video = makeVideo("anEpBadTranscript");
+
+    const res = await app.request(`/admin/videos/${video.id}/analyze`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ transcript: "solo texto plano" }),
+    });
+    expect(res.status).toBe(400);
+    // Sin claim: no se tomó el slot ni se marcó running.
+    expect(calls).toHaveLength(0);
+    expect(stateOf(video.id).state).toBeNull();
   });
 
   it("records a failure in analysis_error without touching status or existing segments", async () => {

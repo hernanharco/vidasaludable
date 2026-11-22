@@ -629,18 +629,38 @@ export function createAdminRouter(db: Db, deps: AdminRouterDeps = {}): Hono {
    * admin-video-analyze S1/S2 — fire-and-forget server-side pipeline.
    * 202: claimed and fired in the background (the CRM polls GET /videos for
    * analysis_state); 409: another analysis is in flight (single-flight);
-   * 404/400: absent video / bad id. Status/segments update happens inside
-   * analyzeVideo only on success — failures land in analysis_error (S3).
+   * 404/400: absent video / bad id / bad transcript. Status/segments update
+   * happens inside analyzeVideo only on success — failures land in
+   * analysis_error (S3).
+   *
+   * Optional body `{ transcript: <json3> }`: the operator acquired the
+   * artifact elsewhere (the server IP is bot-checked, prod incident
+   * 2026-11-22), so the pipeline never invokes yt-dlp. Absent body → the
+   * original server-side acquisition, unchanged.
    */
-  app.post("/videos/:id/analyze", (c) => {
+  app.post("/videos/:id/analyze", async (c) => {
     const id = Number(c.req.param("id"));
     if (!Number.isInteger(id)) return c.json({ error: "invalid id" }, 400);
+
+    const body = (await c.req.json().catch(() => null)) as { transcript?: unknown } | null;
+    let transcript: unknown;
+    if (body != null && body.transcript !== undefined) {
+      const candidate = body.transcript;
+      const events = (candidate as { events?: unknown } | null)?.events;
+      // Reject BEFORE the claim: a bad artifact must not take the
+      // single-flight slot nor mark the row running.
+      if (typeof candidate !== "object" || candidate === null || !Array.isArray(events)) {
+        return c.json({ error: "invalid transcript: se espera un objeto json3 con 'events'" }, 400);
+      }
+      transcript = candidate;
+    }
+
     const video = videoService.getVideo(id);
     if (!video) return c.json({ error: "video not found" }, 404);
     if (!analysisRunner.claim(id)) {
       return c.json({ error: "analysis already running" }, 409);
     }
-    analysisRunner.start(video);
+    analysisRunner.start(video, transcript);
     // Fresh row: analysis_state now 'running' — the 202 body drives polling.
     return c.json({ video: videoService.getVideo(id) }, 202);
   });

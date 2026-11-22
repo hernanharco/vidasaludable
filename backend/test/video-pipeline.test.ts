@@ -511,6 +511,100 @@ describe("analyzeVideo (analyzer wiring)", () => {
     ).rejects.toThrow(/segmentos/);
   });
 
+  // Prod incident 2026-11-22 (follow-up): the server IP is bot-checked, so
+  // acquisition moves off the box. analyzeVideo must accept a pre-acquired
+  // json3 artifact and NEVER touch yt-dlp on that path.
+  it("transcript inyectado → no invoca yt-dlp y toma la metadata de la fila existente", async () => {
+    const db = await seededDb();
+    let ytdlpTouched = false;
+    const ytdlp = fakeYtdlp({
+      getMetadata: async () => {
+        ytdlpTouched = true;
+        throw new Error("no debería llamarse");
+      },
+      getTranscript: async () => {
+        ytdlpTouched = true;
+        throw new Error("no debería llamarse");
+      },
+    });
+    createVideoService(db).createVideo({
+      speaker: "Monica",
+      youtubeId: "0RYeUT3Yl0Q",
+      url: YOUTUBE_URL,
+      title: "Tu piel. Tu solución",
+      durationS: 6300,
+      status: "draft",
+    });
+    const gemini = fakeGemini(
+      JSON.stringify({
+        segments: [
+          { start_s: 0, end_s: 30, title: "Piel", summary: "s", condition: "Ansiedad o tensión" },
+        ],
+      }),
+    );
+    const { video, segments } = await analyzeVideo({
+      url: YOUTUBE_URL,
+      db,
+      gemini,
+      ytdlp,
+      vocabulary: seedSymptoms,
+      transcript: json3Fixture,
+    });
+    expect(ytdlpTouched).toBe(false);
+    expect(video.title).toBe("Tu piel. Tu solución"); // metadata de la fila, no de yt-dlp
+    expect(video.speaker).toBe("Monica");
+    expect(video.durationS).toBe(6300);
+    expect(segments).toHaveLength(1);
+    expect(video.status).toBe("analyzed");
+  });
+
+  it("transcript inyectado sin durationS en la fila → usa el fin del último cue (no colapsa a 0)", async () => {
+    const db = await seededDb();
+    createVideoService(db).createVideo({
+      speaker: "M",
+      youtubeId: "0RYeUT3Yl0Q",
+      url: YOUTUBE_URL,
+      title: "t",
+      status: "draft",
+    });
+    const gemini = fakeGemini(
+      JSON.stringify({ segments: [{ start_s: 0, end_s: 30, title: "Piel", summary: "s" }] }),
+    );
+    const { video, segments } = await analyzeVideo({
+      url: YOUTUBE_URL,
+      db,
+      gemini,
+      // Solo puede salir del artefacto: cualquier llamada a yt-dlp revienta.
+      ytdlp: fakeYtdlp({
+        getMetadata: async () => {
+          throw new Error("no debería llamarse");
+        },
+        getTranscript: async () => {
+          throw new Error("no debería llamarse");
+        },
+      }),
+      vocabulary: seedSymptoms,
+      transcript: json3Fixture,
+    });
+    // duration_s NULL en la fila: la duración sale del artefacto, no de 0.
+    expect(video.durationS ?? 0).toBeGreaterThan(0);
+    expect(segments).toHaveLength(1);
+  });
+
+  it("transcript inyectado sin fila de video → error claro, sin llamar a yt-dlp", async () => {
+    const db = await seededDb();
+    await expect(
+      analyzeVideo({
+        url: YOUTUBE_URL,
+        db,
+        gemini: fakeGemini("{}"),
+        ytdlp: fakeYtdlp(),
+        vocabulary: seedSymptoms,
+        transcript: json3Fixture,
+      }),
+    ).rejects.toThrow(/registrado|POST \/admin\/videos/);
+  });
+
   it("URL no válida → error claro, sin tocar yt-dlp ni Gemini", async () => {
     const db = await seededDb();
     let geminiCalled = false;

@@ -23,8 +23,10 @@ import { createGeminiClient } from "../agent/gemini.js";
  */
 
 /** The heavy leaf: (default) build yt-dlp + Gemini clients and run the
- * pipeline for this video; reject → analysis failure with the error message. */
-export type AnalysisAnalyzeFn = (video: Video) => Promise<void>;
+ * pipeline for this video; reject → analysis failure with the error message.
+ * `transcript` is the optional pre-acquired json3 artifact: when the route
+ * receives one, the pipeline never touches yt-dlp. */
+export type AnalysisAnalyzeFn = (video: Video, transcript?: unknown) => Promise<void>;
 
 export interface AnalysisRunner {
   /** True while a job is in flight (used by the route for the 409). */
@@ -34,8 +36,9 @@ export interface AnalysisRunner {
    * no longer exists. A failing state UPDATE propagates WITHOUT wedging the
    * slot (fix L1: running is released before rethrowing). */
   claim(videoId: number): boolean;
-  /** Fire the job asynchronously; resolves the analysis lifecycle itself. */
-  start(video: Video): void;
+  /** Fire the job asynchronously; resolves the analysis lifecycle itself.
+   * `transcript` (optional json3 artifact) is forwarded to the analyzer. */
+  start(video: Video, transcript?: unknown): void;
 }
 
 /** Fix M2: a hung yt-dlp/Gemini call must not leave analysis_state='running'
@@ -46,7 +49,7 @@ export const DEFAULT_ANALYSIS_TIMEOUT_MS = 10 * 60 * 1000;
 /** Production analyzer: mirrors the `video:analyze` CLI wiring (env key,
  * yt-dlp, the 95-row symptom vocabulary from THIS database). */
 export function createDefaultAnalysisAnalyze(db: Db): AnalysisAnalyzeFn {
-  return async (video) => {
+  return async (video, transcript) => {
     const gemini = createGeminiClient();
     if (!gemini.isConfigured()) {
       throw new Error("Falta la variable de entorno GEMINI_API_KEY en el servidor.");
@@ -57,7 +60,7 @@ export function createDefaultAnalysisAnalyze(db: Db): AnalysisAnalyzeFn {
       .from(assessmentSymptoms)
       .all()
       .map((r) => ({ id: r.id, name_es: r.nameEs }));
-    await analyzeVideo({ url: video.url, db, gemini, ytdlp, vocabulary });
+    await analyzeVideo({ url: video.url, db, gemini, ytdlp, vocabulary, transcript });
   };
 }
 
@@ -92,11 +95,11 @@ export function createAnalysisRunner(
       }
     },
 
-    start(video: Video): void {
+    start(video: Video, transcript?: unknown): void {
       void (async () => {
         let deadline: ReturnType<typeof setTimeout> | undefined;
         try {
-          const analysis = runAnalyze(video);
+          const analysis = runAnalyze(video, transcript);
           const timeout = new Promise<never>((_, reject) => {
             deadline = setTimeout(() => {
               const minutes = Math.max(1, Math.round(timeoutMs / 60_000));

@@ -34,7 +34,7 @@ import type { GeminiClient } from "../agent/gemini.js";
 import { parseJson3Transcript, parseGeminiSegments, parseVideoId } from "./parsers.js";
 import type { TimedCue } from "./parsers.js";
 import { createFfmpegClient, createYtdlpClient } from "./media.js";
-import type { FfmpegClient, YtdlpClient } from "./media.js";
+import type { FfmpegClient, YtdlpClient, YtDlpMetadata } from "./media.js";
 
 /**
  * backend package root, resolved from this file (src/tools → ../..). First
@@ -113,6 +113,16 @@ export interface AnalyzeVideoOptions {
   ytdlp: YtdlpClient;
   /** The assessment_symptoms vocabulary (the 95 rows), read from the DB. */
   vocabulary: SymptomCandidate[];
+  /**
+   * Pre-acquired json3 artifact (the raw `events` payload).
+   *
+   * When present, yt-dlp is NEVER invoked: no metadata call, no subtitle
+   * download. The already-persisted `videos` row supplies speaker, title and
+   * duration. This is the server-side escape hatch for bot-checked IPs — the
+   * operator acquires the artifact on a machine with a real session and the
+   * server only analyzes it.
+   */
+  transcript?: unknown;
 }
 
 export interface AnalyzeResult {
@@ -133,7 +143,7 @@ export interface AnalyzeResult {
  * `youtube_id` index.
  */
 export async function analyzeVideo(opts: AnalyzeVideoOptions): Promise<AnalyzeResult> {
-  const { url, db, gemini, ytdlp, vocabulary } = opts;
+  const { url, db, gemini, ytdlp, vocabulary, transcript } = opts;
 
   const youtubeId = parseVideoId(url);
   if (!youtubeId) {
@@ -142,8 +152,33 @@ export async function analyzeVideo(opts: AnalyzeVideoOptions): Promise<AnalyzeRe
     );
   }
 
-  const meta = await ytdlp.getMetadata(url);
-  const rawTranscript = await ytdlp.getTranscript(url);
+  const svc = createVideoService(db);
+  const existing = svc.getVideoByYoutubeId(youtubeId);
+
+  // Acquisition, two paths. Default: yt-dlp on THIS box. Injected: the caller
+  // already has the json3 artifact, so no yt-dlp call happens at all and the
+  // persisted row is the metadata source (prod incident 2026-11-22: the server
+  // IP was bot-checked, so acquisition moved off the box).
+  let meta: YtDlpMetadata;
+  let rawTranscript: unknown;
+  if (transcript !== undefined) {
+    if (!existing) {
+      throw new Error(
+        `No hay un video registrado para ${url}: creá la fila con POST /admin/videos antes de analizar una transcripción inyectada.`,
+      );
+    }
+    meta = {
+      id: youtubeId,
+      title: existing.title,
+      durationS: existing.durationS ?? null,
+      speaker: existing.speaker,
+    };
+    rawTranscript = transcript;
+  } else {
+    meta = await ytdlp.getMetadata(url);
+    rawTranscript = await ytdlp.getTranscript(url);
+  }
+
   const cues = parseJson3Transcript(rawTranscript);
   if (cues.length === 0) {
     throw new Error("No se encontró transcripción utilizable en el video (json3 vacío o ilegible).");
@@ -157,7 +192,15 @@ export async function analyzeVideo(opts: AnalyzeVideoOptions): Promise<AnalyzeRe
     .all()
     .map((p) => ({ name: p.name, reference: p.reference }));
 
-  const durationS = meta.durationS ?? 0;
+  // Duration falls back to the artifact's last cue: a hand-created row has no
+  // duration_s (and yt-dlp metadata can omit it), and a 0 here would clamp
+  // every segment away in parseGeminiSegments.
+  const durationS =
+    meta.durationS && meta.durationS > 0
+      ? meta.durationS
+      : Math.round(
+          cues.reduce((max, cue) => Math.max(max, cue.startMs + cue.durMs), 0) / 1000,
+        );
   const systemPrompt = buildAnalyzeSystemPrompt(
     vocabulary.map((s) => s.name_es),
     catalogProducts,
@@ -199,7 +242,6 @@ export async function analyzeVideo(opts: AnalyzeVideoOptions): Promise<AnalyzeRe
     };
   });
 
-  const svc = createVideoService(db);
   // Fix M1: the segment swap (delete old + insert new) runs as ONE atomic
   // replace BEFORE status/metadata updates — a mid-swap DB failure rolls
   // back (previous segments intact) and leaves status untouched (S3).

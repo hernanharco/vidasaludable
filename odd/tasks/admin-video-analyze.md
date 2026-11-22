@@ -237,3 +237,14 @@ backend en Hetzner con rebuild del contenedor (usuario lo aprobó).
   primero (clic o CLI); si persiste 2×, investigar (maxOutputTokens,
   chunking). Flujo de import local→prod validado 2× hoy (K6lOO 17, v7 27):
   INSERTs con quote(), backup .backup, transacción, integrity_check.
+- L11 — Adquisición desacoplada del servidor (2026-11-22, follow-up de L10a):
+  el gate anti-bot no se resuelve renovando cookies cada pocas horas.
+  `POST /admin/videos/:id/analyze` acepta ahora un body OPCIONAL
+  `{ transcript: <json3> }`: con artefacto el pipeline NO invoca yt-dlp (ni
+  metadata ni subtítulos), la fila existente aporta speaker/title/duration, y
+  `duration_s` NULL cae al fin del último cue. Sin body, el comportamiento
+  previo queda intacto (el 202/409/404 no cambian). Artefacto json3-only a
+  propósito: el texto plano no trae marcas de tiempo y fabricarlas degradaría
+  los segmentos en silencio. Los fallos de yt-dlp se clasifican
+  (`classifyYtdlpFailure`: anti-bot, cookies vencidas, privado, geobloqueo,
+  eliminado, red) en lugar de culpar siempre a la URL y a la instalación.
