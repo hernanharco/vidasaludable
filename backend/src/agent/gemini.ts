@@ -112,6 +112,16 @@ export interface GeminiGenerateInput {
    * treats it as a non-rotatable failure and propagates it.
    */
   signal?: AbortSignal;
+  /**
+   * Output cap in tokens, applied only when the target model accepts the field
+   * (the `gemini` family does; the `gemma` entries do not and keep the default).
+   *
+   * Opt-in on purpose: the chat path must keep generating exactly as before.
+   * The analyzer sets it because a long tutorial yields dozens of segments and
+   * an implicit provider default truncated the JSON mid-object — a failure the
+   * parser could only see as "unusable segments".
+   */
+  maxOutputTokens?: number;
 }
 
 export interface GeminiClient {
@@ -230,27 +240,51 @@ export function createGeminiClient(deps: GeminiDeps = {}): GeminiClient {  const
         role: m.role === "assistant" ? "model" : "user",
         parts: [{ text: m.content }],
       }));
-      const body = {
+      // The body is per model: the output cap depends on the model family and
+      // can be dropped when a provider rejects it.
+      const capApplies = (targetModel: string): boolean =>
+        input.maxOutputTokens !== undefined && targetModel.startsWith("gemini");
+      const buildBody = (targetModel: string, withCap: boolean) => ({
         systemInstruction: { parts: [{ text: input.systemPrompt }] },
         contents,
-        generationConfig: { temperature: TEMPERATURE },
-      };
+        generationConfig: {
+          temperature: TEMPERATURE,
+          ...(withCap && capApplies(targetModel)
+            ? { maxOutputTokens: input.maxOutputTokens }
+            : {}),
+        },
+      });
       let lastTransient: TransientFailure | null = null;
       for (const targetModel of chain) {
-        try {
-          return await requestWithRetry(body, targetModel, input.signal);
-        } catch (err) {
-          // Quota (429) and overload (503) rotate after in-model retries;
-          // an unknown model (404) rotates immediately. Both cases mean
-          // "this bucket is useless", not "the request is wrong".
-          // Non-retryable errors (400, 401, …) keep the legacy behavior: throw.
-          const status = (err as { status?: number }).status;
-          if (shouldRotate(status)) {
-            lastTransient = err as TransientFailure;
-            continue;
+        // A 400 is normally a genuinely bad request (key, model name), but a
+        // provider that rejects the optional output cap would then kill the
+        // whole analysis over a tuning field. The cap is therefore retried
+        // once WITHOUT it on the same model before the error is allowed out.
+        const attemptPlans = capApplies(targetModel) ? [true, false] : [false];
+        let failure: unknown;
+        for (const withCap of attemptPlans) {
+          try {
+            return await requestWithRetry(
+              buildBody(targetModel, withCap),
+              targetModel,
+              input.signal,
+            );
+          } catch (err) {
+            failure = err;
+            if (withCap && (err as { status?: number }).status === 400) continue;
+            break;
           }
-          throw err;
         }
+        // Quota (429) and overload (503) rotate after in-model retries; an
+        // unknown model (404) rotates immediately. Both cases mean "this
+        // bucket is useless", not "the request is wrong". Non-retryable
+        // errors (400, 401, …) keep the legacy behavior: throw.
+        const status = (failure as { status?: number }).status;
+        if (shouldRotate(status)) {
+          lastTransient = failure as TransientFailure;
+          continue;
+        }
+        throw failure;
       }
       if (lastTransient) {
         // Name the chain size and keep the last failure as `cause`: the row

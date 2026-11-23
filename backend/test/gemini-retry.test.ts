@@ -5,6 +5,7 @@ import {
   DEFAULT_GEMINI_MODEL,
   DEFAULT_FALLBACK_MODEL,
   DEFAULT_MODEL_CHAIN,
+  TEMPERATURE,
 } from "../src/agent/gemini.js";
 
 const base = {
@@ -35,6 +36,91 @@ function scriptedFetch(statuses: Array<{ status: number; body?: unknown }>): {
   };
   return { fetch, calls };
 }
+
+describe("maxOutputTokens — opt-in y limitado por familia de modelo", () => {
+  const okBody = { candidates: [{ content: { parts: [{ text: "ok" }] } }] };
+  const generationConfigOf = (init: unknown): Record<string, unknown> =>
+    (JSON.parse((init as { body: string }).body) as {
+      generationConfig: Record<string, unknown>;
+    }).generationConfig;
+
+  it("el analizador pide su tope de salida en un modelo gemini", async () => {
+    const { fetch, calls } = scriptedFetch([{ status: 200, body: okBody }]);
+    const gemini = createGeminiClient({
+      apiKey: "k",
+      model: "gemini-test",
+      fetch,
+      sleep: async () => undefined,
+    });
+    await gemini.generate({ ...base, maxOutputTokens: 32768 });
+    expect(generationConfigOf(calls[0]!.init)).toEqual({
+      temperature: TEMPERATURE,
+      maxOutputTokens: 32768,
+    });
+  });
+
+  it("gemma no acepta el campo: se omite en su request y la rotación sigue", async () => {
+    const { fetch, calls } = scriptedFetch([{ status: 200, body: okBody }]);
+    const gemini = createGeminiClient({
+      apiKey: "k",
+      models: ["gemma-4-31b"],
+      fetch,
+      sleep: async () => undefined,
+    });
+    await gemini.generate({ ...base, maxOutputTokens: 32768 });
+    expect(generationConfigOf(calls[0]!.init)).toEqual({ temperature: TEMPERATURE });
+  });
+
+  it("un 400 que rechaza el tope se reintenta sin tope y no mata el análisis", async () => {
+    const { fetch, calls } = scriptedFetch([
+      { status: 400 },
+      { status: 200, body: okBody },
+    ]);
+    const gemini = createGeminiClient({
+      apiKey: "k",
+      model: "gemini-test",
+      fetch,
+      sleep: async () => undefined,
+    });
+
+    const reply = await gemini.generate({ ...base, maxOutputTokens: 32768 });
+
+    expect(reply).toBe("ok");
+    expect(calls.length).toBe(2);
+    expect(generationConfigOf(calls[0]!.init)).toEqual({
+      temperature: TEMPERATURE,
+      maxOutputTokens: 32768,
+    });
+    expect(generationConfigOf(calls[1]!.init)).toEqual({ temperature: TEMPERATURE });
+  });
+
+  it("un 400 que persiste sin tope sí aborta, con el status intacto", async () => {
+    const { fetch, calls } = scriptedFetch([{ status: 400 }, { status: 400 }]);
+    const gemini = createGeminiClient({
+      apiKey: "k",
+      model: "gemini-test",
+      fetch,
+      sleep: async () => undefined,
+    });
+
+    await expect(gemini.generate({ ...base, maxOutputTokens: 32768 })).rejects.toMatchObject({
+      status: 400,
+    });
+    expect(calls.length).toBe(2);
+  });
+
+  it("el chat no pide tope: su request queda exactamente como antes", async () => {
+    const { fetch, calls } = scriptedFetch([{ status: 200, body: okBody }]);
+    const gemini = createGeminiClient({
+      apiKey: "k",
+      model: "gemini-test",
+      fetch,
+      sleep: async () => undefined,
+    });
+    await gemini.generate(base);
+    expect(generationConfigOf(calls[0]!.init)).toEqual({ temperature: TEMPERATURE });
+  });
+});
 
 describe("gemini retry/backoff + model fallback + graceful no-key fallback", () => {
   it("retries with backoff 2s/5s/10s on 429 and succeeds on the third attempt", async () => {
