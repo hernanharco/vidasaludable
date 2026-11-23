@@ -10,6 +10,14 @@ import {
   VideoStatus,
 } from "./api";
 import { ConfirmActionDialog } from "./ConfirmActionDialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../components/ui/dialog";
 
 const STATUS_LABELS: Record<VideoStatus, string> = {
   draft: "Borrador",
@@ -32,6 +40,19 @@ interface VideoFormState {
 }
 
 const EMPTY_VIDEO_FORM: VideoFormState = { speaker: "", url: "", title: "" };
+
+/**
+ * Error copy for the analyze endpoints — shared by the plain path
+ * (`runAnalyze`) and the transcript dialog so both fail identically: the
+ * backend messages are already Spanish and ride through verbatim; only the
+ * legacy English 409 string is reworded (fix L6).
+ */
+function analyzeErrorMessage(err: unknown): string {
+  const raw = err instanceof Error ? err.message : "Error al iniciar el análisis";
+  return raw === "analysis already running"
+    ? "Ya hay un análisis en curso: espera a que termine antes de reintentar."
+    : raw;
+}
 
 interface SegmentFormState {
   videoId: string;
@@ -77,6 +98,12 @@ export function VideosPage() {
   const [editingSegmentId, setEditingSegmentId] = useState<number | null>(null);
   const [confirmVideo, setConfirmVideo] = useState<Video | null>(null);
   const [confirmAnalyzeVideo, setConfirmAnalyzeVideo] = useState<Video | null>(null);
+  // Option B (json3 transcript): dialog state for analyzing from a
+  // pre-acquired transcript instead of server-side yt-dlp acquisition.
+  const [transcriptVideo, setTranscriptVideo] = useState<Video | null>(null);
+  const [transcriptText, setTranscriptText] = useState("");
+  const [transcriptError, setTranscriptError] = useState<string | null>(null);
+  const [transcriptBusy, setTranscriptBusy] = useState(false);
   // True after the FIRST successful list load — scopes the error-retry poll
   // (fix r2): only a load that never succeeded keeps polling, so inline
   // banners (409, form validation) are never silently eaten by a refresh.
@@ -211,13 +238,87 @@ export function VideosPage() {
       await load(); // row shows "Analizando…" → polling takes over
     } catch (err) {
       // 409 single-flight and runtime failures land inline, never silent.
-      // Fix L6: the raw backend string is English — the CRM speaks Spanish.
-      const raw = err instanceof Error ? err.message : "Error al iniciar el análisis";
-      setError(
-        raw === "analysis already running"
-          ? "Ya hay un análisis en curso: espera a que termine antes de reintentar."
-          : raw,
-      );
+      setError(analyzeErrorMessage(err));
+    }
+  }
+
+  // ─── admin-video-analyze: transcripción json3 (opción B) ─────────────
+  // The operator pastes (or uploads) a pre-acquired YouTube json3 file and
+  // the backend analyzes it as-is — yt-dlp is never invoked. The dialog owns
+  // its own state: cancelling just drops it, so the video is never touched.
+
+  function openTranscriptDialog(v: Video) {
+    setTranscriptVideo(v);
+    setTranscriptText("");
+    setTranscriptError(null);
+  }
+
+  function closeTranscriptDialog() {
+    setTranscriptVideo(null);
+    setTranscriptText("");
+    setTranscriptError(null);
+  }
+
+  // Client-side preflight mirroring the backend's 400: a bad paste must
+  // never reach the endpoint (and the video must stay untouched).
+  function validateTranscript(raw: string): { transcript: unknown } | { error: string } {
+    const trimmed = raw.trim();
+    if (!trimmed) {
+      return { error: "Pega la transcripción json3 o carga un archivo .json." };
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch {
+      return { error: "El contenido no es JSON válido." };
+    }
+    if (
+      parsed === null ||
+      typeof parsed !== "object" ||
+      !Array.isArray((parsed as { events?: unknown }).events)
+    ) {
+      // Mirrors the server's wording: "se espera un objeto json3 con 'events'".
+      return { error: "Transcripción inválida: se espera un objeto json3 con 'events'." };
+    }
+    return { transcript: parsed };
+  }
+
+  // File picker → fills the textarea, so paste and upload share one source.
+  async function handleTranscriptFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      setTranscriptText(await file.text());
+      setTranscriptError(null);
+    } catch {
+      setTranscriptError("No se pudo leer el archivo. Inténtalo de nuevo.");
+    }
+  }
+
+  async function handleTranscriptSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!transcriptVideo || transcriptBusy) return;
+    const check = validateTranscript(transcriptText);
+    if ("error" in check) {
+      setTranscriptError(check.error); // inline only — the API is NOT called
+      return;
+    }
+    setTranscriptError(null);
+    setTranscriptBusy(true);
+    try {
+      await api.analyzeVideo(transcriptVideo.id, check.transcript);
+      closeTranscriptDialog(); // 202 → claimed; load() shows "Analizando…"
+      await load();
+    } catch (err) {
+      // Same treatment as runAnalyze: the server's Spanish message is
+      // surfaced verbatim. It is shown in the dialog (readable under the
+      // overlay, where the operator can retry) and recorded in the page
+      // banner through setError, exactly like the plain path.
+      const message = analyzeErrorMessage(err);
+      setTranscriptError(message);
+      setError(message);
+    } finally {
+      setTranscriptBusy(false);
     }
   }
 
@@ -414,16 +515,26 @@ export function VideosPage() {
       key: "accion",
       header: "Acción",
       align: "right",
+      cellClassName: "whitespace-nowrap",
       render: (v) => (
         <>
           {v.analysisState !== "running" &&
             (v.status === "draft" || v.status === "analyzed") && (
-              <button
-                onClick={() => handleAnalyzeClick(v)}
-                className="text-emerald-800 hover:underline mr-3"
-              >
-                {v.status === "draft" ? "Analizar" : "Re-analizar"}
-              </button>
+              <>
+                <button
+                  onClick={() => handleAnalyzeClick(v)}
+                  className="text-emerald-800 hover:underline mr-3"
+                >
+                  {v.status === "draft" ? "Analizar" : "Re-analizar"}
+                </button>
+                <button
+                  onClick={() => openTranscriptDialog(v)}
+                  title="Analizar con una transcripción json3 ya descargada (sin yt-dlp)"
+                  className="text-emerald-800 hover:underline mr-3"
+                >
+                  Con transcripción…
+                </button>
+              </>
             )}
           <button
             onClick={() => setConfirmVideo(v)}
@@ -927,6 +1038,82 @@ export function VideosPage() {
         onConfirm={() => void handleBulkDeleteSelected()}
         onCancel={() => setConfirmBulkDelete(false)}
       />
+      {/* Análisis con transcripción json3 (opción B): el backend analiza el
+          archivo facilitado y nunca invoca yt-dlp. */}
+      <Dialog
+        open={transcriptVideo !== null}
+        onOpenChange={(open) => {
+          if (!open) closeTranscriptDialog();
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {transcriptVideo
+                ? `Analizar con transcripción — ${transcriptVideo.title}`
+                : "Analizar con transcripción"}
+            </DialogTitle>
+            <DialogDescription>
+              Pega la transcripción json3 de YouTube (o carga un archivo .json) y el servidor la
+              analizará directamente, sin invocar yt-dlp.
+              {transcriptVideo?.status === "analyzed" &&
+                " El análisis reemplazará los segmentos existentes (los activos incluidos)."}
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleTranscriptSubmit} noValidate className="space-y-4">
+            <label className="block text-sm">
+              Transcripción json3
+              <textarea
+                rows={10}
+                spellCheck={false}
+                className="mt-1 w-full border border-stone-300 px-3 py-2 font-mono text-xs"
+                value={transcriptText}
+                onChange={(e) => {
+                  setTranscriptText(e.target.value);
+                  setTranscriptError(null);
+                }}
+                placeholder={'{"events": [ … ]}'}
+                disabled={transcriptBusy}
+              />
+            </label>
+            <label className="block text-xs text-stone-600">
+              …o carga un archivo .json / .json3
+              <input
+                type="file"
+                accept=".json,.json3,application/json"
+                onChange={(e) => void handleTranscriptFile(e)}
+                disabled={transcriptBusy}
+                className="mt-1 block text-sm"
+              />
+            </label>
+            {transcriptError && (
+              <div
+                role="alert"
+                className="p-3 bg-red-50 border border-red-200 text-sm text-red-700"
+              >
+                {transcriptError}
+              </div>
+            )}
+            <DialogFooter>
+              <button
+                type="button"
+                onClick={closeTranscriptDialog}
+                disabled={transcriptBusy}
+                className="px-4 py-2 border border-stone-300 text-stone-600 text-sm disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={transcriptBusy}
+                className="px-4 py-2 bg-emerald-900 text-stone-50 text-sm hover:bg-emerald-800 disabled:opacity-50"
+              >
+                {transcriptBusy ? "Enviando…" : "Analizar"}
+              </button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

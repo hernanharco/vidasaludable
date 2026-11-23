@@ -161,6 +161,23 @@ describe("admin videos api client", () => {
       "/api/admin/videos/1/analyze",
       expect.objectContaining({ method: "POST" }),
     );
+    // No transcript → no body at all: the server keeps acquiring the artifact.
+    const init = mockFetch.mock.calls[0]![1] as RequestInit;
+    expect(init.body).toBeUndefined();
     expect(out.video.analysisState).toBe("running");
+  });
+
+  it("analyzeVideo(id, transcript) POSTs a body equal to { transcript }", async () => {
+    const transcript = { events: [{ tStartMs: 0, segs: [{ utf8: "Hola" }] }] };
+    const running: Video = { ...VIDEO, analysisState: "running", analysisError: null };
+    mockFetch.mockResolvedValueOnce(ok(202, { video: running }));
+    await api.analyzeVideo(1, transcript);
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/api/admin/videos/1/analyze",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ transcript }),
+      }),
+    );
   });
 });

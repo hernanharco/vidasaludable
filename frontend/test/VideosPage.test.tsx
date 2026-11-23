@@ -3,6 +3,7 @@ import React from "react";
 import { render, screen, waitFor, within, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { VideosPage } from "../src/app/admin/VideosPage";
+import { api } from "../src/app/admin/api";
 import type { Video, VideoSegment } from "../src/app/admin/api";
 
 // Mock fetch (same harness style as VideoCards.test.tsx). The admin api client
@@ -79,6 +80,10 @@ let videosState: Video[];
 let segmentsState: VideoSegment[];
 /** admin-video-analyze: when set, the analyze POST answers 409 for that id. */
 let analyzeConflictForId: number | null = null;
+/** Option B (transcript flow): when set, the analyze POST answers 503 with
+ * this Spanish cause for that id — the verbatim message must reach the UI. */
+const GEMINI_MISSING = "Falta GEMINI_API_KEY en el servidor";
+let analyzeErrorForId: number | null = null;
 /** Fix L5: when set, the next videos GET fails once (initial-load failure). */
 let failNextVideosList = false;
 
@@ -107,6 +112,9 @@ function installFetchMock() {
       const id = Number(analyzeId[1]);
       if (analyzeConflictForId === id) {
         return bad(409, { error: "analysis already running" });
+      }
+      if (analyzeErrorForId === id) {
+        return bad(503, { error: GEMINI_MISSING });
       }
       const video = videosState.find((v) => v.id === id);
       if (!video) return bad(404, { error: "video not found" });
@@ -196,6 +204,7 @@ describe("VideosPage admin CRM", () => {
     videosState = VIDEOS.map((v) => ({ ...v }));
     segmentsState = SEGMENTS.map((s) => ({ ...s }));
     analyzeConflictForId = null;
+    analyzeErrorForId = null;
     failNextVideosList = false;
     installFetchMock();
   });
@@ -860,5 +869,150 @@ describe("VideosPage admin CRM", () => {
     const body = JSON.parse(String(patch![1].body));
     expect(body).toMatchObject({ condition: "", clipYoutubeId: "clipA1" });
     expect("symptomId" in body).toBe(false);
+  });
+
+  // ─── Opción B: análisis con transcripción json3 (sin yt-dlp) ─────────
+
+  it("offers «Con transcripción…» on draft/analyzed rows and hides it while the analysis runs", async () => {
+    const firstRender = render(<VideosPage />);
+    await screen.findByText("Introducción a la vitamina D");
+
+    const analyzedRow = screen.getAllByText("Vitamina D y huesos")[0]!.closest("tr") as HTMLElement;
+    const draftRow = screen.getAllByText("Magnesio y sueño")[0]!.closest("tr") as HTMLElement;
+    expect(
+      within(analyzedRow).getByRole("button", { name: "Con transcripción…" }),
+    ).toBeInTheDocument();
+    expect(
+      within(draftRow).getByRole("button", { name: "Con transcripción…" }),
+    ).toBeInTheDocument();
+
+    // A running analysis hides the action on that row (single-flight UI)
+    // while the idle row keeps it.
+    firstRender.unmount();
+    videosState[1]!.analysisState = "running";
+    render(<VideosPage />);
+    await screen.findByText("Analizando…");
+
+    const runningRow = screen.getAllByText("Magnesio y sueño")[0]!.closest("tr") as HTMLElement;
+    expect(
+      within(runningRow).queryByRole("button", { name: "Con transcripción…" }),
+    ).not.toBeInTheDocument();
+    const idleRow = screen.getAllByText("Vitamina D y huesos")[0]!.closest("tr") as HTMLElement;
+    expect(
+      within(idleRow).getByRole("button", { name: "Con transcripción…" }),
+    ).toBeInTheDocument();
+  });
+
+  it("rejects invalid transcript content inline without ever calling analyzeVideo", async () => {
+    const analyzeSpy = vi.spyOn(api, "analyzeVideo");
+    const user = userEvent.setup();
+    render(<VideosPage />);
+    await screen.findByText("Introducción a la vitamina D");
+
+    const row = screen.getAllByText("Magnesio y sueño")[0]!.closest("tr") as HTMLElement;
+    await user.click(within(row).getByRole("button", { name: "Con transcripción…" }));
+    const dialog = await screen.findByRole("dialog");
+    const textarea = within(dialog).getByLabelText("Transcripción json3");
+
+    // (a) not JSON at all
+    await user.click(textarea);
+    await user.paste("esto no es json");
+    await user.click(within(dialog).getByRole("button", { name: "Analizar" }));
+    expect(await within(dialog).findByText(/no es JSON válido/i)).toBeInTheDocument();
+
+    // (b) valid JSON but no events array
+    await user.clear(textarea);
+    await user.click(textarea);
+    await user.paste('{"foo": 1}');
+    await user.click(within(dialog).getByRole("button", { name: "Analizar" }));
+    expect(
+      await within(dialog).findByText(/se espera un objeto json3 con 'events'/i),
+    ).toBeInTheDocument();
+
+    // Neither attempt reached the endpoint.
+    expect(analyzeSpy).not.toHaveBeenCalled();
+    expect(
+      mockFetch.mock.calls.some(([url]) => String(url).includes("/analyze")),
+    ).toBe(false);
+    analyzeSpy.mockRestore();
+  });
+
+  it("submits a valid json3 transcript as the second analyzeVideo argument and closes the dialog", async () => {
+    const analyzeSpy = vi.spyOn(api, "analyzeVideo");
+    const user = userEvent.setup();
+    render(<VideosPage />);
+    await screen.findByText("Introducción a la vitamina D");
+
+    const row = screen.getAllByText("Magnesio y sueño")[0]!.closest("tr") as HTMLElement;
+    await user.click(within(row).getByRole("button", { name: "Con transcripción…" }));
+    const dialog = await screen.findByRole("dialog");
+    const textarea = within(dialog).getByLabelText("Transcripción json3");
+    const transcript = { events: [{ tStartMs: 0, segs: [{ utf8: "Hola mundo" }] }] };
+
+    await user.click(textarea);
+    await user.paste(JSON.stringify(transcript));
+    await user.click(within(dialog).getByRole("button", { name: "Analizar" }));
+
+    await waitFor(() => expect(analyzeSpy).toHaveBeenCalledTimes(1));
+    expect(analyzeSpy).toHaveBeenCalledWith(2, transcript); // parsed object, 2nd arg
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+
+    // The video is untouched by any other call: the analyze POST is the ONLY
+    // non-GET request in the whole flow, and it carries the transcript body.
+    const nonGet = mockFetch.mock.calls.filter(
+      ([, init]) => ((init as RequestInit | undefined)?.method ?? "GET") !== "GET",
+    );
+    expect(nonGet).toHaveLength(1);
+    expect(nonGet[0]![0]).toBe("/api/admin/videos/2/analyze");
+    expect(JSON.parse(String((nonGet[0]![1] as RequestInit).body))).toEqual({
+      transcript,
+    });
+    // 202 claimed → the row enters the running state the polling watches.
+    expect(await screen.findAllByText("Analizando…")).toHaveLength(1);
+    analyzeSpy.mockRestore();
+  });
+
+  it("keeps the dialog open and shows the server's Spanish cause verbatim when the analysis is refused", async () => {
+    analyzeErrorForId = 2;
+    const user = userEvent.setup();
+    render(<VideosPage />);
+    await screen.findByText("Introducción a la vitamina D");
+
+    const row = screen.getAllByText("Magnesio y sueño")[0]!.closest("tr") as HTMLElement;
+    await user.click(within(row).getByRole("button", { name: "Con transcripción…" }));
+    const dialog = await screen.findByRole("dialog");
+    const textarea = within(dialog).getByLabelText("Transcripción json3");
+    await user.click(textarea);
+    await user.paste(JSON.stringify({ events: [{ tStartMs: 0 }] }));
+    await user.click(within(dialog).getByRole("button", { name: "Analizar" }));
+
+    // The exact backend message (no rewriting/translation) shows inside the
+    // dialog AND in the page banner — same text, two places.
+    expect(await within(dialog).findByText(GEMINI_MISSING)).toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toBeInTheDocument(); // still open
+    expect(screen.getAllByText(GEMINI_MISSING)).toHaveLength(2);
+  });
+
+  it("cancelling the transcript dialog closes it and calls the API zero times", async () => {
+    const analyzeSpy = vi.spyOn(api, "analyzeVideo");
+    const user = userEvent.setup();
+    render(<VideosPage />);
+    await screen.findByText("Introducción a la vitamina D");
+
+    const row = screen.getAllByText("Magnesio y sueño")[0]!.closest("tr") as HTMLElement;
+    await user.click(within(row).getByRole("button", { name: "Con transcripción…" }));
+    const dialog = await screen.findByRole("dialog");
+    // Even a fully valid payload is discarded on cancel.
+    const textarea = within(dialog).getByLabelText("Transcripción json3");
+    await user.click(textarea);
+    await user.paste(JSON.stringify({ events: [{ tStartMs: 0 }] }));
+    await user.click(within(dialog).getByRole("button", { name: "Cancelar" }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(analyzeSpy).not.toHaveBeenCalled();
+    expect(
+      mockFetch.mock.calls.some(([url]) => String(url).includes("/analyze")),
+    ).toBe(false);
+    analyzeSpy.mockRestore();
   });
 });

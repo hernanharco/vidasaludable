@@ -500,11 +500,22 @@ export const api = {
   deleteVideo: (id: number) => request<null>(`/videos/${id}`, { method: "DELETE" }),
   /** admin-video-analyze S1/S2: fire the server-side pipeline.
    * 202 = claimed (analysisState 'running'; the CRM polls GET /videos);
+   * 400 = supplied transcript is not a json3 object → AdminError;
    * 409 = another analysis is in flight → AdminError;
-   * 503 = the server cannot acquire the artifact (unreadable YouTube cookie
-   * master) → AdminError carrying the Spanish cause; nothing was claimed. */
-  analyzeVideo: (id: number) =>
-    request<{ video: Video }>(`/videos/${id}/analyze`, { method: "POST" }),
+   * 503 = the server cannot run the analysis (unreadable YouTube cookie
+   * master, gemini_not_configured, …) → AdminError carrying the Spanish
+   * cause; nothing was claimed.
+   * With `transcript` the body is `{ transcript }` and the backend analyzes
+   * it as-is, skipping yt-dlp entirely; omitting it keeps the original
+   * body-less request (server-side acquisition). `init.headers` is left
+   * alone on purpose: `request` already sends Content-Type: application/json,
+   * and an init-level `headers` would replace that object wholesale,
+   * dropping the Authorization token. */
+  analyzeVideo: (id: number, transcript?: unknown) =>
+    request<{ video: Video }>(`/videos/${id}/analyze`, {
+      method: "POST",
+      ...(transcript !== undefined ? { body: JSON.stringify({ transcript }) } : {}),
+    }),
   listVideoSegments: (videoId?: number) =>
     request<{ segments: VideoSegment[] }>(
       videoId == null ? "/video-segments" : `/video-segments?video_id=${videoId}`,
