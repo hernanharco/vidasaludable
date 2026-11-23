@@ -42,11 +42,13 @@ backend/scripts/export-youtube-cookies.sh chrome
 
 ## Install (server)
 
-Copy the file to the data volume, then verify **from the server**:
+Copy the file to the data volume, then verify **from the server**. Pass the jar
+path explicitly: the probe reads `YT_COOKIES_PATH` only when you give it
+nothing, and that variable is set **inside** the container, not on the host.
 
 ```bash
 cd /opt/vidasaludable
-./backend/scripts/check-youtube-cookies.sh
+./backend/scripts/check-youtube-cookies.sh data/secrets/youtube-cookies.txt
 ```
 
 Exit codes: `0` ok · `1` session expired · `2` bot-check despite cookies ·
@@ -58,8 +60,10 @@ The probe is cron-friendly, and it is the only way to learn that the session
 died **before** an operator hits it:
 
 ```cron
-# /etc/cron.d/youtube-cookies — daily, quiet unless something is wrong
-17 6 * * * root cd /opt/vidasaludable && ./backend/scripts/check-youtube-cookies.sh 2>&1 | logger -t yt-cookies
+# /etc/cron.d/youtube-cookies — daily; logs ONLY when something is wrong.
+# The `||` is load-bearing: piping into logger would replace the probe's exit
+# status with logger's own, and nothing could ever alert on it.
+17 6 * * * root cd /opt/vidasaludable && ./backend/scripts/check-youtube-cookies.sh data/secrets/youtube-cookies.txt >/tmp/yt-cookies.log 2>&1 || logger -t yt-cookies < /tmp/yt-cookies.log
 ```
 
 Any exit other than `0` means: re-export (see above). Keep the probe rate low —
