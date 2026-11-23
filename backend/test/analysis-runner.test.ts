@@ -41,6 +41,26 @@ describe("analysis runner hardening (fix round 1)", () => {
     expect(runner.claim(video.id)).toBe(true); // slot released → retry allowed
   });
 
+  it("M2b: aborta la señal del analizador al vencer el plazo", async () => {
+    let seen: AbortSignal | undefined;
+    const runner = createAnalysisRunner(
+      db,
+      (_video, _transcript, signal) => {
+        seen = signal;
+        // Colgado a propósito: solo lo termina el abort del runner.
+        return new Promise<never>(() => {});
+      },
+      { timeoutMs: 60 },
+    );
+    expect(runner.claim(video.id)).toBe(true);
+    runner.start(video);
+
+    await vi.waitFor(() => expect(svc.getVideo(video.id)!.analysisState).toBeNull());
+    expect(seen).toBeInstanceOf(AbortSignal);
+    expect(seen!.aborted).toBe(true);
+    expect(runner.claim(video.id)).toBe(true); // el slot igual se libera
+  });
+
   it("L1: a failing state UPDATE propagates but does not wedge the slot", () => {
     const runner = createAnalysisRunner(db, async () => {});
     db.$client.exec("ALTER TABLE videos RENAME TO videos_bak");

@@ -284,3 +284,21 @@ backend en Hetzner con rebuild del contenedor (usuario lo aprobó).
   `gemini-4-hydrogen` no está verificado contra `/v1beta/models` (la política de
   seguridad bloquea leer `.env`), y si producción define `GEMINI_MODELS` en el
   `.env` raíz esta corrección no la alcanza.
+- L14 — El timeout ahora cancela el trabajo, no solo la espera (2026-11-23,
+  cierra la deuda anotada en L13). El plazo de `analysisRunner` era un
+  `Promise.race` sin `AbortController`: vencido el plazo se registraba el fallo y
+  se liberaba el slot, pero el `fetch` a Gemini (o el yt-dlp) seguía vivo,
+  consumiendo cuota y recursos a espaldas del operador. Ahora el runner crea un
+  `AbortController`, lo aborta al vencer, y la señal viaja
+  `AnalysisAnalyzeFn` → `analyzeVideo({signal})` → `gemini.generate({signal})` →
+  `fetch`. La rechazo posterior al `race` se captura explícitamente
+  (`analysis.catch`) para que el abort no escape como `unhandledRejection`
+  (Node 22 mataría el proceso). Sin señal el comportamiento es idéntico: `init`
+  del fetch queda con las mismas claves (verificado con diferencial base-vs-fix
+  sobre 429/503/404/400/payload vacío). Tests: `analysis-runner.test.ts` (M2b:
+  la señal llega y queda abortada al vencer, y el slot igual se libera) y
+  `gemini-retry.test.ts` (la señal se reenvía al fetch y un abort rechaza con
+  `AbortError`; sin señal no se agrega nada). Limitación conocida: el backoff
+  entre reintentos no es abortable, así que un abort durante una espera de 10 s
+  se hace efectivo en el siguiente intento (que falla inmediato por señal ya
+  abortada).

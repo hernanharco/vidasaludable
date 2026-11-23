@@ -101,6 +101,17 @@ type TransientFailure = Error & { status?: number; attempts?: number };
 export interface GeminiGenerateInput {
   systemPrompt: string;
   messages: ChatMessage[];
+  /**
+   * Cancellation for the request in flight.
+   *
+   * The analysis runner races every job against a deadline; without a signal
+   * that race only ABANDONED the promise while the HTTP request kept running
+   * and kept spending quota (debt recorded in L13). The signal is forwarded to
+   * `fetch`, so an abort kills the request instead of orphaning it. An already
+   * aborted signal makes the next attempt reject immediately — the retry loop
+   * treats it as a non-rotatable failure and propagates it.
+   */
+  signal?: AbortSignal;
 }
 
 export interface GeminiClient {
@@ -154,7 +165,11 @@ export function createGeminiClient(deps: GeminiDeps = {}): GeminiClient {  const
     deps.fetch ?? ((url, init) => globalThis.fetch(url as string, init as RequestInit) as ReturnType<FetchLike>);
   const sleepFn: SleepLike = deps.sleep ?? sleepDefault;
 
-  async function requestWithRetry(body: unknown, targetModel: string): Promise<string> {
+  async function requestWithRetry(
+    body: unknown,
+    targetModel: string,
+    signal?: AbortSignal,
+  ): Promise<string> {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent`;
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -169,7 +184,12 @@ export function createGeminiClient(deps: GeminiDeps = {}): GeminiClient {  const
       if (attempt > 0) {
         await sleepFn(RETRY_BACKOFF_MS[attempt - 1]!);
       }
-      const res = await fetchFn(url, { method: "POST", headers, body: JSON.stringify(body) });
+      const res = await fetchFn(url, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+        ...(signal ? { signal } : {}),
+      });
       if (res.ok) {
         const data = (await res.json()) as {
           candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
@@ -218,7 +238,7 @@ export function createGeminiClient(deps: GeminiDeps = {}): GeminiClient {  const
       let lastTransient: TransientFailure | null = null;
       for (const targetModel of chain) {
         try {
-          return await requestWithRetry(body, targetModel);
+          return await requestWithRetry(body, targetModel, input.signal);
         } catch (err) {
           // Quota (429) and overload (503) rotate after in-model retries;
           // an unknown model (404) rotates immediately. Both cases mean

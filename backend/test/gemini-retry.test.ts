@@ -356,3 +356,52 @@ describe("modelo inexistente/deprecado (404): rota sin reintentar", () => {
     expect(error.message).toContain("404");
   });
 });
+
+/**
+ * Deuda L13: el timeout del runner era un Promise.race sin AbortController, así
+ * que el fetch real seguía vivo consumiendo cuota después de declarar el fallo.
+ * El cliente ahora acepta la señal y aborta la petición en vuelo.
+ */
+describe("cancelación: el fetch en vuelo muere con la señal", () => {
+  it("pasa la señal al fetch y rechaza con AbortError al abortar", async () => {
+    const controller = new AbortController();
+    let seenSignal: AbortSignal | undefined;
+    let started: () => void = () => undefined;
+    const ready = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const fetch = async (_url: string, init: unknown) => {
+      seenSignal = (init as { signal?: AbortSignal }).signal;
+      started();
+      return new Promise<never>((_resolve, reject) => {
+        seenSignal?.addEventListener("abort", () =>
+          reject(Object.assign(new Error("The operation was aborted."), { name: "AbortError" })),
+        );
+      });
+    };
+    const gemini = createGeminiClient({
+      apiKey: "test-key",
+      models: ["gemini-one"],
+      fetch,
+      sleep: async () => undefined,
+    });
+
+    const pending = gemini.generate({ ...base, signal: controller.signal });
+    await ready;
+    controller.abort();
+
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    expect(seenSignal).toBe(controller.signal);
+  });
+
+  it("no aborta nada cuando no se pasa señal (comportamiento previo intacto)", async () => {
+    const { fetch, calls } = scriptedFetch([
+      { status: 200, body: { candidates: [{ content: { parts: [{ text: "ok" }] } }] } },
+    ]);
+    const gemini = createGeminiClient({ apiKey: "test-key", models: ["gemini-one"], fetch, sleep: async () => undefined });
+
+    expect(await gemini.generate(base)).toBe("ok");
+    expect(calls.length).toBe(1);
+    expect((calls[0]!.init as { signal?: AbortSignal }).signal).toBeUndefined();
+  });
+});

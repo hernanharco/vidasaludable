@@ -123,6 +123,9 @@ export interface AnalyzeVideoOptions {
    * server only analyzes it.
    */
   transcript?: unknown;
+  /** Cancellation forwarded to the Gemini request (see the analysis runner's
+   * deadline): an abort kills the HTTP call instead of leaving it orphaned. */
+  signal?: AbortSignal;
 }
 
 export interface AnalyzeResult {
@@ -192,7 +195,7 @@ export function geminiAnalysisFailure(err: unknown): Error {
  * `youtube_id` index.
  */
 export async function analyzeVideo(opts: AnalyzeVideoOptions): Promise<AnalyzeResult> {
-  const { url, db, gemini, ytdlp, vocabulary, transcript } = opts;
+  const { url, db, gemini, ytdlp, vocabulary, transcript, signal } = opts;
 
   const youtubeId = parseVideoId(url);
   if (!youtubeId) {
@@ -258,7 +261,11 @@ export async function analyzeVideo(opts: AnalyzeVideoOptions): Promise<AnalyzeRe
 
   let raw: string;
   try {
-    raw = await gemini.generate({ systemPrompt, messages: [{ role: "user", content: userMessage }] });
+    raw = await gemini.generate({
+      systemPrompt,
+      messages: [{ role: "user", content: userMessage }],
+      ...(signal ? { signal } : {}),
+    });
   } catch (err) {
     throw geminiAnalysisFailure(err);
   }

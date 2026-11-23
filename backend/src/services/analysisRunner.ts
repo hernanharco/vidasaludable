@@ -25,8 +25,14 @@ import { createGeminiClient } from "../agent/gemini.js";
 /** The heavy leaf: (default) build yt-dlp + Gemini clients and run the
  * pipeline for this video; reject → analysis failure with the error message.
  * `transcript` is the optional pre-acquired json3 artifact: when the route
- * receives one, the pipeline never touches yt-dlp. */
-export type AnalysisAnalyzeFn = (video: Video, transcript?: unknown) => Promise<void>;
+ * receives one, the pipeline never touches yt-dlp.
+ * `signal` is aborted when the deadline expires, so the analyzer can kill the
+ * request it has in flight instead of leaving it running (L13 debt). */
+export type AnalysisAnalyzeFn = (
+  video: Video,
+  transcript?: unknown,
+  signal?: AbortSignal,
+) => Promise<void>;
 
 export interface AnalysisRunner {
   /** True while a job is in flight (used by the route for the 409). */
@@ -49,7 +55,7 @@ export const DEFAULT_ANALYSIS_TIMEOUT_MS = 10 * 60 * 1000;
 /** Production analyzer: mirrors the `video:analyze` CLI wiring (env key,
  * yt-dlp, the 95-row symptom vocabulary from THIS database). */
 export function createDefaultAnalysisAnalyze(db: Db): AnalysisAnalyzeFn {
-  return async (video, transcript) => {
+  return async (video, transcript, signal) => {
     const gemini = createGeminiClient();
     if (!gemini.isConfigured()) {
       throw new Error("Falta la variable de entorno GEMINI_API_KEY en el servidor.");
@@ -60,7 +66,7 @@ export function createDefaultAnalysisAnalyze(db: Db): AnalysisAnalyzeFn {
       .from(assessmentSymptoms)
       .all()
       .map((r) => ({ id: r.id, name_es: r.nameEs }));
-    await analyzeVideo({ url: video.url, db, gemini, ytdlp, vocabulary, transcript });
+    await analyzeVideo({ url: video.url, db, gemini, ytdlp, vocabulary, transcript, signal });
   };
 }
 
@@ -99,10 +105,19 @@ export function createAnalysisRunner(
       void (async () => {
         let deadline: ReturnType<typeof setTimeout> | undefined;
         try {
-          const analysis = runAnalyze(video, transcript);
+          // The controller makes the deadline real: the race below stops
+          // WAITING, the abort stops the WORK (a hung Gemini/yt-dlp call kept
+          // running and spending quota after the failure was recorded).
+          const controller = new AbortController();
+          const analysis = runAnalyze(video, transcript, controller.signal);
+          // A rejection landing after the race settled (the abort itself) must
+          // not surface as an unhandledRejection — Node 22 would kill the
+          // process. This handles it without changing the raced promise.
+          analysis.catch(() => undefined);
           const timeout = new Promise<never>((_, reject) => {
             deadline = setTimeout(() => {
               const minutes = Math.max(1, Math.round(timeoutMs / 60_000));
+              controller.abort();
               reject(
                 new Error(
                   `El análisis superó el tiempo límite (${minutes} min) y fue cancelado.`,
