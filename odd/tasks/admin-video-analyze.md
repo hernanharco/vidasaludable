@@ -248,3 +248,39 @@ backend en Hetzner con rebuild del contenedor (usuario lo aprobó).
   los segmentos en silencio. Los fallos de yt-dlp se clasifican
   (`classifyYtdlpFailure`: anti-bot, cookies vencidas, privado, geobloqueo,
   eliminado, red) en lugar de culpar siempre a la URL y a la instalación.
+- L12 — Sobrecarga de Google (503) mataba el análisis con 9 modelos libres, y
+  sin evidencia server-side (2026-11-23). La fila mostraba
+  `Gemini falló al analizar la transcripción: gemini: transient HTTP 503`.
+  Causa: `gemini.ts` reintentaba 429/503 dentro del modelo (4 intentos, ~17s)
+  pero la rotación de la cadena solo se disparaba con 429, así que un 503 en el
+  primer modelo abortaba todo. Fix (S3): 429 y 503 rotan por igual; la cadena
+  agotada tira `gemini: chain exhausted after N models (last: transient HTTP
+  <status>)` con la causa original encadenada (`cause`). El mensaje de la fila
+  ahora distingue la decisión (S3: "el motivo"): 503 = sobrecargado, transitorio,
+  reintentá en minutos; 429 = cuota agotada en todos los modelos; 400/401/403 =
+  revisá `GEMINI_API_KEY`/modelo. `analysisRunner` loguea el fallo con su cadena
+  de causas (`[analysis] video <id> failed: …`) porque `analysis_error` guarda
+  solo el texto. Tests: `gemini-retry.test.ts` (503 x4 → rota; cadena entera 503
+  → status + causa) y `video-pipeline.test.ts` (contrato del mensaje por status).
+  Deuda que sigue abierta: el timeout de `analysisRunner` es un `Promise.race`
+  sin `AbortController`, el fetch real de Gemini no se aborta.
+- L13 — La cadena de modelos tenía un fantasma y un 404 mataba el análisis
+  (2026-11-23). Contraste contra la cuota real de AI Studio (28 días): los
+  buckets son 3.5/3.1 Flash Lite 15 RPM / 250K TPM / **500 RPD**, los Flash
+  3.8/3.6/3/2.5 5 RPM / 250K TPM / **20 RPD**, 2.5 Flash Lite 10 RPM / 20 RPD,
+  Gemma 4 31B/26B 30 RPM / **16K TPM** / 14.4K RPD, y 3.1 Pro / 2.5 Pro /
+  4 Argon-Carbon-Neon con 0/0/0 (sin free tier: no aportan bucket). Hallazgos:
+  (a) `gemini-3.7-flash` NO existe en la cuenta — respondía 404, y el 404 era
+  non-retryable → `throw` sin rotar, un muro en la posición 4 de la cadena;
+  (b) `gemini-4-hydrogen` (5 RPM / 250K TPM / 20 RPD) existe y no se usaba;
+  (c) Gemma está al final con 16K TPM, así que sirve para el chat pero no para
+  transcripciones largas. Fix: se saca el fantasma de `DEFAULT_MODEL_CHAIN` y un
+  404 pasa a rotar sin reintento in-model (`ROTATE_ONLY_STATUSES`), con status
+  adjunto en el error non-retryable para que el loop pueda distinguir 404 de 400.
+  `geminiAnalysisFailure` nombra el 404 como cadena mal configurada. Tests:
+  `gemini-retry.test.ts` (404 rota en 1 intento; cadena entera 404 informa 404) y
+  `video-pipeline.test.ts` (mensaje de configuración). Diferencial base-vs-fix:
+  429 y 400 idénticos, payload vacío idéntico. PENDIENTE: el ID real de
+  `gemini-4-hydrogen` no está verificado contra `/v1beta/models` (la política de
+  seguridad bloquea leer `.env`), y si producción define `GEMINI_MODELS` en el
+  `.env` raíz esta corrección no la alcanza.
