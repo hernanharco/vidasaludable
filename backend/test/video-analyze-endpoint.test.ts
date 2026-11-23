@@ -27,6 +27,22 @@ import type { Hono } from "hono";
 
 type Pending = { resolve: () => void; reject: (e: Error) => void };
 
+/** Real copy of YouTube's "Transcripción" panel (the contract sample): what
+ * the operator literally pastes from the YouTube UI. */
+const panelSample = [
+  "Transcripción",
+  "Buscar en transcripción",
+  "0:11",
+  "11 segundos",
+  "[música]",
+  "0:18",
+  "18 segundos",
+  "Hola, hola amigos de América Latina.",
+  "1:00:08",
+  "1 hora y 8 segundos",
+  "y un corrector que sea lo más similar a mi tono de piel",
+].join("\n");
+
 describe("POST /admin/videos/:id/analyze (T2)", () => {
   let db: Db;
   let app: Hono;
@@ -70,6 +86,17 @@ describe("POST /admin/videos/:id/analyze (T2)", () => {
   const stateOf = (id: number) => {
     const row = svc().getVideo(id);
     return { state: row?.analysisState, error: row?.analysisError, status: row?.status };
+  };
+
+  /** Safety net for the transcriptText tests: if an assertion fails while
+   * the analyzer is parked, release the slot so the failure cannot cascade
+   * into the single-flight state of the following tests. */
+  const releaseParked = async (videoId: number) => {
+    if (pending) {
+      pending.resolve();
+      pending = null;
+      await vi.waitFor(() => expect(stateOf(videoId).state).toBeNull());
+    }
   };
 
   beforeAll(async () => {
@@ -152,6 +179,84 @@ describe("POST /admin/videos/:id/analyze (T2)", () => {
     // Sin claim: no se tomó el slot ni se marcó running.
     expect(calls).toHaveLength(0);
     expect(stateOf(video.id).state).toBeNull();
+  });
+
+  it("acepta transcriptText (panel de YouTube) → 202 y el analizador recibe json3 correcto", async () => {
+    const video = makeVideo("anEpPanel");
+    try {
+      const res = await app.request(`/admin/videos/${video.id}/analyze`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ transcriptText: panelSample }),
+      });
+      expect(res.status).toBe(202);
+
+      // El analizador recibe un objeto json3 con los cues convertidos desde
+      // el texto del panel (mismos tiempos y textos que el parser puro).
+      await vi.waitFor(() => expect(transcripts).toHaveLength(1));
+      expect(transcripts[0]).toEqual({
+        events: [
+          { tStartMs: 11000, dDurationMs: 11000, segs: [{ utf8: "[música]" }] },
+          {
+            tStartMs: 18000,
+            dDurationMs: 18000,
+            segs: [{ utf8: "Hola, hola amigos de América Latina." }],
+          },
+          {
+            tStartMs: 3608000,
+            dDurationMs: 3608000,
+            segs: [{ utf8: "y un corrector que sea lo más similar a mi tono de piel" }],
+          },
+        ],
+      });
+    } finally {
+      await releaseParked(video.id);
+    }
+  });
+
+  it("rechaza con 400 un transcriptText inválido y nunca reclama el slot", async () => {
+    const video = makeVideo("anEpBadPanel");
+    try {
+      // No-string: se rechaza antes de parsear.
+      const notString = await app.request(`/admin/videos/${video.id}/analyze`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ transcriptText: 42 }),
+      });
+      expect(notString.status).toBe(400);
+      expect(((await notString.json()) as { error: string }).error).toMatch(/transcriptText/);
+
+      // String sin ningún cue: el parser lanza y el route devuelve su mensaje.
+      const noCues = await app.request(`/admin/videos/${video.id}/analyze`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ transcriptText: "Transcripción\nBuscar en transcripción" }),
+      });
+      expect(noCues.status).toBe(400);
+      expect(((await noCues.json()) as { error: string }).error).toMatch(/cue/);
+
+      // Sin claim en ninguno de los dos intentos: slot libre, nada running.
+      expect(calls).toHaveLength(0);
+      expect(stateOf(video.id).state).toBeNull();
+    } finally {
+      await releaseParked(video.id);
+    }
+  });
+
+  it("rechaza con 400 cuando llegan transcript y transcriptText a la vez", async () => {
+    const video = makeVideo("anEpBothInputs");
+    try {
+      const res = await app.request(`/admin/videos/${video.id}/analyze`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ transcript: { events: [] }, transcriptText: panelSample }),
+      });
+      expect(res.status).toBe(400);
+      expect(calls).toHaveLength(0);
+      expect(stateOf(video.id).state).toBeNull();
+    } finally {
+      await releaseParked(video.id);
+    }
   });
 
   it("records a failure in analysis_error without touching status or existing segments", async () => {

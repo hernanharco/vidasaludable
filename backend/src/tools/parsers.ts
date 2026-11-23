@@ -4,6 +4,9 @@
  * - `parseVideoId`: extracts the YouTube id from the supported URL forms.
  * - `parseJson3Transcript`: turns a yt-dlp json3 subtitle payload into timed
  *   text lines (the "transcript line timestamps" the analyzer must align to).
+ * - `parsePanelTranscript`: turns the human-readable text copied from
+ *   YouTube's "Transcripción" panel into a json3-shaped object, so an
+ *   operator can paste what the YouTube UI shows instead of the artifact.
  * - `parseGeminiSegments`: defensively turns the model's raw reply into
  *   validated segments (fences stripped, bounds coerced/clamped, junk dropped)
  *   including the per-segment product mentions linked to the injected catalog.
@@ -90,6 +93,136 @@ export function parseJson3Transcript(json: unknown): TimedCue[] {
     cues.push({ startMs, durMs: Number.isFinite(durRaw) ? durRaw : 0, text });
   }
   return cues;
+}
+
+/**
+ * A json3-shaped payload produced from a pasted YouTube panel transcript.
+ * Structurally identical to the yt-dlp json3 subset the pipeline consumes,
+ * so `parseJson3Transcript` accepts it unchanged.
+ */
+export interface PanelTranscriptJson {
+  events: Array<{
+    tStartMs: number;
+    dDurationMs: number;
+    segs: Array<{ utf8: string }>;
+  }>;
+}
+
+/**
+ * A panel line that is only a cue timestamp: `M:SS` or `H:MM:SS`.
+ * Anchored full-line match — any surrounding text makes it a text line.
+ */
+const PANEL_TIMESTAMP_RE = /^(\d+):(\d{1,2})(?::(\d{1,2}))?$/;
+
+/**
+ * A panel line that is only a duration: "11 segundos",
+ * "1 minuto y 5 segundos", "2 horas, 5 minutos y 3 segundos",
+ * "1 hora y 8 segundos" or "5 minutos". Anchored full-line match; only one
+ * alternative can win. Capture groups by alternative:
+ * 1 horas, 2 minutos, 3 segundos | 4 minutos, 5 segundos |
+ * 6 segundos | 7 minutos.
+ */
+const PANEL_DURATION_RE =
+  /^(?:(\d+)\s+horas?)\s*,?\s*(?:(\d+)\s+minutos?)?\s*(?:y\s+)?(\d+)\s+segundos?$|^(?:(\d+)\s+minutos?)\s+y\s+(\d+)\s+segundos$|^(\d+)\s+segundos?$|^(\d+)\s+minutos?$/i;
+
+/** Timestamp line (`M:SS` / `H:MM:SS`) → milliseconds; `null` if not one. */
+function panelTimestampMs(line: string): number | null {
+  const m = PANEL_TIMESTAMP_RE.exec(line);
+  if (!m) return null;
+  const isHms = m[3] !== undefined; // 3 parts → H:MM:SS, 2 parts → M:SS
+  const hours = isHms ? Number(m[1] ?? 0) : 0;
+  const minutes = isHms ? Number(m[2] ?? 0) : Number(m[1] ?? 0);
+  const seconds = isHms ? Number(m[3] ?? 0) : Number(m[2] ?? 0);
+  return (hours * 3600 + minutes * 60 + seconds) * 1000;
+}
+
+/** Duration line → milliseconds; `null` if the line is not a duration. */
+function panelDurationMs(line: string): number | null {
+  const m = PANEL_DURATION_RE.exec(line);
+  if (!m) return null;
+  const hours = Number(m[1] ?? 0);
+  const minutes = Number(m[2] ?? m[4] ?? m[7] ?? 0);
+  const seconds = Number(m[3] ?? m[5] ?? m[6] ?? 0);
+  return (hours * 3600 + minutes * 60 + seconds) * 1000;
+}
+
+/** Fallback duration for the LAST cue when the panel gave no duration line. */
+const PANEL_LAST_CUE_FALLBACK_MS = 2000;
+
+/**
+ * Convert the human-readable text copied from YouTube's "Transcripción"
+ * panel into a json3-shaped object, so the pipeline consumes it exactly
+ * like a yt-dlp artifact (`parseJson3Transcript` accepts it unchanged).
+ *
+ * Contract (real panel copy):
+ * - A line that is only a timestamp (`M:SS` / `H:MM:SS`) opens a cue.
+ * - A duration line right after the timestamp ("11 segundos",
+ *   "1 minuto y 5 segundos", "2 horas, 5 minutos y 3 segundos",
+ *   "5 minutos") is the cue's `dDurationMs` — NEVER cue text.
+ * - Every other non-empty line until the next timestamp is cue text;
+ *   consecutive lines join with a single space.
+ * - Text before the first timestamp (panel headers) is discarded.
+ * - No duration line → `nextCueStart - thisStart` clamped at 0; the last
+ *   cue falls back to 2000 ms. Never negative.
+ * - Cues whose text is empty after trimming are dropped.
+ * - Bracketed noise ("[música]", "[aplausos]") is kept as text verbatim.
+ *
+ * Pure function, no I/O. Throws a Spanish Error when the input yields zero
+ * cues (not a valid panel transcript); the route maps that to a 400.
+ */
+export function parsePanelTranscript(raw: string): PanelTranscriptJson {
+  interface Draft {
+    startMs: number;
+    durMs: number | null; // explicit duration line, when present
+    textLines: string[];
+  }
+
+  const drafts: Draft[] = [];
+  let current: Draft | null = null;
+  let afterTimestamp = false; // the NEXT non-empty line may be the duration
+
+  for (const line of raw.split(/\r?\n/)) {
+    const text = line.trim();
+    if (!text) continue; // blank separators never change the state
+
+    const startMs = panelTimestampMs(text);
+    if (startMs !== null) {
+      current = { startMs, durMs: null, textLines: [] };
+      drafts.push(current);
+      afterTimestamp = true;
+      continue;
+    }
+
+    if (current !== null && afterTimestamp) {
+      afterTimestamp = false;
+      const durMs = panelDurationMs(text);
+      if (durMs !== null) {
+        current.durMs = durMs;
+        continue; // consumed as duration — never emitted as text
+      }
+    }
+    afterTimestamp = false;
+
+    if (current === null) continue; // header lines before the first timestamp
+    current.textLines.push(text);
+  }
+
+  const events: PanelTranscriptJson["events"] = [];
+  for (const [index, draft] of drafts.entries()) {
+    const text = draft.textLines.join(" ").trim();
+    if (!text) continue; // cue without text is not a cue
+    const next = drafts[index + 1];
+    const derived = next ? next.startMs - draft.startMs : PANEL_LAST_CUE_FALLBACK_MS;
+    const dDurationMs = draft.durMs ?? Math.max(0, derived); // never negative
+    events.push({ tStartMs: draft.startMs, dDurationMs, segs: [{ utf8: text }] });
+  }
+
+  if (events.length === 0) {
+    throw new Error(
+      "transcripción del panel inválida: no se encontró ningún cue con timestamp (se esperaba el texto copiado de la transcripción de YouTube)",
+    );
+  }
+  return { events };
 }
 
 /**

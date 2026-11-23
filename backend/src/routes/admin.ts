@@ -12,7 +12,7 @@ import { AnalysisPreflightError, createAnalysisPreflight } from "../services/ana
 import type { AnalysisPreflight } from "../services/analysisPreflight.js";
 import { matchSymptom } from "../services/symptomMatcher.js";
 import type { SymptomCandidate } from "../services/symptomMatcher.js";
-import { parseVideoId } from "../tools/parsers.js";
+import { parseVideoId, parsePanelTranscript } from "../tools/parsers.js";
 import { createRecommendationService } from "../services/recommendationService.js";
 import { createConversationService } from "../services/conversationService.js";
 import { createCustomerService } from "../services/customerService.js";
@@ -644,17 +644,36 @@ export function createAdminRouter(db: Db, deps: AdminRouterDeps = {}): Hono {
    * happens inside analyzeVideo only on success — failures land in
    * analysis_error (S3).
    *
-   * Optional body `{ transcript: <json3> }`: the operator acquired the
-   * artifact elsewhere (the server IP is bot-checked, prod incident
-   * 2026-11-22), so the pipeline never invokes yt-dlp. Absent body → the
-   * original server-side acquisition, unchanged.
+   * Optional body — TWO mutually exclusive input forms:
+   * - `{ transcript: <json3> }`: the operator acquired the artifact
+   *   elsewhere (the server IP is bot-checked, prod incident 2026-11-22), so
+   *   the pipeline never invokes yt-dlp.
+   * - `{ transcriptText: <string> }`: the human-readable text copied from
+   *   YouTube's "Transcripción" panel; converted to json3 via
+   *   `parsePanelTranscript` and injected exactly like the artifact above
+   *   (same escape hatch: no yt-dlp). Supplying both fields, a non-string
+   *   `transcriptText`, or text that yields no cues answers 400 with a
+   *   Spanish message BEFORE the single-flight claim.
+   * Absent body → the original server-side acquisition, unchanged.
    */
   app.post("/videos/:id/analyze", async (c) => {
     const id = Number(c.req.param("id"));
     if (!Number.isInteger(id)) return c.json({ error: "invalid id" }, 400);
 
-    const body = (await c.req.json().catch(() => null)) as { transcript?: unknown } | null;
+    const body = (await c.req.json().catch(() => null)) as {
+      transcript?: unknown;
+      transcriptText?: unknown;
+    } | null;
     let transcript: unknown;
+    if (body != null && body.transcript !== undefined && body.transcriptText !== undefined) {
+      return c.json(
+        {
+          error:
+            "invalid body: envía 'transcript' (json3) o 'transcriptText' (texto del panel), no ambos",
+        },
+        400,
+      );
+    }
     if (body != null && body.transcript !== undefined) {
       const candidate = body.transcript;
       const events = (candidate as { events?: unknown } | null)?.events;
@@ -664,6 +683,21 @@ export function createAdminRouter(db: Db, deps: AdminRouterDeps = {}): Hono {
         return c.json({ error: "invalid transcript: se espera un objeto json3 con 'events'" }, 400);
       }
       transcript = candidate;
+    } else if (body != null && body.transcriptText !== undefined) {
+      if (typeof body.transcriptText !== "string") {
+        return c.json(
+          { error: "invalid transcriptText: se espera un string con el texto del panel" },
+          400,
+        );
+      }
+      // A parse failure (zero cues) is a 400 carrying the thrown message —
+      // also BEFORE the claim, same rule as the json3 branch above.
+      try {
+        transcript = parsePanelTranscript(body.transcriptText);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "transcriptText inválido";
+        return c.json({ error: message }, 400);
+      }
     }
 
     const video = videoService.getVideo(id);

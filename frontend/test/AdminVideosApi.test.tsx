@@ -180,4 +180,28 @@ describe("admin videos api client", () => {
       }),
     );
   });
+
+  it("analyzeVideoFromText POSTs a body equal to { transcriptText }", async () => {
+    const running: Video = { ...VIDEO, analysisState: "running", analysisError: null };
+    mockFetch.mockResolvedValueOnce(ok(202, { video: running }));
+    const text = "Transcripción\n0:18\nHola, hola amigos de América Latina.";
+    const out = await api.analyzeVideoFromText(1, text);
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/api/admin/videos/1/analyze",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ transcriptText: text }),
+      }),
+    );
+    expect(out.video.analysisState).toBe("running");
+  });
+
+  it("analyzeVideoFromText surfaces the backend 400 (text yields no cues) as AdminError", async () => {
+    mockFetch.mockResolvedValueOnce(ok(400, { error: "el texto no contiene marcas de tiempo" }));
+    await expect(api.analyzeVideoFromText(1, "sin marcas")).rejects.toMatchObject({
+      name: "AdminError",
+      status: 400,
+      message: "el texto no contiene marcas de tiempo",
+    });
+  });
 });

@@ -86,6 +86,9 @@ const GEMINI_MISSING = "Falta GEMINI_API_KEY en el servidor";
 let analyzeErrorForId: number | null = null;
 /** Fix L5: when set, the next videos GET fails once (initial-load failure). */
 let failNextVideosList = false;
+/** Accessible name of the transcript dialog textarea: the field accepts BOTH
+ * input kinds (json3 JSON and the human-readable YouTube panel copy). */
+const TRANSCRIPT_LABEL = "Transcripción (json3 o texto del panel)";
 
 function ok(status: number, body: unknown) {
   return Promise.resolve({ ok: status < 400, status, json: () => Promise.resolve(body) });
@@ -912,7 +915,7 @@ describe("VideosPage admin CRM", () => {
     const row = screen.getAllByText("Magnesio y sueño")[0]!.closest("tr") as HTMLElement;
     await user.click(within(row).getByRole("button", { name: "Con transcripción…" }));
     const dialog = await screen.findByRole("dialog");
-    const textarea = within(dialog).getByLabelText("Transcripción json3");
+    const textarea = within(dialog).getByLabelText(TRANSCRIPT_LABEL);
 
     // (a) not JSON at all
     await user.click(textarea);
@@ -946,7 +949,7 @@ describe("VideosPage admin CRM", () => {
     const row = screen.getAllByText("Magnesio y sueño")[0]!.closest("tr") as HTMLElement;
     await user.click(within(row).getByRole("button", { name: "Con transcripción…" }));
     const dialog = await screen.findByRole("dialog");
-    const textarea = within(dialog).getByLabelText("Transcripción json3");
+    const textarea = within(dialog).getByLabelText(TRANSCRIPT_LABEL);
     const transcript = { events: [{ tStartMs: 0, segs: [{ utf8: "Hola mundo" }] }] };
 
     await user.click(textarea);
@@ -981,7 +984,7 @@ describe("VideosPage admin CRM", () => {
     const row = screen.getAllByText("Magnesio y sueño")[0]!.closest("tr") as HTMLElement;
     await user.click(within(row).getByRole("button", { name: "Con transcripción…" }));
     const dialog = await screen.findByRole("dialog");
-    const textarea = within(dialog).getByLabelText("Transcripción json3");
+    const textarea = within(dialog).getByLabelText(TRANSCRIPT_LABEL);
     await user.click(textarea);
     await user.paste(JSON.stringify({ events: [{ tStartMs: 0 }] }));
     await user.click(within(dialog).getByRole("button", { name: "Analizar" }));
@@ -1003,7 +1006,7 @@ describe("VideosPage admin CRM", () => {
     await user.click(within(row).getByRole("button", { name: "Con transcripción…" }));
     const dialog = await screen.findByRole("dialog");
     // Even a fully valid payload is discarded on cancel.
-    const textarea = within(dialog).getByLabelText("Transcripción json3");
+    const textarea = within(dialog).getByLabelText(TRANSCRIPT_LABEL);
     await user.click(textarea);
     await user.paste(JSON.stringify({ events: [{ tStartMs: 0 }] }));
     await user.click(within(dialog).getByRole("button", { name: "Cancelar" }));
@@ -1014,5 +1017,89 @@ describe("VideosPage admin CRM", () => {
       mockFetch.mock.calls.some(([url]) => String(url).includes("/analyze")),
     ).toBe(false);
     analyzeSpy.mockRestore();
+  });
+
+  // ─── Transcripción como texto legible del panel de YouTube ───────────
+
+  it("sends panel text with timestamp lines as { transcriptText } and closes the dialog", async () => {
+    const analyzeSpy = vi.spyOn(api, "analyzeVideo");
+    const fromTextSpy = vi.spyOn(api, "analyzeVideoFromText");
+    const user = userEvent.setup();
+    render(<VideosPage />);
+    await screen.findByText("Introducción a la vitamina D");
+
+    const row = screen.getAllByText("Magnesio y sueño")[0]!.closest("tr") as HTMLElement;
+    await user.click(within(row).getByRole("button", { name: "Con transcripción…" }));
+    const dialog = await screen.findByRole("dialog");
+    const textarea = within(dialog).getByLabelText(TRANSCRIPT_LABEL);
+    // Panel copy: header lines, an M:SS timestamp, an H:MM:SS timestamp,
+    // prose and the YouTube UI chrome — no JSON anywhere.
+    const panelText = [
+      "Transcripción",
+      "Buscar en transcripción",
+      "0:18",
+      "18 segundos",
+      "Hola, hola amigos de América Latina.",
+      "1:02:33",
+      "Siguiente",
+    ].join("\n");
+
+    await user.click(textarea);
+    await user.paste(panelText);
+    await user.click(within(dialog).getByRole("button", { name: "Analizar" }));
+
+    // Automatic decision: panel text → analyzeVideoFromText, raw text as-is;
+    // the json3 path (analyzeVideo) is never touched.
+    await waitFor(() => expect(fromTextSpy).toHaveBeenCalledTimes(1));
+    expect(fromTextSpy).toHaveBeenCalledWith(2, panelText);
+    expect(analyzeSpy).not.toHaveBeenCalled();
+    // Success → the dialog closes.
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+
+    // Wire contract: exactly one analyze POST carrying { transcriptText }.
+    const analyzePosts = mockFetch.mock.calls.filter(
+      ([url, init]) =>
+        String(url) === "/api/admin/videos/2/analyze" &&
+        ((init as RequestInit | undefined)?.method ?? "GET") === "POST",
+    );
+    expect(analyzePosts).toHaveLength(1);
+    expect(JSON.parse(String((analyzePosts[0]![1] as RequestInit).body))).toEqual({
+      transcriptText: panelText,
+    });
+    // 202 claimed → the row enters the running state the polling watches.
+    expect(await screen.findAllByText("Analizando…")).toHaveLength(1);
+    analyzeSpy.mockRestore();
+    fromTextSpy.mockRestore();
+  });
+
+  it("rejects text that is neither json3 nor panel copy with a Spanish inline error and calls nothing", async () => {
+    const analyzeSpy = vi.spyOn(api, "analyzeVideo");
+    const fromTextSpy = vi.spyOn(api, "analyzeVideoFromText");
+    const user = userEvent.setup();
+    render(<VideosPage />);
+    await screen.findByText("Introducción a la vitamina D");
+
+    const row = screen.getAllByText("Magnesio y sueño")[0]!.closest("tr") as HTMLElement;
+    await user.click(within(row).getByRole("button", { name: "Con transcripción…" }));
+    const dialog = await screen.findByRole("dialog");
+    const textarea = within(dialog).getByLabelText(TRANSCRIPT_LABEL);
+
+    await user.click(textarea);
+    await user.paste("un texto cualquiera sin ninguna marca de tiempo");
+    await user.click(within(dialog).getByRole("button", { name: "Analizar" }));
+
+    // Inline Spanish error naming BOTH accepted formats; dialog stays open
+    // and neither API method (nor fetch) is reached.
+    const alert = await within(dialog).findByRole("alert");
+    expect(alert).toHaveTextContent(/no es JSON válido/i);
+    expect(alert).toHaveTextContent(/M:SS/); // panel copy + timestamps explained
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(analyzeSpy).not.toHaveBeenCalled();
+    expect(fromTextSpy).not.toHaveBeenCalled();
+    expect(
+      mockFetch.mock.calls.some(([url]) => String(url).includes("/analyze")),
+    ).toBe(false);
+    analyzeSpy.mockRestore();
+    fromTextSpy.mockRestore();
   });
 });

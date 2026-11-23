@@ -10,7 +10,12 @@ import { products } from "../src/db/schema.js";
 import { createVideoService } from "../src/services/videoService.js";
 import type { GeminiClient } from "../src/agent/gemini.js";
 import seedData from "../src/seed/assessment_seed_data.json";
-import { parseVideoId, parseJson3Transcript, parseGeminiSegments } from "../src/tools/parsers.js";
+import {
+  parseVideoId,
+  parseJson3Transcript,
+  parsePanelTranscript,
+  parseGeminiSegments,
+} from "../src/tools/parsers.js";
 import {
   buildFfmpegArgs,
   classifyYtdlpFailure,
@@ -155,6 +160,118 @@ describe("parseJson3Transcript", () => {
     expect(parseJson3Transcript("texto")).toEqual([]);
     expect(parseJson3Transcript({})).toEqual([]);
     expect(parseJson3Transcript({ events: "no-array" })).toEqual([]);
+  });
+});
+
+describe("parsePanelTranscript", () => {
+  /** Real copy of YouTube's "Transcripción" panel (the contract sample). */
+  const panelSample = [
+    "Transcripción",
+    "Buscar en transcripción",
+    "0:11",
+    "11 segundos",
+    "[música]",
+    "0:18",
+    "18 segundos",
+    "Hola, hola amigos de América Latina.",
+    "1:00:08",
+    "1 hora y 8 segundos",
+    "y un corrector que sea lo más similar a mi tono de piel",
+  ].join("\n");
+
+  it("lee M:SS y H:MM:SS como inicio de cue en milisegundos", () => {
+    const { events } = parsePanelTranscript(panelSample);
+    expect(events.map((e) => e.tStartMs)).toEqual([11000, 18000, 3608000]);
+  });
+
+  it("consume la línea de duración como dDurationMs y jamás la emite como texto", () => {
+    const { events } = parsePanelTranscript(panelSample);
+    expect(events.map((e) => e.dDurationMs)).toEqual([11000, 18000, 3608000]);
+    const allText = events
+      .map((e) => e.segs.map((s) => s.utf8).join(" "))
+      .join(" ");
+    expect(allText).not.toContain("segundos");
+    expect(allText).not.toContain("hora");
+  });
+
+  it("descarta los encabezados anteriores al primer timestamp", () => {
+    const { events } = parsePanelTranscript(panelSample);
+    const allText = events
+      .map((e) => e.segs.map((s) => s.utf8).join(" "))
+      .join(" | ");
+    expect(allText).not.toContain("Transcripción");
+    expect(allText).not.toContain("Buscar en transcripción");
+    // El primer texto real del panel es el cue de 0:11, no el encabezado.
+    expect(events[0]!.segs[0]!.utf8).toBe("[música]");
+  });
+
+  it("une varias líneas de texto de un cue con un solo espacio", () => {
+    const raw = [
+      "0:10",
+      "5 segundos",
+      "Primera línea",
+      "   Segunda línea   ",
+      "0:25",
+      "10 segundos",
+      "Siguiente cue",
+    ].join("\n");
+    const { events } = parsePanelTranscript(raw);
+    expect(events[0]!.segs).toEqual([{ utf8: "Primera línea Segunda línea" }]);
+  });
+
+  it("sin línea de duración deriva del siguiente cue; el último usa 2000ms; nunca negativa", () => {
+    const raw = ["0:10", "texto A", "0:25", "texto B"].join("\n");
+    const { events } = parsePanelTranscript(raw);
+    expect(events[0]!.dDurationMs).toBe(15000); // 0:25 − 0:10
+    expect(events[1]!.dDurationMs).toBe(2000); // último cue, sin duración
+
+    // Timestamps fuera de orden: el derivado no puede quedar negativo.
+    const reversed = ["0:30", "después", "0:20", "10 segundos", "antes"].join("\n");
+    const { events: revEvents } = parsePanelTranscript(reversed);
+    expect(revEvents[0]!.dDurationMs).toBe(0);
+  });
+
+  it("conserva el ruido entre corchetes ([música], [aplausos])", () => {
+    const raw = ["0:00", "2 segundos", "[música]", "0:05", "3 segundos", "[aplausos]"].join(
+      "\n",
+    );
+    const { events } = parsePanelTranscript(raw);
+    expect(events.map((e) => e.segs[0]!.utf8)).toEqual(["[música]", "[aplausos]"]);
+  });
+
+  it("descarta los cues cuyo texto queda vacío tras recortar", () => {
+    const raw = ["0:10", "5 segundos", "", "0:20", "10 segundos", "con texto"].join("\n");
+    const { events } = parsePanelTranscript(raw);
+    expect(events).toHaveLength(1);
+    expect(events[0]!.tStartMs).toBe(20000);
+  });
+
+  it("entrada sin ningún cue (solo encabezados) → error en español", () => {
+    expect(() => parsePanelTranscript("Transcripción\nBuscar en transcripción")).toThrow(
+      /no se encontró ningún cue/,
+    );
+    expect(() => parsePanelTranscript("")).toThrow(/no se encontró ningún cue/);
+  });
+
+  it("muestra de 4 líneas: un solo evento json3 con el cue de 0:18", () => {
+    const { events } = parsePanelTranscript(
+      ["0:18", "18 segundos", "Hola, hola amigos.", "0:20"].join("\n"),
+    );
+    expect(events).toEqual([
+      { tStartMs: 18000, dDurationMs: 18000, segs: [{ utf8: "Hola, hola amigos." }] },
+    ]);
+  });
+
+  it("round-trip: parseJson3Transcript acepta la salida sin cambios (tiempos y texto)", () => {
+    expect(parseJson3Transcript(parsePanelTranscript(panelSample))).toEqual([
+      { startMs: 11000, durMs: 11000, text: "[música]" },
+      { startMs: 18000, durMs: 18000, text: "Hola, hola amigos de América Latina." },
+      {
+        startMs: 3608000,
+        durMs: 3608000,
+        text: "y un corrector que sea lo más similar a mi tono de piel",
+      },
+    ]);
   });
 });
 

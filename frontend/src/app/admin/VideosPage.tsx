@@ -242,10 +242,12 @@ export function VideosPage() {
     }
   }
 
-  // ─── admin-video-analyze: transcripción json3 (opción B) ─────────────
-  // The operator pastes (or uploads) a pre-acquired YouTube json3 file and
-  // the backend analyzes it as-is — yt-dlp is never invoked. The dialog owns
-  // its own state: cancelling just drops it, so the video is never touched.
+  // ─── admin-video-analyze: transcripción (json3 o panel de YouTube) ────
+  // The operator pastes (or uploads) whatever transcript they have — a
+  // pre-acquired json3 payload OR the human-readable panel copy — and the
+  // dialog routes it automatically, without a mode toggle; yt-dlp is never
+  // invoked. The dialog owns its own state: cancelling just drops it, so the
+  // video is never touched.
 
   function openTranscriptDialog(v: Video) {
     setTranscriptVideo(v);
@@ -259,28 +261,56 @@ export function VideosPage() {
     setTranscriptError(null);
   }
 
-  // Client-side preflight mirroring the backend's 400: a bad paste must
-  // never reach the endpoint (and the video must stay untouched).
-  function validateTranscript(raw: string): { transcript: unknown } | { error: string } {
+  // A line that is nothing but a YouTube-panel timestamp: M:SS (0:18) or
+  // H:MM:SS (1:02:33) — the discriminator for the human-readable panel copy.
+  const TIMESTAMP_LINE = /^\d+:\d{2}(:\d{2})?$/;
+
+  type TranscriptInput =
+    | { transcript: unknown } // parsed json3 → analyzeVideo(id, parsed)
+    | { text: string }; // panel copy → analyzeVideoFromText(id, raw)
+
+  // Client-side decision mirroring the backend's 400s: the operator pastes
+  // whatever they have and never picks a mode. A non-null JSON object with an
+  // 'events' array takes the json3 payload path (unchanged); otherwise any
+  // line that is only a timestamp marks the text as YouTube panel copy (sent
+  // verbatim); anything else shows an inline error naming both accepted
+  // formats and never reaches the endpoint (the video stays untouched).
+  function resolveTranscriptInput(raw: string): TranscriptInput | { error: string } {
     const trimmed = raw.trim();
     if (!trimmed) {
-      return { error: "Pega la transcripción json3 o carga un archivo .json." };
+      return {
+        error:
+          "Pega la transcripción json3 o el texto copiado del panel de YouTube, o carga un archivo.",
+      };
     }
     let parsed: unknown;
+    let isJson = false;
     try {
       parsed = JSON.parse(trimmed);
+      isJson = true;
     } catch {
-      return { error: "El contenido no es JSON válido." };
+      // Not JSON — maybe panel copy; decided by the timestamp check below.
     }
     if (
-      parsed === null ||
-      typeof parsed !== "object" ||
-      !Array.isArray((parsed as { events?: unknown }).events)
+      isJson &&
+      parsed !== null &&
+      typeof parsed === "object" &&
+      Array.isArray((parsed as { events?: unknown }).events)
     ) {
-      // Mirrors the server's wording: "se espera un objeto json3 con 'events'".
-      return { error: "Transcripción inválida: se espera un objeto json3 con 'events'." };
+      return { transcript: parsed };
     }
-    return { transcript: parsed };
+    const looksLikePanelText = trimmed
+      .split(/\r?\n/)
+      .some((line) => TIMESTAMP_LINE.test(line.trim()));
+    if (looksLikePanelText) {
+      return { text: raw }; // verbatim — the backend extracts the cues
+    }
+    return {
+      error: isJson
+        ? // Mirrors the server's wording: "se espera un objeto json3 con 'events'".
+          "Transcripción inválida: se espera un objeto json3 con 'events' — o, en su lugar, el texto del panel de YouTube con líneas de marca de tiempo (M:SS o H:MM:SS)."
+        : "El contenido no es JSON válido: pega el json3 (un objeto con 'events') o el texto del panel de YouTube con líneas de marca de tiempo (M:SS o H:MM:SS).",
+    };
   }
 
   // File picker → fills the textarea, so paste and upload share one source.
@@ -298,7 +328,7 @@ export function VideosPage() {
   async function handleTranscriptSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!transcriptVideo || transcriptBusy) return;
-    const check = validateTranscript(transcriptText);
+    const check = resolveTranscriptInput(transcriptText);
     if ("error" in check) {
       setTranscriptError(check.error); // inline only — the API is NOT called
       return;
@@ -306,7 +336,13 @@ export function VideosPage() {
     setTranscriptError(null);
     setTranscriptBusy(true);
     try {
-      await api.analyzeVideo(transcriptVideo.id, check.transcript);
+      // Kind decided above: parsed json3 object → today's payload path;
+      // panel copy → the raw text posted as { transcriptText }.
+      if ("transcript" in check) {
+        await api.analyzeVideo(transcriptVideo.id, check.transcript);
+      } else {
+        await api.analyzeVideoFromText(transcriptVideo.id, check.text);
+      }
       closeTranscriptDialog(); // 202 → claimed; load() shows "Analizando…"
       await load();
     } catch (err) {
@@ -1038,8 +1074,8 @@ export function VideosPage() {
         onConfirm={() => void handleBulkDeleteSelected()}
         onCancel={() => setConfirmBulkDelete(false)}
       />
-      {/* Análisis con transcripción json3 (opción B): el backend analiza el
-          archivo facilitado y nunca invoca yt-dlp. */}
+      {/* Análisis con transcripción (json3 o texto del panel): el backend
+          analiza el contenido facilitado y nunca invoca yt-dlp. */}
       <Dialog
         open={transcriptVideo !== null}
         onOpenChange={(open) => {
@@ -1054,15 +1090,16 @@ export function VideosPage() {
                 : "Analizar con transcripción"}
             </DialogTitle>
             <DialogDescription>
-              Pega la transcripción json3 de YouTube (o carga un archivo .json) y el servidor la
-              analizará directamente, sin invocar yt-dlp.
+              Pega la transcripción json3 de YouTube o el texto copiado del panel de
+              transcripción (con líneas de tiempo como 0:18 o 0:01:18) — o carga un archivo —
+              y el servidor la analizará directamente, sin invocar yt-dlp.
               {transcriptVideo?.status === "analyzed" &&
                 " El análisis reemplazará los segmentos existentes (los activos incluidos)."}
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleTranscriptSubmit} noValidate className="space-y-4">
             <label className="block text-sm">
-              Transcripción json3
+              Transcripción (json3 o texto del panel)
               <textarea
                 rows={10}
                 spellCheck={false}
@@ -1072,15 +1109,15 @@ export function VideosPage() {
                   setTranscriptText(e.target.value);
                   setTranscriptError(null);
                 }}
-                placeholder={'{"events": [ … ]}'}
+                placeholder={'{"events": [ … ]}  ·  o texto del panel con marcas 0:18'}
                 disabled={transcriptBusy}
               />
             </label>
             <label className="block text-xs text-stone-600">
-              …o carga un archivo .json / .json3
+              …o carga un archivo .json / .json3 / .txt
               <input
                 type="file"
-                accept=".json,.json3,application/json"
+                accept=".json,.json3,.txt,application/json,text/plain"
                 onChange={(e) => void handleTranscriptFile(e)}
                 disabled={transcriptBusy}
                 className="mt-1 block text-sm"

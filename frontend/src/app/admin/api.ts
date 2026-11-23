@@ -516,6 +516,19 @@ export const api = {
       method: "POST",
       ...(transcript !== undefined ? { body: JSON.stringify({ transcript }) } : {}),
     }),
+  /** Human-readable variant of the transcript flow: `{ transcriptText }`
+   * carries the panel copy pasted from YouTube (header lines plus timestamp
+   * lines like `0:18` / `0:01:18`) and the backend extracts the cues
+   * server-side — 400 { error } when the text yields no cues. Same endpoint,
+   * same error handling as `analyzeVideo`; exactly one of `transcript` /
+   * `transcriptText` is ever sent (the backend 400s on both together).
+   * `init.headers` stays absent for the same reason as above: an init-level
+   * `headers` would replace `request`'s object wholesale and drop the token. */
+  analyzeVideoFromText: (id: number, text: string) =>
+    request<{ video: Video }>(`/videos/${id}/analyze`, {
+      method: "POST",
+      body: JSON.stringify({ transcriptText: text }),
+    }),
   listVideoSegments: (videoId?: number) =>
     request<{ segments: VideoSegment[] }>(
       videoId == null ? "/video-segments" : `/video-segments?video_id=${videoId}`,
