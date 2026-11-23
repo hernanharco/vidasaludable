@@ -11,12 +11,16 @@ import type { ChatMessage } from "./prompt.js";
  *   env / local .env, never in git).
  * - Retries HTTP 429 / 503 per model with backoff 2s / 5s / 10s (three retries
  *   after the first attempt).
- * - When a model is exhausted on a rate limit (429), rotates to the NEXT model
- *   of the chain — every model has its own free-tier quota bucket ("si un
- *   modelo se llena, rota"). Non-retryable statuses never rotate. A full-chain
- *   exhaustion is the pathological case and can take one backoff cycle per
- *   model (~17s each); it only happens when every bucket of the account is
- *   spent.
+ * - Rotates to the NEXT model of the chain on BOTH transient statuses: 429
+ *   (quota spent) and 503 (Google-side overload). Every model has its own
+ *   free-tier quota bucket, and a 503 is usually model-scoped, so dying on the
+ *   first model while nine others are idle is a self-inflicted outage
+ *   (incident 2026-11-23: "transient HTTP 503" killed analyses). Non-retryable
+ *   statuses never rotate. A full-chain exhaustion can take one backoff cycle
+ *   per model (~17s each) and only happens when every model is unavailable.
+ * - A full-chain exhaustion throws an error naming the chain size and keeping
+ *   the last transient error as `cause`, so the server log shows what Google
+ *   actually answered.
  * - Chain resolution: `deps.models` → exact chain; else `GEMINI_MODELS` env →
  *   exact chain; else `[primary, fallback, ...DEFAULT_MODEL_CHAIN]` deduped
  *   (primary/fallback from deps/env, defaulting to the first two entries).
@@ -26,17 +30,23 @@ import type { ChatMessage } from "./prompt.js";
  */
 
 /**
- * Free-tier rotation order (Google AI Studio quotas, as of 2026-10):
+ * Free-tier rotation order (verified against the AI Studio console on
+ * 2026-11-23 — the previous list carried `gemini-3.7-flash`, which does NOT
+ * exist in the account and hard-aborted the chain on its 404):
  * 1-2  Gemini 3.5/3.1 Flash Lite — 15 RPM / 250K TPM / 500 RPD (primary buckets)
- * 3-7  Gemini 3.8/3.7/3.6/3/2.5 Flash — 5 RPM / 250K TPM / 20 RPD (quality step)
- * 8    Gemini 2.5 Flash Lite — 10 RPM / 250K TPM / 20 RPD (short-burst overflow)
- * 9-10 Gemma 4 31B/26B — 30 RPM but only 16K TPM (last resort, short outputs)
+ * 3-6  Gemini 3.8/3.6/3/2.5 Flash — 5 RPM / 250K TPM / 20 RPD (quality step)
+ * 7    Gemini 2.5 Flash Lite — 10 RPM / 250K TPM / 20 RPD (short-burst overflow)
+ * 8-9  Gemma 4 31B/26B — 30 RPM / 16K TPM but 14.4K RPD: volume, not long
+ *      transcripts (a 56-min transcript does not fit in 16K TPM)
+ *
+ * Available but deliberately absent: `gemini-4-hydrogen` (5 RPM / 250K TPM /
+ * 20 RPD) awaits its exact API id; 3.1 Pro, 2.5 Pro and 4 Argon/Carbon/Neon
+ * are listed with 0/0/0 — no free tier, so no useful bucket to rotate into.
  */
 export const DEFAULT_MODEL_CHAIN: readonly string[] = [
   "gemini-3.5-flash-lite",
   "gemini-3.1-flash-lite",
   "gemini-3.8-flash",
-  "gemini-3.7-flash",
   "gemini-3.6-flash",
   "gemini-3-flash",
   "gemini-2.5-flash",
@@ -59,6 +69,34 @@ export const TEMPERATURE = 0.6;
 
 /** Retry/backoff schedule in milliseconds for transient errors (429/503). */
 export const RETRY_BACKOFF_MS = [2000, 5000, 10000];
+
+/**
+ * Statuses that mean "this model is unavailable right now": 429 = quota spent,
+ * 503 = Google-side overload. Both are retried in-model with backoff AND then
+ * rotate to the next model of the chain (2026-11-23: a 503 on the primary
+ * aborted the analysis while the other models were healthy).
+ */
+const RETRYABLE_STATUSES: readonly number[] = [429, 503];
+
+/**
+ * Statuses that rotate WITHOUT an in-model retry: 404 means the model does not
+ * exist in this account (renamed, deprecated, or a typo in GEMINI_MODELS).
+ * Retrying cannot help, but aborting the chain leaves every healthy model
+ * unused — that is how a phantom chain entry became a hard wall on the day the
+ * two primary buckets ran out (2026-11-23).
+ */
+const ROTATE_ONLY_STATUSES: readonly number[] = [404];
+
+function isRetryable(status: number | undefined): boolean {
+  return status !== undefined && RETRYABLE_STATUSES.includes(status);
+}
+
+function shouldRotate(status: number | undefined): boolean {
+  return isRetryable(status) || (status !== undefined && ROTATE_ONLY_STATUSES.includes(status));
+}
+
+/** Transient failure annotated with the HTTP status and the attempts spent. */
+type TransientFailure = Error & { status?: number; attempts?: number };
 
 export interface GeminiGenerateInput {
   systemPrompt: string;
@@ -125,7 +163,7 @@ export function createGeminiClient(deps: GeminiDeps = {}): GeminiClient {  const
       headers["x-goog-api-key"] = apiKey;
     }
 
-    let lastError: Error & { status?: number } | null = null;
+    let lastError: TransientFailure | null = null;
     // Attempt 1 immediate; subsequent attempts back off 2s / 5s / 10s.
     for (let attempt = 0; attempt <= RETRY_BACKOFF_MS.length; attempt += 1) {
       if (attempt > 0) {
@@ -143,13 +181,19 @@ export function createGeminiClient(deps: GeminiDeps = {}): GeminiClient {  const
         lastError = new Error("gemini: empty response payload");
         continue;
       }
-      if (res.status === 429 || res.status === 503) {
+      if (isRetryable(res.status)) {
         lastError = Object.assign(new Error(`gemini: transient HTTP ${res.status}`), {
           status: res.status,
+          attempts: attempt + 1,
         });
         continue; // back off and retry
       }
-      throw new Error(`gemini: non-retryable HTTP ${res.status}`);
+      // Non-retryable statuses carry the status too: the rotation loop has to
+      // tell "unknown model" (404 → next model) from "bad request" (400 → die).
+      throw Object.assign(new Error(`gemini: non-retryable HTTP ${res.status}`), {
+        status: res.status,
+        attempts: attempt + 1,
+      });
     }
     throw lastError ?? new Error("gemini: request failed");
   }
@@ -171,23 +215,36 @@ export function createGeminiClient(deps: GeminiDeps = {}): GeminiClient {  const
         contents,
         generationConfig: { temperature: TEMPERATURE },
       };
-      let lastRateLimit: unknown = null;
+      let lastTransient: TransientFailure | null = null;
       for (const targetModel of chain) {
         try {
           return await requestWithRetry(body, targetModel);
         } catch (err) {
-          // Rate-limit exhaustion on this model → rotate to the next one; each
-          // model has its own quota bucket ("si un modelo se llena, rota").
-          // Non-retryable errors (400, …) keep the legacy behavior: throw.
+          // Quota (429) and overload (503) rotate after in-model retries;
+          // an unknown model (404) rotates immediately. Both cases mean
+          // "this bucket is useless", not "the request is wrong".
+          // Non-retryable errors (400, 401, …) keep the legacy behavior: throw.
           const status = (err as { status?: number }).status;
-          if (status === 429) {
-            lastRateLimit = err;
+          if (shouldRotate(status)) {
+            lastTransient = err as TransientFailure;
             continue;
           }
           throw err;
         }
       }
-      throw (lastRateLimit as Error) ?? new Error("gemini: request failed");
+      if (lastTransient) {
+        // Name the chain size and keep the last failure as `cause`: the row
+        // message is composed downstream, so this is the only place the
+        // server-side log can learn what Google actually answered.
+        const detail = lastTransient.message.replace(/^gemini:\s*/, "");
+        throw Object.assign(
+          new Error(`gemini: chain exhausted after ${chain.length} models (last: ${detail})`, {
+            cause: lastTransient,
+          }),
+          { status: lastTransient.status },
+        );
+      }
+      throw new Error("gemini: request failed");
     },
   };
 }

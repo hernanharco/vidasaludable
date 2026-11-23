@@ -228,16 +228,131 @@ describe("model rotation chain (S: si un modelo se llena, rota al siguiente)", (
     // Lite models with 500 RPD first, quality Flash models in the middle,
     // the 16K-TPM Gemma models as the last resort.
     expect(DEFAULT_MODEL_CHAIN.length).toBeGreaterThanOrEqual(8);
-    expect(DEFAULT_MODEL_CHAIN.slice(2, 8)).toEqual([
+    // Verificado contra la consola de AI Studio (2026-11-23): los flash de 20
+    // RPD en orden de novedad. `gemini-3.7-flash` NO existe en la cuenta y se
+    // sacó de la cadena (ver el describe de 404 más abajo).
+    expect(DEFAULT_MODEL_CHAIN.slice(2, 7)).toEqual([
       "gemini-3.8-flash",
-      "gemini-3.7-flash",
       "gemini-3.6-flash",
       "gemini-3-flash",
       "gemini-2.5-flash",
       "gemini-2.5-flash-lite",
     ]);
+    expect(DEFAULT_MODEL_CHAIN).not.toContain("gemini-3.7-flash");
     expect(DEFAULT_MODEL_CHAIN.slice(-2)).toEqual(["gemma-4-31b", "gemma-4-26b"]);
     // No duplicates anywhere in the default chain.
     expect(new Set(DEFAULT_MODEL_CHAIN).size).toBe(DEFAULT_MODEL_CHAIN.length);
+  });
+});
+/**
+ * Incidente 2026-11-23: la fila del video mostraba
+ * "Gemini falló al analizar la transcripción: gemini: transient HTTP 503".
+ * Causa: dentro del modelo se reintentaba el 503, pero la rotación de la
+ * cadena solo se disparaba con 429 — o sea, una sobrecarga de Google en el
+ * primer modelo mataba el análisis dejando 9 modelos sin usar.
+ */
+describe("sobrecarga de Google (503): rota al siguiente modelo, no se rinde", () => {
+  it("rota cuando el primer modelo está sobrecargado (503 x4)", async () => {
+    const sleep = vi.fn(async () => undefined);
+    const { fetch, calls } = scriptedFetch([
+      { status: 503 },
+      { status: 503 },
+      { status: 503 },
+      { status: 503 }, // modelo 1 sobrecargado: 4 intentos
+      { status: 200, body: { candidates: [{ content: { parts: [{ text: "ok" }] } }] } },
+    ]);
+    const gemini = createGeminiClient({
+      apiKey: "test-key",
+      models: ["gemini-one", "gemini-two"],
+      fetch,
+      sleep,
+    });
+
+    const reply = await gemini.generate(base);
+
+    expect(reply).toBe("ok");
+    expect(calls.length).toBe(5);
+    expect(calls[0]!.url).toContain("/models/gemini-one:");
+    expect(calls[4]!.url).toContain("/models/gemini-two:");
+    // El backoff es dentro de cada modelo; la rotación es inmediata.
+    expect(sleep.mock.calls.map((c) => c[0])).toEqual([2000, 5000, 10000]);
+  });
+
+  it("informa la cadena agotada y conserva la causa cuando todos son 503", async () => {
+    const sleep = vi.fn(async () => undefined);
+    const { fetch, calls } = scriptedFetch([{ status: 503 }]);
+    const gemini = createGeminiClient({
+      apiKey: "test-key",
+      models: ["gemini-one", "gemini-two"],
+      fetch,
+      sleep,
+    });
+
+    const error = (await gemini.generate(base).then(
+      () => null,
+      (err: unknown) => err as Error & { status?: number; cause?: unknown },
+    ))!;
+
+    expect(calls.length).toBe(8); // 4 intentos x 2 modelos
+    expect(error.status).toBe(503);
+    expect(error.message).toMatch(/^gemini: /);
+    // Nombra cuántos modelos se intentaron: la evidencia que faltaba.
+    expect(error.message).toContain("2 models");
+    // La causa original sobrevive para el log del servidor.
+    expect((error.cause as { status?: number }).status).toBe(503);
+    expect((error.cause as Error).message).toBe("gemini: transient HTTP 503");
+  });
+});
+
+/**
+ * Un modelo inexistente o deprecado responde 404. Antes eso era "non-retryable"
+ * y abortaba la cadena entera: `gemini-3.7-flash` (que no existe en la cuenta,
+ * verificado contra AI Studio el 2026-11-23) era un muro en la posición 4.
+ * Reintentar un 404 no sirve (el modelo no va a aparecer), pero abortar deja
+ * modelos sanos sin usar: rota sin reintento.
+ */
+describe("modelo inexistente/deprecado (404): rota sin reintentar", () => {
+  it("pasa al siguiente modelo en vez de abortar la cadena", async () => {
+    const sleep = vi.fn(async () => undefined);
+    const { fetch, calls } = scriptedFetch([
+      { status: 404 }, // p. ej. un modelo renombrado o dado de baja
+      { status: 200, body: { candidates: [{ content: { parts: [{ text: "ok" }] } }] } },
+    ]);
+    const gemini = createGeminiClient({
+      apiKey: "test-key",
+      models: ["gemini-phantom", "gemini-real"],
+      fetch,
+      sleep,
+    });
+
+    const reply = await gemini.generate(base);
+
+    expect(reply).toBe("ok");
+    // Un solo intento por modelo fantasma: el 404 no se reintenta in-model.
+    expect(calls.length).toBe(2);
+    expect(calls[0]!.url).toContain("/models/gemini-phantom:");
+    expect(calls[1]!.url).toContain("/models/gemini-real:");
+    expect(sleep).not.toHaveBeenCalled();
+  });
+
+  it("informa 404 cuando ningún modelo de la cadena existe", async () => {
+    const sleep = vi.fn(async () => undefined);
+    const { fetch, calls } = scriptedFetch([{ status: 404 }]);
+    const gemini = createGeminiClient({
+      apiKey: "test-key",
+      models: ["gemini-ghost-a", "gemini-ghost-b"],
+      fetch,
+      sleep,
+    });
+
+    const error = (await gemini.generate(base).then(
+      () => null,
+      (err: unknown) => err as Error & { status?: number },
+    ))!;
+
+    expect(calls.length).toBe(2); // sin reintentos: 1 intento por modelo
+    expect(error.status).toBe(404);
+    expect(error.message).toContain("2 models");
+    expect(error.message).toContain("404");
   });
 });
