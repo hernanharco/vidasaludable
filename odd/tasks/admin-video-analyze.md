@@ -302,3 +302,29 @@ backend en Hetzner con rebuild del contenedor (usuario lo aprobó).
   entre reintentos no es abortable, así que un abort durante una espera de 10 s
   se hace efectivo en el siguiente intento (que falla inmediato por señal ya
   abortada).
+- L15 — "Sin segmentos utilizables" ahora dice cuál de las tres causas fue
+  (2026-11-23). La fila del admin mostraba el MISMO mensaje para tres fallos
+  distintos: JSON cortado a la mitad, JSON válido con todos los segmentos
+  descartados por los límites, y `{"segments":[]}`. Peor: el parser descartaba
+  cada segmento con un `continue` silencioso y nunca imprimía la respuesta
+  cruda, así que el log tampoco distinguía. Lo disparó el video `NoQiopML_g`
+  (fila Borrador, analizado por transcripción pegada): falló con ese mensaje
+  mientras la rotación de modelos ya funcionaba. Cambios: (a)
+  `parseGeminiSegmentsResult` devuelve `{segments, problem, rawLength}` y
+  nombra la causa —payload vacío, truncado (estructura JSON abierta, detectada
+  fuera de los literales de string), no-JSON, payload no-objeto, falta
+  `segments`, array vacío, o "N de N segmentos descartados (forma/límites/
+  título; duración)"—; `parseGeminiSegments` delega y conserva firma y
+  semántica. (b) El `console.warn` agrega cabeza (200) y cola (120) caracteres
+  de la respuesta. (c) La fila del admin anexa la causa al mensaje. (d)
+  `GeminiGenerateInput.maxOutputTokens` opt-in (solo modelos `gemini*`; gemma
+  no acepta el campo) y el analizador manda 32768: el request no fijaba tope de
+  salida y un tutorial largo puede cortar el JSON. Tests:
+  `video-pipeline.test.ts` (truncado · todos descartados con conteo y duración ·
+  array vacío · respuesta válida sin problema · la fila nombra el truncamiento)
+  y `gemini-retry.test.ts` (el tope viaja en el body · gemma lo omite · el chat
+  queda idéntico). Suite backend 425/425, `tsc` limpio. Deuda que sigue abierta:
+  (1) la causa real del fallo de `NoQiopML_g` se confirma recién al reintentar y
+  leer el `warn`; (2) la transcripción no se parte en bloques, así que un video
+  muy largo puede exceder cualquier tope razonable; (3) la transcripción entera
+  se inyecta en un solo mensaje, sin límite de caracteres.

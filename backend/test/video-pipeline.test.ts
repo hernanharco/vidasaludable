@@ -15,6 +15,7 @@ import {
   parseJson3Transcript,
   parsePanelTranscript,
   parseGeminiSegments,
+  parseGeminiSegmentsResult,
 } from "../src/tools/parsers.js";
 import {
   buildFfmpegArgs,
@@ -71,13 +72,17 @@ const json3Fixture = {
 };
 
 /** Fake Gemini client. `capture` records the prompts the analyzer sent. */
-function fakeGemini(reply: string, capture?: { systemPrompt?: string; userMessage?: string }): GeminiClient {
+function fakeGemini(
+  reply: string,
+  capture?: { systemPrompt?: string; userMessage?: string; maxOutputTokens?: number },
+): GeminiClient {
   return {
     isConfigured: () => true,
     async generate(input) {
       if (capture) {
         capture.systemPrompt = input.systemPrompt;
         capture.userMessage = input.messages[0]?.content ?? "";
+        capture.maxOutputTokens = input.maxOutputTokens;
       }
       return reply;
     },
@@ -615,6 +620,77 @@ describe("analyzeVideo (analyzer wiring)", () => {
       "Proteína Fantasma",
     ]);
     expect(JSON.parse(row.productReferences!)).toEqual(["110606", "121576"]);
+  });
+
+  // El mensaje "sin segmentos utilizables" fundía tres causas distintas
+  // (JSON cortado, segmentos descartados, array vacío) y la fila del admin no
+  // decía cuál. El parser ahora las separa.
+  describe("parseGeminiSegmentsResult — nombra la causa real", () => {
+    it("JSON cortado a la mitad → problema de truncamiento", () => {
+      const r = parseGeminiSegmentsResult('{"segments":[{"start_s":0,"end_s":30,"title":"piel', 120);
+      expect(r.segments).toEqual([]);
+      expect(r.problem).toMatch(/truncad/i);
+    });
+
+    it("todos los segmentos descartados por límites → nombra el conteo y la duración", () => {
+      const r = parseGeminiSegmentsResult(
+        JSON.stringify({
+          segments: [
+            { start_s: 200, end_s: 230, title: "fuera de rango" },
+            { start_s: 230, end_s: 200, title: "invertido" },
+          ],
+        }),
+        120,
+      );
+      expect(r.segments).toEqual([]);
+      expect(r.problem).toMatch(/2 de 2/);
+      expect(r.problem).toMatch(/120/);
+    });
+
+    it("prefacio en prosa + JSON cortado → truncamiento, no 'no es JSON'", () => {
+      const r = parseGeminiSegmentsResult(
+        'Claro, aquí tienes: {"segments":[{"start_s":0,"end_s":30,"title":"piel',
+        120,
+      );
+      expect(r.segments).toEqual([]);
+      expect(r.problem).toMatch(/truncad/i);
+    });
+
+    it("prosa con una llave suelta → no es JSON válido, no truncado", () => {
+      const r = parseGeminiSegmentsResult("esto no es json {", 120);
+      expect(r.problem).toMatch(/no es JSON válido/);
+    });
+
+    it("segments vacío → problema distinto de JSON inválido", () => {
+      const r = parseGeminiSegmentsResult('{"segments":[]}', 120);
+      expect(r.problem).toMatch(/vac/i);
+    });
+
+    it("respuesta válida → sin problema", () => {
+      const r = parseGeminiSegmentsResult(
+        '{"segments":[{"start_s":0,"end_s":30,"title":"piel"}]}',
+        120,
+      );
+      expect(r.segments).toHaveLength(1);
+      expect(r.problem).toBeNull();
+    });
+  });
+
+  it("respuesta truncada de Gemini → la fila nombra el truncamiento", async () => {
+    const db = await seededDb();
+    const capture: { maxOutputTokens?: number } = {};
+    await expect(
+      analyzeVideo({
+        url: YOUTUBE_URL,
+        db,
+        gemini: fakeGemini('{"segments":[{"start_s":0,"end_s":30,"title":"piel', capture),
+        ytdlp: fakeYtdlp(),
+        vocabulary: seedSymptoms,
+      }),
+    ).rejects.toThrow(/truncad/i);
+    // El tope de salida es lo que evita el corte: si se desconecta del
+    // pipeline, el fix desaparece sin que ningún test lo note.
+    expect(capture.maxOutputTokens).toBe(32768);
   });
 
   it("respuesta de Gemini sin segmentos utilizables → error claro", async () => {

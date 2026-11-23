@@ -241,17 +241,93 @@ export function parsePanelTranscript(raw: string): PanelTranscriptJson {
  *   (kept as `""`), the mention stays raw. Entries are skipped outright when
  *   the mention is missing/blank, whatever the ref says.
  */
-export function parseGeminiSegments(
+export interface SegmentsParseResult {
+  /** Every segment that survived validation. */
+  segments: ParsedSegment[];
+  /**
+   * Why `segments` is empty, or `null` when at least one survived. The caller
+   * puts this in the row message: the old single "sin segmentos utilizables"
+   * string could not tell a truncated reply from bounds that ate every segment.
+   */
+  problem: string | null;
+  /** Raw reply length in characters (diagnostics only). */
+  rawLength: number;
+}
+
+/**
+ * Truncation probe: walks the text outside string literals and reports an
+ * unbalanced structure or an unterminated string. A cut JSON keeps its braces
+ * open, which `JSON.parse` can only report as "invalid" — the distinction
+ * matters because a truncated reply needs a bigger output budget, not a
+ * different prompt.
+ */
+function looksTruncatedJson(text: string): boolean {
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (const ch of text) {
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    else if (ch === "{" || ch === "[") depth += 1;
+    else if (ch === "}" || ch === "]") depth -= 1;
+  }
+  return depth > 0 || inString;
+}
+
+/** Bounded head+tail of the raw reply: enough to see the shape, never the whole payload. */
+function rawSnippet(raw: string): string {
+  const head = raw.slice(0, 200);
+  const tail = raw.length > 320 ? raw.slice(-120) : "";
+  return ` [len=${raw.length} cabeza=${JSON.stringify(head)}${tail ? ` cola=${JSON.stringify(tail)}` : ""}]`;
+}
+
+/**
+ * Classifies a FAILED payload. It receives the rescued fragment (from the first
+ * `{`), never the prose preamble: the preamble's own braces used to skew the
+ * count, and gating on `startsWith("{")` mislabeled a prose-prefixed truncated
+ * reply as "not JSON" — the very incident this diagnostics exists to name.
+ * Requiring the `segments` key keeps a stray brace in prose from reading as a
+ * truncation.
+ */
+function describeMalformed(fragment: string): string {
+  const len = fragment.length;
+  if (fragment.includes('"segments"') && looksTruncatedJson(fragment)) {
+    return `respuesta truncada (${len} caracteres, la estructura JSON quedó abierta)`;
+  }
+  return `no es JSON válido (${len} caracteres)`;
+}
+
+/**
+ * Same contract as `parseGeminiSegments`, plus the cause when nothing
+ * survives. The parser is silent by design about single segments (one bad item
+ * must not fail the run), so the aggregated reason is the only diagnostic the
+ * operator gets.
+ */
+export function parseGeminiSegmentsResult(
   raw: string,
   durationS: number,
   catalogRefs: string[] = [],
-): ParsedSegment[] {
-  const warn = (why: string): [] => {
-    console.warn(`video:analyze — respuesta de Gemini descartada: ${why}`);
-    return [];
+): SegmentsParseResult {
+  const rawLength = raw.length;
+  const fail = (problem: string): SegmentsParseResult => {
+    console.warn(`video:analyze — respuesta de Gemini descartada: ${problem}${rawSnippet(raw)}`);
+    return { segments: [], problem, rawLength };
   };
+  const succeed = (segments: ParsedSegment[]): SegmentsParseResult => ({
+    segments,
+    problem: null,
+    rawLength,
+  });
 
   let text = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+  if (!text) {
+    return fail("la respuesta vino vacía (0 caracteres)");
+  }
   let data: unknown;
   try {
     data = JSON.parse(text);
@@ -259,30 +335,41 @@ export function parseGeminiSegments(
     // Fallback: extraer el primer "{" ... último "}" (Gemini a veces añade prosa).
     const start = text.indexOf("{");
     const end = text.lastIndexOf("}");
+    const fragment = start >= 0 ? text.slice(start, end > start ? end + 1 : undefined) : text;
     if (start >= 0 && end > start) {
       try {
-        data = JSON.parse(text.slice(start, end + 1));
+        data = JSON.parse(fragment);
       } catch {
-        return warn("no es JSON válido");
+        return fail(describeMalformed(fragment));
       }
     } else {
-      return warn("no es JSON válido");
+      return fail(describeMalformed(fragment));
     }
   }
 
   if (typeof data !== "object" || data === null) {
-    return warn("el payload no es un objeto JSON");
+    return fail("el payload no es un objeto JSON");
   }
   const segments = (data as { segments?: unknown }).segments;
   if (!Array.isArray(segments)) {
-    return warn("falta el array segments");
+    return fail("falta el array segments");
+  }
+  if (segments.length === 0) {
+    return fail("el modelo devolvió el array segments vacío");
   }
 
   const clampKnown = Number.isFinite(durationS) && durationS > 0;
   const knownRefs = new Set(catalogRefs);
   const out: ParsedSegment[] = [];
+  // Per-reason counters. A single bad item must not fail the run, so each
+  // rejection is a silent `continue`; without the tally an empty result said
+  // nothing about WHY every segment died (units drift, wrong row duration, …).
+  const dropped = { shape: 0, bounds: 0, title: 0 };
   for (const item of segments) {
-    if (typeof item !== "object" || item === null) continue;
+    if (typeof item !== "object" || item === null) {
+      dropped.shape += 1;
+      continue;
+    }
     const s = item as {
       start_s?: unknown;
       end_s?: unknown;
@@ -294,19 +381,34 @@ export function parseGeminiSegments(
 
     const startRaw = Number(s.start_s);
     const endRaw = Number(s.end_s);
-    if (!Number.isFinite(startRaw) || !Number.isFinite(endRaw)) continue;
+    if (!Number.isFinite(startRaw) || !Number.isFinite(endRaw)) {
+      dropped.bounds += 1;
+      continue;
+    }
     const startS = Math.trunc(startRaw);
     let endS = Math.trunc(endRaw);
 
-    if (startS < 0 || endS <= startS) continue; // límites invertidos o inválidos
+    if (startS < 0 || endS <= startS) {
+      dropped.bounds += 1;
+      continue; // límites invertidos o inválidos
+    }
     if (clampKnown) {
-      if (startS >= durationS) continue; // el inicio ya pasó el final del video
+      if (startS >= durationS) {
+        dropped.bounds += 1;
+        continue; // el inicio ya pasó el final del video
+      }
       endS = Math.min(endS, durationS); // recorte del final fuera de rango
-      if (endS <= startS) continue;
+      if (endS <= startS) {
+        dropped.bounds += 1;
+        continue;
+      }
     }
 
     const title = typeof s.title === "string" ? s.title.trim() : "";
-    if (!title) continue; // sin título no es un segmento usable
+    if (!title) {
+      dropped.title += 1;
+      continue; // sin título no es un segmento usable
+    }
 
     // T5: productos mencionados — mention recortada no vacía; el ref solo
     // sobrevive si existe en el catálogo inyectado (anti-invención).
@@ -331,5 +433,25 @@ export function parseGeminiSegments(
       products,
     });
   }
-  return out;
+
+  if (out.length === 0) {
+    return fail(
+      `${segments.length} de ${segments.length} segmentos descartados` +
+        ` (forma=${dropped.shape}, límites=${dropped.bounds}, título=${dropped.title}` +
+        `; duración=${clampKnown ? `${durationS}s` : "desconocida"})`,
+    );
+  }
+  return succeed(out);
+}
+
+/**
+ * Backwards-compatible view of {@link parseGeminiSegmentsResult}: callers that
+ * only need the segments keep the old signature and behavior.
+ */
+export function parseGeminiSegments(
+  raw: string,
+  durationS: number,
+  catalogRefs: string[] = [],
+): ParsedSegment[] {
+  return parseGeminiSegmentsResult(raw, durationS, catalogRefs).segments;
 }

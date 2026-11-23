@@ -31,7 +31,7 @@ import { matchSymptom } from "../services/symptomMatcher.js";
 import type { Video, VideoSegment } from "../db/schema.js";
 import { createGeminiClient } from "../agent/gemini.js";
 import type { GeminiClient } from "../agent/gemini.js";
-import { parseJson3Transcript, parseGeminiSegments, parseVideoId } from "./parsers.js";
+import { parseJson3Transcript, parseGeminiSegmentsResult, parseVideoId } from "./parsers.js";
 import type { TimedCue } from "./parsers.js";
 import { createFfmpegClient, createYtdlpClient } from "./media.js";
 import type { FfmpegClient, YtdlpClient, YtDlpMetadata } from "./media.js";
@@ -259,27 +259,38 @@ export async function analyzeVideo(opts: AnalyzeVideoOptions): Promise<AnalyzeRe
   );
   const userMessage = buildTranscriptMessage(cues, durationS);
 
+  // A long tutorial yields dozens of segments. With no explicit cap the
+  // provider default truncated the JSON mid-object (incident 2026-11-23) and
+  // the parser could only report "unusable segments". Gemini Flash accepts a
+  // 32K output budget; the gemma entries keep the default (gemini.ts gates it).
+  const ANALYSIS_MAX_OUTPUT_TOKENS = 32768;
+
   let raw: string;
   try {
     raw = await gemini.generate({
       systemPrompt,
       messages: [{ role: "user", content: userMessage }],
+      maxOutputTokens: ANALYSIS_MAX_OUTPUT_TOKENS,
       ...(signal ? { signal } : {}),
     });
   } catch (err) {
     throw geminiAnalysisFailure(err);
   }
 
-  const parsed = parseGeminiSegments(
+  const parsedResult = parseGeminiSegmentsResult(
     raw,
     durationS,
     catalogProducts.map((p) => p.reference),
   );
-  if (parsed.length === 0) {
+  if (parsedResult.segments.length === 0) {
+    // Name the cause. The row message is the operator's only view, and the old
+    // "JSON inválido o todos los segmentos descartados" hid which of the three
+    // it was (truncated payload, discard rules, empty array).
     throw new Error(
-      "Gemini devolvió una respuesta sin segmentos utilizables (JSON inválido o todos los segmentos descartados).",
+      `Gemini devolvió una respuesta sin segmentos utilizables: ${parsedResult.problem ?? "causa desconocida"}.`,
     );
   }
+  const parsed = parsedResult.segments;
 
   // Normalize each condition against the same vocabulary that was injected.
   const resolved = parsed.map((seg) => {
