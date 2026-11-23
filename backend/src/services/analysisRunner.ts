@@ -116,6 +116,11 @@ export function createAnalysisRunner(
           svc.clearAnalysisState(video.id);
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
+          // Server-side evidence: the videos row keeps ONLY `message`, so the
+          // cause chain (models tried, attempt counts, Google's HTTP status) has
+          // to be logged here or it is lost forever (incident 2026-11-23: a bare
+          // "transient HTTP 503" with nothing behind it to diagnose).
+          console.error(`[analysis] video ${video.id} failed: ${message}`, err);
           try {
             svc.failAnalysis(video.id, message);
           } catch (stateErr) {

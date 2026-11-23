@@ -131,6 +131,55 @@ export interface AnalyzeResult {
 }
 
 /**
+ * Maps a Gemini client failure to the actionable message the admin row shows.
+ *
+ * `videos.analysis_error` is the ONLY surface the operator sees (the row in
+ * /admin/videos), so the message must name the decision and not the jerga of the
+ * HTTP client: overload (503 → retry in a few minutes), spent quota (429 → wait
+ * for the daily reset or use another key) or configuration (400/401/403 → fix
+ * the key/model). A 404 is a configuration bug, not an outage: the chain names
+ * models this account does not have (renamed, deprecated, typo).
+ * Before this, both 429 and 503 showed up as "transient HTTP
+ * <n>", which are opposite instructions (incident 2026-11-23).
+ *
+ * The original error is kept as `cause` so the analysis runner can log the full
+ * chain (models tried, attempt counts, Google's status).
+ */
+export function geminiAnalysisFailure(err: unknown): Error {
+  const detail = err instanceof Error ? err.message : String(err);
+  const status = (err as { status?: number } | null)?.status;
+  const cause = err instanceof Error ? err : undefined;
+
+  if (status === 503) {
+    return new Error(
+      "Gemini está sobrecargado (HTTP 503): ningún modelo respondió. " +
+        "Es transitorio — reintentá el análisis en unos minutos.",
+      { cause },
+    );
+  }
+  if (status === 429) {
+    return new Error(
+      "Se agotó la cuota de Gemini en todos los modelos (HTTP 429). " +
+        "Esperá el reinicio de la cuota diaria o configurá otra GEMINI_API_KEY.",
+      { cause },
+    );
+  }
+  if (status === 404) {
+    return new Error(
+      "Ningún modelo configurado existe en esta cuenta (HTTP 404): revisá GEMINI_MODELS / GEMINI_MODEL.",
+      { cause },
+    );
+  }
+  if (status === 400 || status === 401 || status === 403) {
+    return new Error(
+      `Gemini rechazó la petición (HTTP ${status}): revisá GEMINI_API_KEY y el modelo configurado.`,
+      { cause },
+    );
+  }
+  return new Error(`Gemini falló al analizar la transcripción: ${detail}`, { cause });
+}
+
+/**
  * Full `analyze` flow (pure orchestration over injected deps):
  * parse URL → yt-dlp metadata + json3 transcript → timed transcript →
  * Gemini → parseGeminiSegments (catalog refs injected, defensive product
@@ -211,8 +260,7 @@ export async function analyzeVideo(opts: AnalyzeVideoOptions): Promise<AnalyzeRe
   try {
     raw = await gemini.generate({ systemPrompt, messages: [{ role: "user", content: userMessage }] });
   } catch (err) {
-    const detail = err instanceof Error ? err.message : String(err);
-    throw new Error(`Gemini falló al analizar la transcripción: ${detail}`);
+    throw geminiAnalysisFailure(err);
   }
 
   const parsed = parseGeminiSegments(

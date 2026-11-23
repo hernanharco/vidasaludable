@@ -29,6 +29,7 @@ import {
   analyzeVideo,
   buildAnalyzeSystemPrompt,
   cutVideo,
+  geminiAnalysisFailure,
   runCli,
 } from "../src/tools/videoPipeline.js";
 
@@ -1348,5 +1349,65 @@ describe("runCli", () => {
     const bad = await runCli(["cut", "abc"], { stdout: () => undefined, stderr: (l) => errOut.push(l) });
     expect(bad).toBe(2);
     expect(errOut.join("\n")).toContain("Uso");
+  });
+});
+
+/**
+ * Incidente 2026-11-23: la fila mostraba el error crudo del cliente
+ * ("gemini: transient HTTP 503"), que no le dice al operador qué hacer ni
+ * distingue sobrecarga de cuota. Este es el contrato del mensaje.
+ */
+describe("mensaje de fallo de Gemini en la fila del video", () => {
+  it("nombra la sobrecarga (503) como transitoria y accionable", () => {
+    const cause = Object.assign(
+      new Error("gemini: chain exhausted after 3 models (last: transient HTTP 503)"),
+      { status: 503 },
+    );
+
+    const err = geminiAnalysisFailure(cause);
+
+    expect(err.message).toContain("sobrecargado");
+    expect(err.message).toContain("503");
+    expect(err.message).toMatch(/reintent/i);
+    // Nada de "transient HTTP": eso es jerga del cliente, no una instrucción.
+    expect(err.message).not.toContain("transient");
+    expect(err.cause).toBe(cause);
+  });
+
+  it("distingue la cuota agotada (429) de la sobrecarga", () => {
+    const err = geminiAnalysisFailure(Object.assign(new Error("x"), { status: 429 }));
+
+    expect(err.message).toMatch(/cuota/i);
+    expect(err.message).toContain("429");
+    expect(err.message).not.toMatch(/sobrecargad/i);
+  });
+
+  it("señala la configuración cuando Google rechaza la petición", () => {
+    for (const status of [400, 401, 403]) {
+      const err = geminiAnalysisFailure(
+        Object.assign(new Error(`gemini: non-retryable HTTP ${status}`), { status }),
+      );
+      expect(err.message).toContain("GEMINI_API_KEY");
+      expect(err.message).toContain(String(status));
+    }
+  });
+
+  it("señala la cadena mal configurada cuando ningún modelo existe (404)", () => {
+    const err = geminiAnalysisFailure(
+      Object.assign(new Error("gemini: chain exhausted after 2 models (last: non-retryable HTTP 404)"), {
+        status: 404,
+      }),
+    );
+
+    expect(err.message).toContain("404");
+    expect(err.message).toMatch(/modelo/i);
+    expect(err.message).not.toMatch(/sobrecargad/i);
+  });
+
+  it("conserva el detalle cuando la causa no trae status", () => {
+    const err = geminiAnalysisFailure(new Error("boom"));
+
+    expect(err.message).toBe("Gemini falló al analizar la transcripción: boom");
+    expect(err.cause).toBeInstanceOf(Error);
   });
 });
