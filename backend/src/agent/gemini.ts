@@ -241,15 +241,18 @@ export function createGeminiClient(deps: GeminiDeps = {}): GeminiClient {  const
         parts: [{ text: m.content }],
       }));
       // The body is per model: the output cap depends on the model family and
-      // can be dropped when a provider rejects it.
-      const capApplies = (targetModel: string): boolean =>
-        input.maxOutputTokens !== undefined && targetModel.startsWith("gemini");
+      // can be dropped when a provider rejects it. Every drop leaves a warning:
+      // a cap that never reaches the wire makes the reply look truncated, and
+      // the analyzer's "respuesta truncada" would then send the operator to
+      // raise a budget that was never applied.
+      const familyAcceptsCap = (targetModel: string): boolean =>
+        targetModel.startsWith("gemini");
       const buildBody = (targetModel: string, withCap: boolean) => ({
         systemInstruction: { parts: [{ text: input.systemPrompt }] },
         contents,
         generationConfig: {
           temperature: TEMPERATURE,
-          ...(withCap && capApplies(targetModel)
+          ...(withCap && familyAcceptsCap(targetModel)
             ? { maxOutputTokens: input.maxOutputTokens }
             : {}),
         },
@@ -260,7 +263,14 @@ export function createGeminiClient(deps: GeminiDeps = {}): GeminiClient {  const
         // provider that rejects the optional output cap would then kill the
         // whole analysis over a tuning field. The cap is therefore retried
         // once WITHOUT it on the same model before the error is allowed out.
-        const attemptPlans = capApplies(targetModel) ? [true, false] : [false];
+        const capUsable =
+          input.maxOutputTokens !== undefined && familyAcceptsCap(targetModel);
+        if (input.maxOutputTokens !== undefined && !capUsable) {
+          console.warn(
+            `gemini: maxOutputTokens omitido para ${targetModel}: la familia del modelo no acepta el campo`,
+          );
+        }
+        const attemptPlans = capUsable ? [true, false] : [false];
         let failure: unknown;
         for (const withCap of attemptPlans) {
           try {
@@ -271,7 +281,12 @@ export function createGeminiClient(deps: GeminiDeps = {}): GeminiClient {  const
             );
           } catch (err) {
             failure = err;
-            if (withCap && (err as { status?: number }).status === 400) continue;
+            if (withCap && (err as { status?: number }).status === 400) {
+              console.warn(
+                `gemini: ${targetModel} rechazó maxOutputTokens con HTTP 400; se reintenta sin tope`,
+              );
+              continue;
+            }
             break;
           }
         }

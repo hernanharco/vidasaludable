@@ -109,6 +109,51 @@ describe("maxOutputTokens — opt-in y limitado por familia de modelo", () => {
     expect(calls.length).toBe(2);
   });
 
+  // Un tope que no llega al wire es peor que no pedirlo: la respuesta se
+  // corta, el parser dice "truncada" y el mensaje empuja al operador a subir un
+  // tope que nadie aplicó. Los dos caminos de descarte tienen que dejar rastro.
+  it("gemma: el tope omitido se loguea con el modelo", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      const { fetch } = scriptedFetch([{ status: 200, body: okBody }]);
+      const gemini = createGeminiClient({
+        apiKey: "k",
+        models: ["gemma-4-31b"],
+        fetch,
+        sleep: async () => undefined,
+      });
+
+      await gemini.generate({ ...base, maxOutputTokens: 32768 });
+
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.mock.calls[0]![0])).toMatch(/maxOutputTokens/);
+      expect(String(warn.mock.calls[0]![0])).toContain("gemma-4-31b");
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("el 400 que rechaza el tope se loguea antes de reintentar sin él", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      const { fetch } = scriptedFetch([{ status: 400 }, { status: 200, body: okBody }]);
+      const gemini = createGeminiClient({
+        apiKey: "k",
+        model: "gemini-test",
+        fetch,
+        sleep: async () => undefined,
+      });
+
+      await gemini.generate({ ...base, maxOutputTokens: 32768 });
+
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.mock.calls[0]![0])).toMatch(/400/);
+      expect(String(warn.mock.calls[0]![0])).toContain("gemini-test");
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it("el chat no pide tope: su request queda exactamente como antes", async () => {
     const { fetch, calls } = scriptedFetch([{ status: 200, body: okBody }]);
     const gemini = createGeminiClient({
