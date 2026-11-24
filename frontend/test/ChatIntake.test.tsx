@@ -347,7 +347,11 @@ describe("ChatSession intake flow", () => {
       "¡Hola! ¿En qué te puedo ayudar hoy con tu bienestar?",
     );
     expect(profilePostCalls()).toHaveLength(0);
-  });
+    // A full registration gate driven through userEvent (three typed fields,
+    // checkbox, submit): it takes ~1s alone but regularly passes the 5s
+    // default once the whole suite runs in parallel on a loaded machine. The
+    // timeout is about wall-clock, not about what the test asserts.
+  }, 20000);
 
   it("stays on step 5 with an inline error when the POST fails, then retries", async () => {
     const user = userEvent.setup();
