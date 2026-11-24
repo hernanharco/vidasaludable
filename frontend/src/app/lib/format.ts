@@ -27,9 +27,11 @@ export function formatTime(seconds: number): string {
  * instead of producing a broken URL.
  *
  * The id is typed nullable on purpose: the field is required in the `Video`
- * contract, but a payload that omits it — or delivers a non-string value —
- * would otherwise throw mid-render of the segment table. Every such value
- * degrades to "no link", never to a partial URL.
+ * contract, but a payload that omits it — or, from an untyped payload, carries
+ * a non-string — would otherwise throw mid-render of the segment table. The
+ * guard is a runtime boundary, not part of the public type: typed callers pass
+ * `string | null | undefined`, and every such value degrades to "no link",
+ * never to a partial URL.
  */
 export function youtubeTimestampUrl(
   youtubeId: string | null | undefined,
