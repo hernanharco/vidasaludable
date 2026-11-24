@@ -25,12 +25,16 @@ export function formatTime(seconds: number): string {
  * there is nothing to link to, so the caller renders plain text instead.
  * Invalid input (negative, NaN, non-finite) degrades to the video start
  * instead of producing a broken URL.
+ *
+ * The id is typed nullable on purpose: the field is required in the `Video`
+ * contract, but a payload that omits it would otherwise throw mid-render of
+ * the segment table (review finding R3-NullTrim).
  */
 export function youtubeTimestampUrl(
-  youtubeId: string,
+  youtubeId: string | null | undefined,
   seconds: number,
 ): string | null {
-  const id = youtubeId.trim();
+  const id = typeof youtubeId === "string" ? youtubeId.trim() : "";
   if (!id) return null;
   const at = Number.isFinite(seconds) && seconds > 0 ? Math.floor(seconds) : 0;
   return `https://www.youtube.com/watch?v=${encodeURIComponent(id)}&t=${at}s`;

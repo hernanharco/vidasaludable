@@ -261,6 +261,24 @@ describe("VideosPage admin CRM", () => {
     );
   });
 
+  // R2/R3 id coercion: the neighbouring videoTitle helper tolerates a runtime
+  // type mismatch (String(v.id) === id), so the marca lookup must not be the
+  // one place that silently degrades to plain text.
+  it("resolves the marca link when the segment videoId arrives as a string", async () => {
+    segmentsState = segmentsState.map((seg) =>
+      seg.id === 7 ? { ...seg, videoId: String(seg.videoId) as unknown as number } : seg,
+    );
+    render(<VideosPage />);
+
+    const row = (await screen.findByText("Introducción a la vitamina D")).closest(
+      "tr",
+    ) as HTMLElement;
+    expect(within(row).getByRole("link", { name: "1:30 – 3:00" })).toHaveAttribute(
+      "href",
+      "https://www.youtube.com/watch?v=abc123&t=90s",
+    );
+  });
+
   it("leaves the marca as plain text when the video has no youtubeId", async () => {
     videosState = videosState.map((v) =>
       v.id === 1 ? { ...v, youtubeId: "", url: "" } : v,
