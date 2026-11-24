@@ -15,3 +15,23 @@ export function formatTime(seconds: number): string {
   if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
   return `${m}:${String(s).padStart(2, "0")}`;
 }
+
+/**
+ * Deep link into the original video at a given second (YouTube `&t=`
+ * contract: integer seconds plus the `s` suffix).
+ *
+ * Used by the admin segment table so the operator can watch the exact minute
+ * before deciding whether a segment gets a condition. Without a video id
+ * there is nothing to link to, so the caller renders plain text instead.
+ * Invalid input (negative, NaN, non-finite) degrades to the video start
+ * instead of producing a broken URL.
+ */
+export function youtubeTimestampUrl(
+  youtubeId: string,
+  seconds: number,
+): string | null {
+  const id = youtubeId.trim();
+  if (!id) return null;
+  const at = Number.isFinite(seconds) && seconds > 0 ? Math.floor(seconds) : 0;
+  return `https://www.youtube.com/watch?v=${encodeURIComponent(id)}&t=${at}s`;
+}

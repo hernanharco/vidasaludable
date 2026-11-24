@@ -238,6 +238,42 @@ describe("VideosPage admin CRM", () => {
     expect(screen.getByText("clipA1")).toBeInTheDocument();
   });
 
+  it("links the marca to the original video at the segment start minute", async () => {
+    render(<VideosPage />);
+
+    // Segment 7 → video 1 (youtubeId abc123), startS 90.
+    const row = (await screen.findByText("Introducción a la vitamina D")).closest(
+      "tr",
+    ) as HTMLElement;
+    const link = within(row).getByRole("link", { name: "1:30 – 3:00" });
+    expect(link).toHaveAttribute(
+      "href",
+      "https://www.youtube.com/watch?v=abc123&t=90s",
+    );
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
+
+    // Segment 8 starts at 0 → t=0s, still linked into its own video.
+    const other = screen.getByText("Magnesio antes de dormir").closest("tr") as HTMLElement;
+    expect(within(other).getByRole("link", { name: "0:00 – 0:45" })).toHaveAttribute(
+      "href",
+      "https://www.youtube.com/watch?v=def456&t=0s",
+    );
+  });
+
+  it("leaves the marca as plain text when the video has no youtubeId", async () => {
+    videosState = videosState.map((v) =>
+      v.id === 1 ? { ...v, youtubeId: "", url: "" } : v,
+    );
+    render(<VideosPage />);
+
+    const row = (await screen.findByText("Introducción a la vitamina D")).closest(
+      "tr",
+    ) as HTMLElement;
+    expect(within(row).queryByRole("link", { name: "1:30 – 3:00" })).toBeNull();
+    expect(within(row).getByText("1:30 – 3:00")).toBeInTheDocument();
+  });
+
   it("enabled toggle triggers a PATCH with { enabled: 0|1 }", async () => {
     const user = userEvent.setup();
     render(<VideosPage />);

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { formatTime } from "../lib/format";
+import { formatTime, youtubeTimestampUrl } from "../lib/format";
 import { DataTable, type DataTableColumn } from "./DataTable";
 import {
   api,
@@ -164,6 +164,14 @@ export function VideosPage() {
 
   const videoTitle = (id: string) =>
     videos.find((v) => String(v.id) === id)?.title ?? `vídeo #${id}`;
+
+  // Marca → deep link into the original video at the segment's start minute,
+  // so the operator can watch it in place before deciding its condition.
+  // Videos without a youtubeId keep the plain, unlinked range.
+  const segmentVideoLink = (seg: VideoSegment): string | null => {
+    const video = videos.find((v) => v.id === seg.videoId);
+    return video ? youtubeTimestampUrl(video.youtubeId, seg.startS) : null;
+  };
 
   const visibleSegments =
     selectedVideoId == null
@@ -638,11 +646,22 @@ export function VideosPage() {
       sortable: true,
       sortValue: (s) => s.startS,
       cellClassName: "font-mono text-xs",
-      render: (s) => (
-        <>
-          {formatTime(s.startS)} – {formatTime(s.endS)}
-        </>
-      ),
+      render: (s) => {
+        const range = `${formatTime(s.startS)} – ${formatTime(s.endS)}`;
+        const href = segmentVideoLink(s);
+        if (!href) return <>{range}</>;
+        return (
+          <a
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            title={`Ver en YouTube desde ${formatTime(s.startS)}`}
+            className="text-emerald-800 hover:underline"
+          >
+            {range}
+          </a>
+        );
+      },
     },
     {
       key: "enabled",

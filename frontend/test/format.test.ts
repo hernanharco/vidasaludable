@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatTime } from "../src/app/lib/format";
+import { formatTime, youtubeTimestampUrl } from "../src/app/lib/format";
 
 /**
  * T4 Phase A — YouTube-style human-facing time format (M:SS, H:MM:SS ≥3600s).
@@ -31,5 +31,37 @@ describe("formatTime", () => {
     expect(formatTime(-1)).toBe("0:00");
     expect(formatTime(NaN)).toBe("0:00");
     expect(formatTime(Infinity)).toBe("0:00");
+  });
+});
+
+/**
+ * Deep link into the ORIGINAL video at the segment's start minute, so the
+ * operator can watch a segment before deciding its condition.
+ */
+describe("youtubeTimestampUrl", () => {
+  it("builds a watch URL with the start second as the t parameter", () => {
+    expect(youtubeTimestampUrl("abc123", 0)).toBe(
+      "https://www.youtube.com/watch?v=abc123&t=0s",
+    );
+    expect(youtubeTimestampUrl("abc123", 90)).toBe(
+      "https://www.youtube.com/watch?v=abc123&t=90s",
+    );
+  });
+
+  it("floors fractional seconds and degrades invalid input to 0", () => {
+    expect(youtubeTimestampUrl("abc123", 90.9)).toBe(
+      "https://www.youtube.com/watch?v=abc123&t=90s",
+    );
+    expect(youtubeTimestampUrl("abc123", -5)).toBe(
+      "https://www.youtube.com/watch?v=abc123&t=0s",
+    );
+    expect(youtubeTimestampUrl("abc123", NaN)).toBe(
+      "https://www.youtube.com/watch?v=abc123&t=0s",
+    );
+  });
+
+  it("returns null when there is no video id to link to", () => {
+    expect(youtubeTimestampUrl("", 90)).toBeNull();
+    expect(youtubeTimestampUrl("   ", 90)).toBeNull();
   });
 });
