@@ -65,8 +65,8 @@ describe("youtubeTimestampUrl", () => {
     expect(youtubeTimestampUrl("   ", 90)).toBeNull();
   });
 
-  // R3-NullTrim: a payload that omits youtubeId entirely must degrade to
-  // "no link", never throw while the segment table renders.
+  // A payload that omits youtubeId entirely must degrade to "no link", never
+  // throw while the segment table renders.
   it("does not throw when the payload omits the id at runtime", () => {
     expect(youtubeTimestampUrl(undefined, 90)).toBeNull();
     expect(youtubeTimestampUrl(null, 90)).toBeNull();

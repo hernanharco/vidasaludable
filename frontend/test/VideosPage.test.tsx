@@ -261,9 +261,9 @@ describe("VideosPage admin CRM", () => {
     );
   });
 
-  // R2/R3 id coercion: the neighbouring videoTitle helper tolerates a runtime
-  // type mismatch (String(v.id) === id), so the marca lookup must not be the
-  // one place that silently degrades to plain text.
+  // The neighbouring videoTitle helper tolerates a runtime type mismatch
+  // (String(v.id) === id), so the marca lookup must not be the one place that
+  // silently degrades to plain text.
   it("resolves the marca link when the segment videoId arrives as a string", async () => {
     segmentsState = segmentsState.map((seg) =>
       seg.id === 7 ? { ...seg, videoId: String(seg.videoId) as unknown as number } : seg,
