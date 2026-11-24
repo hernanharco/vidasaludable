@@ -137,6 +137,23 @@ describe("parseVideoId", () => {
     expect(parseVideoId("youtube.com/embed/0RYeUT3Yl0Q")).toBe("0RYeUT3Yl0Q");
   });
 
+  // Formas que YouTube genera hoy y que el parser rechazaba con un "invalid
+  // url" seco: barra antes del query, transmisiones en vivo, y el ID pelado.
+  it("acepta /watch/?v=, /live/ID y el ID solo", () => {
+    expect(parseVideoId("https://www.youtube.com/watch/?v=0RYeUT3Yl0Q")).toBe("0RYeUT3Yl0Q");
+    expect(parseVideoId("https://www.youtube.com/live/0RYeUT3Yl0Q")).toBe("0RYeUT3Yl0Q");
+    expect(parseVideoId("https://www.youtube.com/v/0RYeUT3Yl0Q")).toBe("0RYeUT3Yl0Q");
+    expect(parseVideoId("0RYeUT3Yl0Q")).toBe("0RYeUT3Yl0Q");
+    expect(parseVideoId("  0RYeUT3Yl0Q  ")).toBe("0RYeUT3Yl0Q");
+  });
+
+  it("sigue rechazando lo que no es un video", () => {
+    expect(parseVideoId("https://www.youtube.com/playlist?list=PLabc123")).toBeNull();
+    expect(parseVideoId("https://example.com/watch?v=0RYeUT3Yl0Q")).toBeNull();
+    expect(parseVideoId("corto")).toBeNull();
+    expect(parseVideoId("")).toBeNull();
+  });
+
   it("tolera parámetros extra (t=, list=) y recorta el id en el primer separador", () => {
     expect(parseVideoId("https://www.youtube.com/watch?v=0RYeUT3Yl0Q&t=90s")).toBe("0RYeUT3Yl0Q");
     expect(parseVideoId("https://www.youtube.com/watch?list=PL123&v=0RYeUT3Yl0Q")).toBe("0RYeUT3Yl0Q");
@@ -147,7 +164,10 @@ describe("parseVideoId", () => {
     expect(parseVideoId("https://vimeo.com/123456789")).toBeNull();
     expect(parseVideoId("no soy una url")).toBeNull();
     expect(parseVideoId("")).toBeNull();
-    expect(parseVideoId("0RYeUT3Yl0Q")).toBeNull();
+    // El ID pelado dejó de ser inválido a propósito: se acepta (caso de
+    // arriba), porque el formulario del admin se llena muchas veces solo con
+    // el ID. Lo que sigue rechazándose es cualquier cosa que no sea un ID.
+    expect(parseVideoId("no-es-un-id-muy-largo")).toBeNull();
   });
 });
 

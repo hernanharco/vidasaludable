@@ -553,7 +553,15 @@ export function createAdminRouter(db: Db, deps: AdminRouterDeps = {}): Hono {
     if (!url) return c.json({ error: "missing field: url" }, 400);
     // `url` is the admin input; the youtubeId is DERIVED via parseVideoId.
     const youtubeId = parseVideoId(url);
-    if (!youtubeId) return c.json({ error: "invalid url" }, 400);
+    if (!youtubeId) {
+      return c.json(
+        {
+          error:
+            "url de YouTube no reconocida: usá youtube.com/watch?v=ID, youtu.be/ID, /shorts/ID, /embed/ID, /live/ID o el ID solo",
+        },
+        400,
+      );
+    }
     if (videoService.getVideoByYoutubeId(youtubeId)) {
       return c.json({ error: "youtubeId already exists" }, 409);
     }

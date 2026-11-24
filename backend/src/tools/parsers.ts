@@ -37,10 +37,11 @@ export interface ParsedSegment {
 
 /**
  * Extract the YouTube video id from a URL. Supports:
- * - `youtube.com/watch?v=ID` (with extra params such as `t=` or `list=`)
+ * - `youtube.com/watch?v=ID` (with extra params such as `t=` or `list=`,
+ *   and the trailing slash YouTube sometimes emits: `/watch/?v=`)
  * - `youtu.be/ID`
- * - `youtube.com/shorts/ID`
- * - `youtube.com/embed/ID`
+ * - `youtube.com/{shorts,embed,live,v}/ID`
+ * - the bare 11-character id (the admin form is often filled with just that)
  *
  * Returns `null` for anything that is not one of those forms.
  */
@@ -48,16 +49,17 @@ export function parseVideoId(url: string): string | null {
   const trimmed = url.trim();
   if (!trimmed) return null;
   const patterns: RegExp[] = [
-    /youtube\.com\/watch\?(?:[^#]*&)?v=([\w-]+)/i, // watch?v=ID (+ extra params)
+    /youtube\.com\/watch\/?\?(?:[^#]*&)?v=([\w-]+)/i, // watch?v=ID (+ extra params)
     /youtu\.be\/([\w-]+)/i, // youtu.be/ID
-    /youtube\.com\/shorts\/([\w-]+)/i, // shorts/ID
-    /youtube\.com\/embed\/([\w-]+)/i, // embed/ID
+    /youtube\.com\/(?:shorts|embed|live|v)\/([\w-]+)/i, // shorts|embed|live|v/ID
   ];
   for (const pattern of patterns) {
     const match = trimmed.match(pattern);
     if (match?.[1]) return match[1];
   }
-  return null;
+  // A bare id is unambiguous enough to accept: 11 chars of the YouTube alphabet.
+  const bare = trimmed.match(/^([\w-]{11})$/);
+  return bare?.[1] ?? null;
 }
 
 /**

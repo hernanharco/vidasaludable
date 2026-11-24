@@ -264,7 +264,10 @@ describe("video endpoints (T7)", () => {
       });
       expect(res.status).toBe(400);
       const data = (await res.json()) as { error: string };
-      expect(data.error).toBe("invalid url");
+      // El mensaje nombra las formas aceptadas en vez del "invalid url" seco:
+      // el admin no tenía forma de saber cuál pegar.
+      expect(data.error).toMatch(/url de YouTube no reconocida/);
+      expect(data.error).toMatch(/youtu\.be\/ID/);
     });
 
     it("rejects a duplicate youtubeId with 409", async () => {
