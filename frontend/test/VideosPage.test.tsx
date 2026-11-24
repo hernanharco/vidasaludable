@@ -279,6 +279,39 @@ describe("VideosPage admin CRM", () => {
     );
   });
 
+  // Absent ids must not collide: String(undefined) === String(undefined) made
+  // an id-less segment resolve to an id-less video and build a link from that
+  // video's youtubeId.
+  it("never matches a segment and a video whose ids are both absent", async () => {
+    videosState = [
+      ...videosState,
+      {
+        id: undefined as unknown as number,
+        speaker: "Luis Collantes",
+        youtubeId: "ghost1",
+        url: "https://www.youtube.com/watch?v=ghost1",
+        title: "Vídeo sin id",
+        durationS: null,
+        status: "analyzed",
+        licenseNote: null,
+        analysisState: null,
+        analysisError: null,
+        createdAt: "2025-01-03 10:00:00",
+        updatedAt: "2025-01-03 10:00:00",
+      },
+    ];
+    segmentsState = segmentsState.map((seg) =>
+      seg.id === 7 ? { ...seg, videoId: undefined as unknown as number } : seg,
+    );
+    render(<VideosPage />);
+
+    const row = (await screen.findByText("Introducción a la vitamina D")).closest(
+      "tr",
+    ) as HTMLElement;
+    expect(within(row).queryByRole("link", { name: "1:30 – 3:00" })).toBeNull();
+    expect(within(row).getByText("1:30 – 3:00")).toBeInTheDocument();
+  });
+
   it("leaves the marca as plain text when the video has no youtubeId", async () => {
     videosState = videosState.map((v) =>
       v.id === 1 ? { ...v, youtubeId: "", url: "" } : v,

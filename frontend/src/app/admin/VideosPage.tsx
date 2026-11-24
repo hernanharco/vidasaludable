@@ -170,9 +170,14 @@ export function VideosPage() {
   // Null (→ plain, unlinked range) when the video is not in the list, the
   // payload omits its youtubeId, or there is no id to build a URL with.
   // Ids are compared as strings like videoTitle above: a runtime type
-  // mismatch must not silently disable the link.
+  // mismatch must not silently disable the link. Absent ids are rejected
+  // first, because String(undefined) === String(undefined) would otherwise
+  // match an id-less segment to an id-less video.
   const segmentVideoLink = (seg: VideoSegment): string | null => {
-    const video = videos.find((v) => String(v.id) === String(seg.videoId));
+    if (seg.videoId == null) return null;
+    const video = videos.find(
+      (v) => v.id != null && String(v.id) === String(seg.videoId),
+    );
     return video ? youtubeTimestampUrl(video.youtubeId, seg.startS) : null;
   };
 
